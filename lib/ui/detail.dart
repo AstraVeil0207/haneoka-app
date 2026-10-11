@@ -137,6 +137,57 @@ class DetailSection extends StatelessWidget {
   }
 }
 
+/// A folded group inside a section (`fold` / `.detail-fold`): one outlined
+/// row with its title and trailing meta; the body opens beneath it.
+class DetailFold extends StatelessWidget {
+  const DetailFold({
+    super.key,
+    required this.title,
+    required this.child,
+    this.meta,
+  });
+  final String title;
+  final String? meta;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final shape = RoundedRectangleBorder(
+      side: BorderSide(color: scheme.outlineVariant),
+      borderRadius: BorderRadius.circular(Corner.medium),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: ExpansionTile(
+        shape: shape,
+        collapsedShape: shape,
+        backgroundColor: scheme.surfaceContainerLow,
+        collapsedBackgroundColor: scheme.surfaceContainerLow,
+        tilePadding: const EdgeInsets.only(left: 16, right: 8),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        title: Text(title, style: theme.textTheme.titleSmall),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (meta != null)
+              Text(
+                meta!,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            const SizedBox(width: 4),
+            const Icon(Symbols.expand_more_rounded),
+          ],
+        ),
+        children: [child],
+      ),
+    );
+  }
+}
+
 /// One fact: a label above its value, which may be a widget (an emblem).
 class Fact {
   const Fact(this.label, this.value, {this.widget, this.full = false});

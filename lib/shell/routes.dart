@@ -77,6 +77,18 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
       return StoriesScreen(key: ValueKey(mode), mode: mode);
     }
   }
+  final slash = route.lastIndexOf('/');
+  final parent = slash > '/catalog'.length
+      ? catalogRoutes[route.substring(0, slash)]
+      : null;
+  if (parent case final resource?) {
+    return DetailScreen(
+      key: ValueKey(route),
+      profile: catalogProfiles.firstWhere((p) => p.resource == resource),
+      id: route.substring(slash + 1),
+      summary: const {},
+    );
+  }
   final resource = catalogRoutes[route];
   if (resource != null) {
     final profile = catalogProfiles.firstWhere((p) => p.resource == resource);

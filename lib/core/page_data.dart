@@ -21,3 +21,26 @@ Future<Map<String, Object?>> pageData(String path, String scriptId) async {
     return (jsonDecode(match[1]!) as Map).cast<String, Object?>();
   });
 }
+
+final _entityPages = <String, Future<Map<String, Object?>?>>{};
+
+/// The payload an entity page is built from (`catalog-page-{resource}-{id}`):
+/// the entity, the marks and game items it shows, and `aux` with its
+/// progression and resolved associations. Null when the page does not exist.
+Future<Map<String, Object?>?> entityPage(
+  String server,
+  String locale,
+  String resource,
+  String id,
+) {
+  final kind = resource == 'cards' ? 'member-cards' : resource;
+  final path = '/$server/$locale/$kind/${Uri.encodeComponent(id)}/';
+  return _entityPages[path] ??= pageData(path, 'catalog-page-$resource-$id')
+      .then<Map<String, Object?>?>(
+        (v) => v,
+        onError: (_) {
+          _entityPages.remove(path);
+          return null;
+        },
+      );
+}

@@ -26,4 +26,14 @@ void main() {
   test('takes the time branch when the effect has a duration', () {
     expect(text(1), 'LUCK撃奏開始から2秒間\n抽選ゲージ獲得量50.0%UP');
   });
+  test('joins quoted parts of a branch', () {
+    expect(
+      skillDescription(
+        '{0 <effects[0].time? "for " ~ effects[0].time ~ " sec." : "During"}',
+        skillLevelEffects(effects, 1).effects,
+        (value) => '$value',
+      ),
+      'for 2 sec.',
+    );
+  });
 }

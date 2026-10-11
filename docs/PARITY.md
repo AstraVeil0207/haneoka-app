@@ -35,7 +35,7 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 - [~] Song meta (table, tiers, live/gekisou; missing: scatter chart view)
 - [~] Events · [x] event tracker (challenge and point rankings, live)
 - [x] Characters · [~] character detail (voices, related cards, archive)
-- [x] Members · [~] member detail (level/rank/skill sliders, costs)
+- [x] Members · [x] member and snapshot detail (level, training, awakening, rank and skill sliders, stats, upgrade costs, skill text per level)
 - [x] Snapshots
 - [x] Skills (catalogue, detail, upgrade materials)
 - [~] Comics · [~] gacha · [~] login campaigns · [~] missions · [~] passes · [~] T.G.W card
@@ -44,7 +44,9 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 
 ## Stories
 
-- [ ] Event, band, link, birthday, home, afterlive, tutorial: browse and read (3D player may wait)
+- [x] Event, band, link, birthday, home, afterlive, tutorial: browse with the website's rails and groups
+- [x] Transcript reader with locations, speakers and voices (3D player may wait)
+- [ ] Story filters · [ ] home spot scene
 
 ## Tools
 

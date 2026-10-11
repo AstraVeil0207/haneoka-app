@@ -139,11 +139,15 @@ class UpgradeCost extends StatefulWidget {
     required this.steps,
     required this.to,
     this.initial = 1,
+    this.framed = true,
   });
   final String label;
   final List<CostStep> steps;
   final int to;
   final int initial;
+
+  /// False inside a [DetailFold], which already frames it.
+  final bool framed;
   @override
   State<UpgradeCost> createState() => _UpgradeCostState();
 }
@@ -198,9 +202,9 @@ class _UpgradeCostState extends State<UpgradeCost> {
             onChanged: (value) => setState(() => _current = value),
           ),
         Container(
-          padding: const EdgeInsets.all(12),
+          padding: widget.framed ? const EdgeInsets.all(12) : EdgeInsets.zero,
           decoration: BoxDecoration(
-            color: scheme.surfaceContainerLow,
+            color: widget.framed ? scheme.surfaceContainerLow : null,
             borderRadius: BorderRadius.circular(Corner.medium),
           ),
           child: Column(

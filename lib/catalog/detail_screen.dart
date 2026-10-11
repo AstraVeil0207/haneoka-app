@@ -2,20 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:intl/intl.dart';
 
-import '../core/api.dart';
 import '../core/app_state.dart';
 import '../core/audio.dart';
 import '../core/i18n.dart';
+import '../core/page_data.dart';
 import '../core/relative_time.dart';
 import '../l10n/app_localizations.dart';
 import '../shell/page.dart';
 import '../ui/app_image.dart';
 import '../ui/detail.dart';
+import 'card_growth.dart';
 import 'catalog_screen.dart';
 import 'format.dart';
 import 'labels.g.dart';
 import 'profiles.dart';
-import 'skill_text.dart';
 import 'visuals.dart';
 
 const _difficultyNames = ['EASY', 'NORMAL', 'HARD', 'EXPERT', 'SPECIAL'];
@@ -40,7 +40,7 @@ class DetailScreen extends StatefulWidget {
 }
 
 class _DetailScreenState extends State<DetailScreen> {
-  Future<(Entry, CatalogVisuals)>? _data;
+  Future<(Entry, CatalogVisuals, Entry?)>? _data;
   int? _difficulty;
 
   void refresh(VoidCallback change) => setState(change);
@@ -51,18 +51,26 @@ class _DetailScreenState extends State<DetailScreen> {
     _data ??= _load();
   }
 
-  Future<(Entry, CatalogVisuals)> _load() async {
-    final api = AppScope.of(context).api;
-    final (record, visuals) = await (
+  Future<(Entry, CatalogVisuals, Entry?)> _load() async {
+    final state = AppScope.of(context);
+    final api = state.api;
+    final resource = widget.profile.resource;
+    final (record, visuals, page) = await (
       api
-          .catalog(widget.profile.resource, widget.id)
+          .catalog(resource, widget.id)
           .then<Entry>(
             (value) => {...widget.summary, if (value is Entry) ...value},
             onError: (_) => widget.summary,
           ),
       CatalogVisuals.of(api),
+      entityPage(api.server, state.text.locale, resource, widget.id),
     ).wait;
-    return (record, visuals);
+    final item = page?['item'];
+    return (
+      item is Map ? {...record, ...item.cast<String, Object?>()} : record,
+      visuals,
+      page,
+    );
   }
 
   @override
@@ -74,6 +82,7 @@ class _DetailScreenState extends State<DetailScreen> {
       builder: (context, snapshot) {
         final record = snapshot.data?.$1 ?? widget.summary;
         final visuals = snapshot.data?.$2;
+        final page = snapshot.data?.$3;
         final kit = CatalogKit(
           widget.profile,
           t,
@@ -81,12 +90,12 @@ class _DetailScreenState extends State<DetailScreen> {
           visuals,
           songTitles: state.songTitle,
         );
-        final page = _Page(kit, record, this);
+        final view = _Page(kit, record, this, page, ready: snapshot.hasData);
         return ShellPage(
           title: kit.title(record),
-          marks: page.marks(),
-          actions: page.actions(),
-          body: DetailLayout(media: page.media(), sections: page.sections()),
+          marks: view.marks(),
+          actions: view.actions(),
+          body: DetailLayout(media: view.media(), sections: view.sections()),
         );
       },
     );
@@ -95,10 +104,14 @@ class _DetailScreenState extends State<DetailScreen> {
 
 /// The sections of one entity, by presentation.
 class _Page {
-  _Page(this.kit, this.record, this.host);
+  _Page(this.kit, this.record, this.host, this.page, {this.ready = true});
+  final bool ready;
   final CatalogKit kit;
   final Entry record;
   final _DetailScreenState host;
+
+  /// The website's payload for this page, when it was published.
+  final Entry? page;
 
   SiteText get t => kit.t;
   BuildContext get context => host.context;
@@ -460,11 +473,8 @@ class _Page {
 
   List<Widget> _card() {
     final visuals = kit.visuals;
-    final number = NumberFormat.decimalPattern(t.locale);
     final marks = kit.marks(record);
-    final theme = Theme.of(context);
     final ids = kit.characterIds(record);
-    final skills = (record['resolvedSkills'] as Map?) ?? const {};
     return [
       DetailSection(
         icon: Symbols.info_rounded,
@@ -488,73 +498,15 @@ class _Page {
           ],
         ),
       ),
-      if (ids.isNotEmpty)
-        DetailSection(
-          icon: Symbols.group_rounded,
-          title: t.label('character'),
-          count: ids.length,
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final id in ids)
-                ActionChip(
-                  avatar: visuals?.characters[id]?['faceImage'] is String
-                      ? ClipOval(
-                          child: AppImage(
-                            candidates: [
-                              kit.api
-                                  .asset(
-                                    visuals!.characters[id]!['faceImage']
-                                        as String,
-                                  )
-                                  .toString(),
-                            ],
-                          ),
-                        )
-                      : null,
-                  label: Text(kit.characterName(id)),
-                  onPressed: () {},
-                ),
-            ],
-          ),
-        ),
-      DetailSection(
-        icon: Symbols.monitoring_rounded,
-        title: t.label('status', 'Status'),
-        child: SpecList(
-          facts: [
-            for (final stat in ['performance', 'technique', 'visual'])
-              Fact(
-                t.label(stat),
-                number.format(readPath(record, 'stat.$stat') ?? 0),
-              ),
-            Fact(t.label('total'), number.format(kit.total(record))),
-          ],
-        ),
+      CardGrowthView(
+        record: record,
+        visuals: visuals,
+        characterIds: ids,
+        characterName: kit.characterName,
+        support: kind == Presentation.support,
+        page: page,
+        ready: ready,
       ),
-      if (skills.isNotEmpty)
-        DetailSection(
-          icon: Symbols.bolt_rounded,
-          title: t.label('skills', 'Skills'),
-          child: Column(
-            children: [
-              for (final MapEntry(:key, :value) in skills.entries)
-                for (final skill
-                    in (value is List ? value : [value]).whereType<Map>())
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: _SkillCard(
-                      group: t.label('${key}Skill', '$key'),
-                      skill: skill.cast<String, Object?>(),
-                      t: t,
-                      api: kit.api,
-                      theme: theme,
-                    ),
-                  ),
-            ],
-          ),
-        ),
     ];
   }
 
@@ -633,86 +585,5 @@ class _Page {
       if (label.isNotEmpty) return label;
     }
     return null;
-  }
-}
-
-/// A skill as the website's `.skill-row`: icon, group, name and the filled template.
-class _SkillCard extends StatelessWidget {
-  const _SkillCard({
-    required this.group,
-    required this.skill,
-    required this.t,
-    required this.api,
-    required this.theme,
-  });
-  final String group;
-  final Entry skill;
-  final SiteText t;
-  final HaneokaApi api;
-  final ThemeData theme;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = theme.colorScheme;
-    final icon = skill['icon'];
-    final template = t.text(skill['description']);
-    final effects = [
-      for (final e in (skill['effects'] as List? ?? const []))
-        if (e is Map) e.cast<String, Object?>(),
-    ];
-    final description = template.isEmpty
-        ? ''
-        : skillDescription(
-            template,
-            skillLevelEffects(effects).effects,
-            t.text,
-          );
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border.all(color: scheme.outlineVariant),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (icon is String)
-              Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: SizedBox.square(
-                  dimension: 40,
-                  child: AppImage(candidates: [api.asset(icon).toString()]),
-                ),
-              ),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    group,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                  Text(
-                    t.text(skill['skillName']),
-                    style: theme.textTheme.titleSmall,
-                  ),
-                  if (description.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Text(
-                        description,
-                        style: theme.textTheme.bodyMedium,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 }

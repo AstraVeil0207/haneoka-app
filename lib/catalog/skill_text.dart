@@ -114,7 +114,7 @@ String? _branch(
   String Function(Object?) localize,
 ) {
   final trimmed = branch.trim();
-  final quoted = RegExp(r'^"([\s\S]*)"$').firstMatch(trimmed);
+  final quoted = RegExp(r'^"([^"]*)"$').firstMatch(trimmed);
   if (quoted != null) return quoted[1] ?? '';
   final out = StringBuffer();
   for (final part in trimmed.split(RegExp(r'\s*~\s*'))) {
