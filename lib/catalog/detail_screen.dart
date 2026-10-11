@@ -203,6 +203,8 @@ class _Page {
         'spriteImage',
         'faceImage',
       ]),
+      // The page shows the full jacket; grids use the small one.
+      Presentation.song => _paths(['jacketUrl', 'jacketThumbUrl']),
       _ => kit.images(record),
     };
     final all = images.isNotEmpty

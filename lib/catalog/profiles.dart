@@ -67,9 +67,9 @@ const catalogProfiles = <CatalogProfile>[
     label: 'navigation.songs',
     icon: Symbols.library_music_rounded,
     presentation: Presentation.song,
-    id: ['musicId', 'id'],
-    title: ['musicTitle', 'title'],
-    image: ['jacketUrl', 'jacketThumbUrl', 'image'],
+    id: ['musicId', 'songId', 'id'],
+    title: ['musicTitle', 'title', 'name'],
+    image: ['jacketThumbUrl', 'jacketUrl', 'jacket', 'thumbnail', 'image'],
     detail: ['bandName', 'composer', 'lyricist', 'arranger', 'publishedAt'],
     minWidth: 160,
     defaultSort: 'release',
@@ -82,8 +82,11 @@ const catalogProfiles = <CatalogProfile>[
     document: 'entries',
     detail: ['kind', 'startAt', 'endAt'],
     aspectRatio: 16 / 9,
-    fit: BoxFit.cover,
+
     defaultSort: 'start',
+    id: ['id'],
+    title: ['title'],
+    image: ['image'],
   ),
   CatalogProfile(
     resource: 'characters',
@@ -104,9 +107,10 @@ const catalogProfiles = <CatalogProfile>[
     ],
     minWidth: 148,
     aspectRatio: 3 / 4,
-    fit: BoxFit.cover,
+
     defaultSort: 'order',
     descending: false,
+    small: true,
   ),
   CatalogProfile(
     resource: 'cards',
@@ -155,6 +159,7 @@ const catalogProfiles = <CatalogProfile>[
     detail: ['subTitle', 'characterIds', 'publicStartAt'],
     minWidth: 240,
     defaultSort: 'release',
+    title: ['title', 'name'],
   ),
   CatalogProfile(
     resource: 'gacha',
@@ -165,6 +170,9 @@ const catalogProfiles = <CatalogProfile>[
     detail: ['category', 'startAt', 'endAt'],
     aspectRatio: 16 / 9,
     defaultSort: 'start',
+    id: ['id'],
+    title: ['title'],
+    image: ['image'],
   ),
   CatalogProfile(
     resource: 'login-campaigns',
@@ -175,6 +183,9 @@ const catalogProfiles = <CatalogProfile>[
     aspectRatio: 16 / 9,
     defaultSort: 'start',
     detail: ['kind', 'startAt', 'endAt'],
+    id: ['id'],
+    title: ['title'],
+    image: ['image'],
   ),
   CatalogProfile(
     resource: 'missions',
@@ -192,6 +203,9 @@ const catalogProfiles = <CatalogProfile>[
     document: 'entries',
     aspectRatio: 16 / 9,
     detail: ['kind', 'startAt', 'endAt'],
+    id: ['id'],
+    title: ['title'],
+    image: ['image'],
   ),
   CatalogProfile(
     resource: 'tgw-card',
@@ -210,6 +224,9 @@ const catalogProfiles = <CatalogProfile>[
     document: 'entries',
     aspectRatio: 16 / 9,
     detail: ['startAt', 'endAt'],
+    id: ['id'],
+    title: ['title'],
+    image: ['image'],
   ),
   CatalogProfile(
     resource: 'exchange',
@@ -220,6 +237,9 @@ const catalogProfiles = <CatalogProfile>[
     aspectRatio: 16 / 9,
     defaultSort: 'start',
     detail: ['category', 'startAt', 'endAt'],
+    id: ['id'],
+    title: ['title'],
+    image: ['image'],
   ),
   CatalogProfile(
     resource: 'stamps',
@@ -230,6 +250,8 @@ const catalogProfiles = <CatalogProfile>[
     detail: ['characterIds', 'releasedAt'],
     minWidth: 132,
     small: true,
+    title: ['name', 'title'],
+    image: ['image', 'thumbnail'],
   ),
   CatalogProfile(
     resource: 'stickers',
@@ -241,6 +263,8 @@ const catalogProfiles = <CatalogProfile>[
     detail: ['description', 'characterIds', 'releasedAt'],
     minWidth: 132,
     small: true,
+    title: ['name', 'title'],
+    image: ['image'],
   ),
   CatalogProfile(
     resource: 'backgrounds',
@@ -251,8 +275,9 @@ const catalogProfiles = <CatalogProfile>[
     document: 'entries',
     image: ['thumbnail', 'image'],
     aspectRatio: 16 / 9,
-    fit: BoxFit.cover,
+
     detail: ['description'],
+    title: ['name', 'title'],
   ),
   CatalogProfile(
     resource: 'items',
@@ -266,6 +291,8 @@ const catalogProfiles = <CatalogProfile>[
     defaultSort: 'order',
     descending: false,
     detail: ['itemTypeName', 'max'],
+    title: ['name', 'title'],
+    image: ['image', 'thumbnail'],
   ),
   CatalogProfile(
     resource: 'band-items',
@@ -279,6 +306,8 @@ const catalogProfiles = <CatalogProfile>[
     defaultSort: 'order',
     descending: false,
     detail: ['bandId'],
+    title: ['name', 'title'],
+    image: ['image', 'icon', 'thumbnail'],
   ),
   CatalogProfile(
     resource: 'real-lives',
@@ -289,6 +318,9 @@ const catalogProfiles = <CatalogProfile>[
     aspectRatio: 16 / 9,
     defaultSort: 'start',
     detail: ['kind', 'startAt', 'endAt'],
+    id: ['id'],
+    title: ['title'],
+    image: ['image'],
   ),
 ];
 

@@ -148,7 +148,25 @@ class _CatalogScreenState extends State<CatalogScreen> {
             adornments: kit.adornments(item),
             images: kit.images(item),
             aspectRatio: profile.aspectRatio,
-            fit: profile.fit,
+            // Portraits keep the full width and clip below the head
+            // (`.tile--character` media: natural height, top anchored).
+            fit: profile.presentation == Presentation.character
+                ? BoxFit.fitWidth
+                : profile.fit,
+            accent: kit.accent(item),
+            alignment: profile.presentation == Presentation.character
+                ? Alignment.topCenter
+                : Alignment.center,
+            media: profile.resource == 'events' && item['logo'] is String
+                ? EventArtwork(
+                    background: kit.api
+                        .asset(
+                          '${item['backgroundImage'] ?? kit.images(item).firstOrNull ?? ''}',
+                        )
+                        .toString(),
+                    logo: kit.api.asset('${item['logo']}').toString(),
+                  )
+                : null,
             marks: [
               ...kit.marks(item),
               if (widget.owned?[kit.id(item)] case final progress?
@@ -203,6 +221,14 @@ class CatalogKit {
         ? songTitles!(raw)
         : plain(raw);
     return value.isEmpty ? '—' : value;
+  }
+
+  /// The character's colour behind its portrait (`--entity-accent`).
+  Color? accent(Entry item) {
+    if (kind != Presentation.character) return null;
+    final hex = '${item['colorCode'] ?? ''}'.replaceFirst('#', '');
+    final value = hex.length == 6 ? int.tryParse(hex, radix: 16) : null;
+    return value == null ? null : Color(0xFF000000 | value);
   }
 
   List<String> images(Entry item) => [
@@ -279,6 +305,30 @@ class CatalogKit {
   }
 
   List<TileMark> marks(Entry item) {
+    if (kind == Presentation.system) {
+      final end = RelativeTime.timestamp(item['endAt']) ?? 0;
+      final start = RelativeTime.timestamp(item['startAt']) ?? 0;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      return [
+        if (!(start > now) && end > 0 && end < now)
+          TileMark.text(
+            MarkAt.bottomEnd,
+            t.label('ended', 'Ended'),
+            alert: true,
+          ),
+      ];
+    }
+    if (profile.resource == 'stickers') {
+      final closed = RelativeTime.timestamp(item['closedAt']) ?? 0;
+      return [
+        if (closed > 0 && closed < DateTime.now().millisecondsSinceEpoch)
+          TileMark.text(
+            MarkAt.bottomEnd,
+            t.label('retired', 'Retired'),
+            alert: true,
+          ),
+      ];
+    }
     if (kind != Presentation.member && kind != Presentation.support) {
       return const [];
     }

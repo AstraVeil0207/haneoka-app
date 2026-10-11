@@ -13,9 +13,18 @@ enum MarkAt { start, end, bottomStart, bottomEnd }
 class TileMark {
   const TileMark.image(this.at, this.image, {this.label})
     : text = null,
-      accent = null;
-  const TileMark.text(this.at, this.text, {this.accent, this.label})
-    : image = null;
+      accent = null,
+      alert = false;
+  const TileMark.text(
+    this.at,
+    this.text, {
+    this.accent,
+    this.label,
+    this.alert = false,
+  }) : image = null;
+
+  /// The error colour (`accent: var(--md-sys-color-error)`): ended, retired.
+  final bool alert;
   final MarkAt at;
   final String? image;
   final String? text;
@@ -44,7 +53,16 @@ class Tile extends StatelessWidget {
     this.action,
     this.selected = false,
     this.media,
+    this.accent,
+    this.alignment = Alignment.center,
   });
+
+  /// The subject's colour, tinting the media box (`--entity-accent` on
+  /// character and band tiles).
+  final Color? accent;
+
+  /// Where the artwork sits in its box: characters are framed head-first.
+  final Alignment alignment;
   final String title;
 
   /// Drawn instead of [images]: a composed figure such as two faces.
@@ -90,8 +108,23 @@ class Tile extends StatelessWidget {
           children: [
             AspectRatio(
               aspectRatio: aspectRatio,
-              child: ColoredBox(
-                color: scheme.surfaceContainerHighest,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: scheme.surfaceContainerHighest,
+                  gradient: accent == null
+                      ? null
+                      : LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Color.alphaBlend(
+                              accent!.withValues(alpha: 0.26),
+                              scheme.surfaceContainerHighest,
+                            ),
+                            scheme.surfaceContainerHighest,
+                          ],
+                        ),
+                ),
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
@@ -100,6 +133,7 @@ class Tile extends StatelessWidget {
                       AppImage(
                         candidates: images,
                         fit: fit,
+                        alignment: alignment,
                         placeholder: Center(
                           child: Icon(
                             placeholder ?? Symbols.image_rounded,
@@ -201,7 +235,9 @@ class _Mark extends StatelessWidget {
       final text = Text(
         mark.text!,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: mark.accent == null ? scheme.onSurface : scheme.onPrimary,
+          color: mark.accent == null && !mark.alert
+              ? scheme.onSurface
+              : scheme.onPrimary,
           fontFeatures: const [FontFeature.tabularFigures()],
         ),
       );
@@ -209,12 +245,16 @@ class _Mark extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 20),
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
         alignment: Alignment.center,
-        color: mark.accent ?? scheme.surface.withValues(alpha: 0.78),
+        color:
+            mark.accent ??
+            (mark.alert
+                ? scheme.error
+                : scheme.surface.withValues(alpha: 0.78)),
         child: text,
       );
       child = ClipRRect(
         borderRadius: BorderRadius.circular(Corner.extraSmall),
-        child: mark.accent == null
+        child: mark.accent == null && !mark.alert
             ? BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
                 child: box,
@@ -273,5 +313,30 @@ SliverGridDelegate collectionGrid(
     mainAxisSpacing: gap,
     crossAxisSpacing: gap,
     mainAxisExtent: tile / aspectRatio + text,
+  );
+}
+
+/// An event's tile artwork (`eventArtwork`): its top image cropped from the
+/// left, the event logo over the right.
+class EventArtwork extends StatelessWidget {
+  const EventArtwork({super.key, required this.background, required this.logo});
+  final String background;
+  final String logo;
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    fit: StackFit.expand,
+    children: [
+      AppImage(
+        candidates: [background],
+        fit: BoxFit.cover,
+        alignment: const Alignment(-0.4, -0.3),
+      ),
+      FractionallySizedBox(
+        alignment: const Alignment(0.92, 0),
+        widthFactor: 0.42,
+        child: AppImage(candidates: [logo]),
+      ),
+    ],
   );
 }
