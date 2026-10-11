@@ -18,7 +18,7 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 - [x] Drawer: the website's sections, order, labels and icons
 - [x] Catalogue hub
 - [x] Website links open their native page (`openLink`)
-- [ ] Global search
+- [x] Global search (catalogue, stories, help in every language; community posts)
 - [x] About
 - [~] Account: imported game accounts kept on the device with a player profile · [ ] sign-in (email, GitHub, Google, X, Discord), profile, account lifecycle
 - [ ] Game account binding: link an Our Notes player (by importing its save) to the haneoka account; the profile shows the player's in-game summary (rank, rating, clears, cards); the website's profile and the database carry the binding; app-only pages for it in M3 Expressive
@@ -51,7 +51,7 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 
 ## Tools
 
-- [ ] Live2D viewer · [ ] Spine viewer · [ ] Assets · [ ] Help
+- [ ] Live2D viewer · [ ] Spine viewer · [ ] Assets · [x] Help
 - [x] Player profile · [ ] Team builder · [x] Song progress (filled from the imported save) · [ ] Stamp maker · [ ] Chart editor
 
 ## Games
