@@ -10,6 +10,7 @@ import '../shell/page.dart';
 import '../ui/app_image.dart';
 import '../ui/tile.dart';
 import 'browse.dart';
+import 'cross_server.dart';
 import 'visuals.dart';
 
 const _categories = ['', 'original', 'virtual', 'jpop', 'anime', 'game'];
@@ -38,16 +39,16 @@ class _SongsScreenState extends State<SongsScreen> {
   }
 
   Future<(List<Entry>, CatalogVisuals)> _load() async {
-    final api = AppScope.of(context).api;
-    final (document, visuals) = await (
-      api.catalog('songs'),
-      CatalogVisuals.of(api),
+    final state = AppScope.of(context);
+    final (songs, visuals) = await (
+      crossServerCollection(
+        resource: 'songs',
+        selected: state.server,
+        apis: state.catalogApis,
+        rowsPath: null,
+      ),
+      CatalogVisuals.of(state.api),
     ).wait;
-    final songs = <Entry>[
-      if (document is Map)
-        for (final value in document.values)
-          if (value is Entry) value,
-    ];
     return (songs, visuals);
   }
 
@@ -222,8 +223,9 @@ class _SongText {
     return names.isNotEmpty ? names.join(', ') : t.text(song['bandName']);
   }
 
+  /// The performing bands' logos (`songPerformerAdornment`).
   List<String> emblems(Entry song) =>
-      {for (final id in bandIds(song)) ?visuals?.bandIcon(id)}.toList();
+      {for (final id in bandIds(song)) ?visuals?.bandLogo(id)}.toList();
 
   String attribute(Entry song) {
     final id = (song['musicType'] as num?)?.toInt() ?? 0;
@@ -261,7 +263,7 @@ class _SongText {
   }
 
   List<String> jackets(Entry song) => [
-    for (final key in ['jacketUrl', 'jacketThumbUrl'])
+    for (final key in ['jacketThumbUrl', 'jacketUrl'])
       if (song[key] case final String path when path.isNotEmpty)
         api.asset(path).toString(),
   ];
@@ -297,6 +299,7 @@ class _SongTile extends StatelessWidget {
       adornments: text.emblems(song),
       images: text.jackets(song),
       placeholder: Symbols.album_rounded,
+      serverMark: serverMark(song, text.t.call),
       marks: [
         if (attribute != null)
           TileMark.image(MarkAt.start, attribute, label: text.attribute(song)),

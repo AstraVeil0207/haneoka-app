@@ -227,3 +227,19 @@ String? exclusiveServer(Map row) {
   if (jp && intl) return null;
   return jp ? 'jp' : (intl ? 'intl' : null);
 }
+
+/// The tile emblem of an entity only one server has (`catalogServerMark`).
+(String, String)? serverMark(
+  Map row,
+  String Function(String key, String fallback) text,
+) => switch (exclusiveServer(row)) {
+  'jp' => (
+    'assets/settings/bushimo-circle.svg',
+    text('catalog.availability.catalogJapanOnly', 'Japan only'),
+  ),
+  'intl' => (
+    'assets/settings/bilibili-circle.svg',
+    text('catalog.availability.catalogInternationalOnly', 'International only'),
+  ),
+  _ => null,
+};

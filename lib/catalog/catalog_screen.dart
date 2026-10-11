@@ -194,20 +194,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
                     logo: kit.api.asset('${item['logo']}').toString(),
                   )
                 : null,
-            serverMark: switch (exclusiveServer(item)) {
-              'jp' => (
-                'assets/settings/bushimo-circle.svg',
-                kit.t('catalog.availability.catalogJapanOnly', 'Japan only'),
-              ),
-              'intl' => (
-                'assets/settings/bilibili-circle.svg',
-                kit.t(
-                  'catalog.availability.catalogInternationalOnly',
-                  'International only',
-                ),
-              ),
-              _ => null,
-            },
+            serverMark: serverMark(item, kit.t.call),
             marks: [
               ...kit.marks(item),
               if (widget.owned?[kit.id(item)] case final progress?
