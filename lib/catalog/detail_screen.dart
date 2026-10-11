@@ -12,6 +12,7 @@ import '../shell/page.dart';
 import '../ui/app_image.dart';
 import '../ui/detail.dart';
 import 'card_growth.dart';
+import 'character_detail.dart';
 import 'catalog_screen.dart';
 import 'format.dart';
 import 'labels.g.dart';
@@ -96,7 +97,9 @@ class _DetailScreenState extends State<DetailScreen> {
           title: kit.title(record),
           marks: view.marks(),
           actions: view.actions(),
-          body: DetailLayout(media: view.media(), sections: view.sections()),
+          body: widget.profile.presentation == Presentation.character
+              ? CharacterDetail(record: record, page: page, visuals: visuals)
+              : DetailLayout(media: view.media(), sections: view.sections()),
         );
       },
     );

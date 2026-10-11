@@ -515,7 +515,7 @@ class _EpisodeTile extends StatelessWidget {
             state.api.asset(path).toString(),
       ],
       media: mode == 'afterlive' || mode == 'link' && episode['image'] == null
-          ? _Faces(
+          ? StoryFaces(
               faces: [
                 for (final id
                     in (episode['characterIds'] as List? ?? const []).take(2))
@@ -769,8 +769,8 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
 }
 
 /// Two characters' faces side by side: an after-live talk's media.
-class _Faces extends StatelessWidget {
-  const _Faces({required this.faces});
+class StoryFaces extends StatelessWidget {
+  const StoryFaces({super.key, required this.faces});
   final List<String> faces;
 
   @override
@@ -778,21 +778,25 @@ class _Faces extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return ColoredBox(
       color: scheme.surfaceContainerHighest,
-      child: Center(
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final face in faces)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: ClipOval(
-                  child: SizedBox.square(
-                    dimension: 64,
-                    child: AppImage(candidates: [face], fit: BoxFit.cover),
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final face in faces)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: ClipOval(
+                    child: SizedBox.square(
+                      dimension: 64,
+                      child: AppImage(candidates: [face], fit: BoxFit.cover),
+                    ),
                   ),
                 ),
-              ),
-          ],
+            ],
+          ),
         ),
       ),
     );

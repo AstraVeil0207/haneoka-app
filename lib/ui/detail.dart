@@ -358,9 +358,17 @@ class DifficultyChips extends StatelessWidget {
 /// The detail's artwork (`image-gallery`): an outlined card, one image at a
 /// time with a zoom button, a pager and a strip of thumbnails.
 class ImageGallery extends StatefulWidget {
-  const ImageGallery({super.key, required this.images, this.aspectRatio = 1});
+  const ImageGallery({
+    super.key,
+    required this.images,
+    this.aspectRatio = 1,
+    this.framed = true,
+  });
   final List<String> images;
   final double aspectRatio;
+
+  /// False where the gallery sits on its own ground (a character's profile).
+  final bool framed;
   @override
   State<ImageGallery> createState() => _ImageGalleryState();
 }
@@ -399,7 +407,7 @@ class _ImageGalleryState extends State<ImageGallery> {
     final images = widget.images;
     return DecoratedBox(
       decoration: BoxDecoration(
-        border: Border.all(color: scheme.outlineVariant),
+        border: widget.framed ? Border.all(color: scheme.outlineVariant) : null,
         borderRadius: BorderRadius.circular(Corner.extraLarge),
       ),
       child: Column(
@@ -435,7 +443,7 @@ class _ImageGalleryState extends State<ImageGallery> {
             ),
           ),
           if (images.length > 1) ...[
-            Divider(height: 1, color: scheme.outlineVariant),
+            if (widget.framed) Divider(height: 1, color: scheme.outlineVariant),
             Row(
               children: [
                 IconButton(

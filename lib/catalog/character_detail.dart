@@ -1,0 +1,1663 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:material_symbols_icons/symbols.dart';
+
+import '../core/app_state.dart';
+import '../core/audio.dart';
+import '../core/i18n.dart';
+import '../shell/links.dart';
+import '../shell/routes.dart';
+import '../stories/stories.dart';
+import '../ui/app_image.dart';
+import '../ui/detail.dart';
+import '../ui/theme.dart';
+import '../ui/tile.dart';
+import '../ui/upgrade.dart';
+import 'catalog_screen.dart';
+import 'format.dart';
+import 'profiles.dart';
+import 'visuals.dart';
+
+List<Map> _values(Object? value, [String? key]) {
+  final source = key != null && value is Map ? value[key] : value;
+  return switch (source) {
+    List() => source.whereType<Map>().toList(),
+    Map() => source.values.whereType<Map>().toList(),
+    _ => <Map>[],
+  };
+}
+
+num _num(Object? value) =>
+    value is num ? value : num.tryParse('${value ?? ''}') ?? 0;
+
+int Function(Map, Map) _by(String key) =>
+    (a, b) => _num(a[key]).compareTo(_num(b[key]));
+
+const _storyCategories = ['band', 'link', 'home', 'afterlive', 'tutorial'];
+
+String _storyCategory(Map entry) {
+  final key = '${entry['chapterKey'] ?? ''}'.toLowerCase();
+  if (key.contains('linkstory')) return 'link';
+  if (key.contains('asset_home')) return 'home';
+  if (key.contains('afterlive')) return 'afterlive';
+  if (key.contains('tutorial')) return 'tutorial';
+  return 'band';
+}
+
+const _voiceGroups = [
+  ('talk', 0, 'sourceTalk'),
+  ('characterVoice', 1, 'sourceCharacterVoice'),
+  ('memberCard', 2, 'sourceMemberCard'),
+  ('liveCharacter', 3, 'sourceLiveCharacter'),
+  ('liveGekisouVoice', 4, 'sourceLiveGekisouVoice'),
+  ('liveDialogueCommon', 5, 'sourceLiveDialogueCommon'),
+  ('liveDialogueFixedPair', 6, 'sourceLiveDialogueFixedPair'),
+  ('liveStartCharacterVoice', 7, 'sourceLiveStartCharacterVoice'),
+  ('unknown', -1, 'sourceUnknown'),
+];
+
+int _voiceGroup(Map entry) {
+  final type = entry['masterType'];
+  final index = _voiceGroups.indexWhere((g) => g.$2 == type);
+  return index < 0 ? _voiceGroups.length - 1 : index;
+}
+
+/// The message key of a voice's own title (`voiceTitleKey`).
+String _voiceTitleKey(Map entry) {
+  String at(List<String> names, Object? index, String fallback) =>
+      names.elementAtOrNull(_num(index).toInt()) ?? fallback;
+  return switch (entry['masterType']) {
+    0 =>
+      _num(entry['birthdayCharacterId']) > 0
+          ? 'birthday'
+          : entry['seasonStartAt'] != null || entry['seasonEndAt'] != null
+          ? 'seasonal'
+          : 'normal',
+    1 => at(
+      const [
+        'levelUp',
+        'awaken',
+        'skillUp',
+        'rankUp',
+        'clear',
+        'fullCombo',
+        'allPerfect',
+        'result',
+        'battleFirst',
+        'battleHigh',
+        'battleLow',
+      ],
+      entry['characterVoiceType'],
+      'live',
+    ),
+    2 => 'gacha',
+    3 => 'skill',
+    4 => at(
+      const ['gekisouCombo', 'gekisouJust', 'gekisouLuck', 'gekisouTop'],
+      entry['gekisouVoiceType'],
+      'live',
+    ),
+    5 || 6 => entry['dialogueType'] == 2 ? 'skill' : 'combo',
+    7 => 'start',
+    _ => 'other',
+  };
+}
+
+/// The measured portrait and ribbon positions of the game's friendship board
+/// (`FRIENDSHIP_SELF_SLOTS`, `FRIENDSHIP_OTHER_SLOTS`): x, y, arrow x, arrow
+/// y in percent, arrow rotation in degrees.
+const _selfSlots = [
+  (18.82622, 43.36100, 90.85714, 68.57143, -11.853991),
+  (27.59146, 77.80083, 93.28571, 33.08571, -44.430576),
+  (74.16159, 67.20954, 3.51429, 40.37143, 29.744215),
+  (73.93293, 25.82988, 7.42857, 80.62857, -29.195091),
+];
+const _otherSlots = [
+  (19.28354, 30.18672, 90.60000, 75.37143, 29.658096),
+  (20.88415, 69.91701, 96.00000, 44.85714, -36.740987),
+  (68.90244, 80.18672, 10.71429, 13.57143, 52.050356),
+  (79.64939, 49.48133, -0.28571, 50.00000, 3.755137),
+  (71.95122, 20.12448, 9.34286, 86.82857, -43.944990),
+];
+
+/// A character's page (`character-detail-archive`): profile, cards, stamps,
+/// voices, stories, bonds, missions, Live2D models and songs, one per tab.
+class CharacterDetail extends StatefulWidget {
+  const CharacterDetail({
+    super.key,
+    required this.record,
+    required this.page,
+    required this.visuals,
+  });
+  final Map<String, Object?> record;
+
+  /// The website's payload for the page: its `aux` holds every tab's rows.
+  final Map? page;
+  final CatalogVisuals? visuals;
+
+  @override
+  State<CharacterDetail> createState() => _CharacterDetailState();
+}
+
+class _CharacterDetailState extends State<CharacterDetail> {
+  String _section = 'profile';
+  int? _partner;
+  int _missionType = 0;
+  int _rank = 1;
+  int? _band;
+  final _deferred = <String, Future<Object?>>{};
+
+  AppState get state => AppScope.of(context);
+  SiteText get t => state.text;
+  ThemeData get theme => Theme.of(context);
+  ColorScheme get scheme => theme.colorScheme;
+  Map<String, Object?> get item => widget.record;
+  Map get aux => (widget.page?['aux'] as Map?) ?? const {};
+  int get id => _num(item['characterId']).toInt();
+
+  String number(Object? value) =>
+      NumberFormat.decimalPattern(t.locale).format(_num(value));
+  String _asset(Object? path) => state.api.asset('$path').toString();
+
+  CatalogKit _kit(String resource) => CatalogKit(
+    catalogProfiles.firstWhere((p) => p.resource == resource),
+    t,
+    state.api,
+    widget.visuals,
+    songTitles: state.songTitle,
+  );
+
+  List<int> _ids(Map entry) => [
+    for (final value in [
+      ...(entry['characterIds'] as List? ?? const []),
+      if (entry['characterIds'] == null) entry['characterId'],
+    ])
+      if (value is num && value > 0) value.toInt(),
+  ];
+
+  Map? _character(int id) => widget.visuals?.characters[id];
+  String _name(int id) => t.text(_character(id)?['characterName']);
+  String? _face(int id) => switch (_character(id)?['faceImage']) {
+    final String face => _asset(face),
+    _ => null,
+  };
+
+  /// A list the payload deferred (`requestDeferred`): fetched when its tab
+  /// first opens.
+  Future<Object?>? _load(String key) {
+    final source = (widget.page?['deferred'] as Map?)?[key];
+    if (source is! Map || source['url'] is! String) return null;
+    return _deferred[key] ??= state.api.json(
+      (source['url'] as String).split('?').first,
+    );
+  }
+
+  int? _deferredCount(String key) =>
+      ((widget.page?['deferred'] as Map?)?[key] as Map?)?['count'] as int?;
+
+  @override
+  Widget build(BuildContext context) {
+    final cards = _values(
+      aux['cards'],
+    ).where((e) => _num(e['characterId']) == id).toList()..sort(_by('cardId'));
+    final supports = _values(
+      aux['support-cards'],
+    ).where((e) => _ids(e).contains(id)).toList()..sort(_by('supportCardId'));
+    final stamps = _values(
+      aux['stamps'],
+    ).where((e) => _ids(e).contains(id)).toList()..sort(_by('stampId'));
+    final stories =
+        _values(
+          aux['stories'],
+          'episodes',
+        ).where((e) => _ids(e).contains(id)).toList()..sort((a, b) {
+          for (final compare in [
+            _storyCategories
+                .indexOf(_storyCategory(a))
+                .compareTo(_storyCategories.indexOf(_storyCategory(b))),
+            _num(a['chapterId']).compareTo(_num(b['chapterId'])),
+            _num(a['storySort']).compareTo(_num(b['storySort'])),
+          ]) {
+            if (compare != 0) return compare;
+          }
+          return '${a['storyId']}'.compareTo('${b['storyId']}');
+        });
+    final models =
+        (_values(aux['live2d'], 'models').isNotEmpty
+                ? _values(aux['live2d'], 'models')
+                : _values(aux['live2d']))
+            .where((e) => _num(e['characterId']) == id)
+            .toList()
+          ..sort((a, b) => '${a['live2dKey']}'.compareTo('${b['live2dKey']}'));
+    final songs = _values(aux['songs']).where((e) {
+      final bands = e['bandIds'] is List ? e['bandIds'] as List : [e['bandId']];
+      return bands.contains(item['bandId']);
+    }).toList()..sort(_by('musicId'));
+    final friendships = _values(
+      aux['friendships'],
+      'friendships',
+    ).where((e) => _ids(e).contains(id)).toList()..sort(_by('friendshipId'));
+
+    final tabs = [
+      (
+        'profile',
+        Symbols.contact_page_rounded,
+        t.label('profile', 'Profile'),
+        0,
+      ),
+      (
+        'cards',
+        Symbols.photo_library_rounded,
+        t.label('cards', 'Cards'),
+        cards.length + supports.length,
+      ),
+      (
+        'stamps',
+        Symbols.sticky_note_2_rounded,
+        t.label('stamps', 'Stamps'),
+        stamps.length,
+      ),
+      (
+        'voices',
+        Symbols.mic_rounded,
+        t.label('voices', 'Voices'),
+        _deferredCount('voices') ?? 0,
+      ),
+      (
+        'story',
+        Symbols.chat_rounded,
+        t.label('story', 'Story'),
+        stories.length,
+      ),
+      (
+        'friendships',
+        Symbols.handshake_rounded,
+        t.label('characterBonds', 'Character Bonds'),
+        friendships.length,
+      ),
+      (
+        'missions',
+        Symbols.checklist_rounded,
+        t.label('missions', 'Missions'),
+        _deferredCount('character-missions') ?? 0,
+      ),
+      ('live2d', Symbols.accessibility_new_rounded, 'Live2D', models.length),
+      (
+        'songs',
+        Symbols.music_note_rounded,
+        t.label('songs', 'Songs'),
+        songs.length,
+      ),
+    ];
+    final panel = switch (_section) {
+      'cards' => _section$(
+        Symbols.style_rounded,
+        t.label('cards', 'Cards'),
+        cards.length + supports.length,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _cardGrid(t.label('memberCards', 'Member cards'), 'cards', cards),
+            _cardGrid(
+              t.label('supportCards', 'Support cards'),
+              'support-cards',
+              supports,
+            ),
+          ],
+        ),
+      ),
+      'stamps' => _section$(
+        Symbols.sticky_note_2_rounded,
+        t.label('stamps', 'Stamps'),
+        stamps.length,
+        _grid(
+          [
+            for (final stamp in stamps)
+              Tile(
+                title: t.text(stamp['name']),
+                subtitle: _ids(stamp).map(_name).join(', '),
+                adornments: [
+                  for (final other in _ids(stamp).take(3)) ?_face(other),
+                ],
+                images: [if (stamp['image'] is String) _asset(stamp['image'])],
+                onTap: () => openEntity(
+                  context,
+                  catalogProfiles.firstWhere((p) => p.resource == 'stamps'),
+                  stamp.cast<String, Object?>(),
+                ),
+              ),
+          ],
+          minWidth: 132,
+          small: true,
+        ),
+      ),
+      'voices' => _voices(),
+      'story' => _section$(
+        Symbols.auto_stories_rounded,
+        t.label('story', 'Story'),
+        stories.length,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final category in _storyCategories)
+              if (stories.where((e) => _storyCategory(e) == category).toList()
+                  case final entries when entries.isNotEmpty)
+                _storyGrid(t.label('${category}Stories', category), entries),
+          ],
+        ),
+      ),
+      'friendships' => _bonds(friendships, stories),
+      'missions' => _missions(),
+      'live2d' => _section$(
+        Symbols.accessibility_new_rounded,
+        'Live2D',
+        models.length,
+        _grid(
+          [
+            for (final model in models)
+              Tile(
+                title: '${model['live2dName'] ?? model['title'] ?? ''}',
+                subtitle: _name(id),
+                adornments: [?_face(id)],
+                images: [
+                  for (final key in ['thumbnailImage', 'faceImage'])
+                    if (model[key] case final String path) _asset(path),
+                ],
+                aspectRatio: 3 / 4,
+                onTap: () => openLink(
+                  context,
+                  '/${state.server}/${t.locale}/live2d/${model['live2dKey']}/',
+                ),
+              ),
+          ],
+          minWidth: 148,
+          aspectRatio: 3 / 4,
+        ),
+      ),
+      'songs' => _section$(
+        Symbols.music_note_rounded,
+        t.label('songs', 'Songs'),
+        songs.length,
+        _songGrid(songs),
+      ),
+      _ => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [_profile(), ?_rankRewards()],
+      ),
+    };
+    final gutter = (MediaQuery.sizeOf(context).width * 0.022).clamp(12.0, 24.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 8),
+          child: Row(
+            children: [
+              for (final (section, icon, label, count) in tabs)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    showCheckmark: false,
+                    selected: _section == section,
+                    avatar: Icon(
+                      icon,
+                      size: 18,
+                      fill: _section == section ? 1 : 0,
+                    ),
+                    label: Text(count > 0 ? '$label  $count' : label),
+                    shape: const StadiumBorder(),
+                    onSelected: (_) => setState(() => _section = section),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: ListView(
+            key: PageStorageKey(_section),
+            padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 32),
+            children: [panel],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ---------- Shared pieces ----------
+
+  Widget _section$(IconData icon, String title, int? count, Widget child) =>
+      DetailSection(icon: icon, title: title, count: count, child: child);
+
+  Widget _empty() => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 24),
+    child: Center(
+      child: Text(
+        t.label('empty', 'No results'),
+        style: theme.textTheme.bodyMedium?.copyWith(
+          color: scheme.onSurfaceVariant,
+        ),
+      ),
+    ),
+  );
+
+  Widget _grid(
+    List<Widget> tiles, {
+    required double minWidth,
+    double aspectRatio = 1,
+    bool small = false,
+  }) => tiles.isEmpty
+      ? _empty()
+      : LayoutBuilder(
+          builder: (context, constraints) => GridView(
+            shrinkWrap: true,
+            primary: false,
+            padding: EdgeInsets.zero,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: collectionGrid(
+              context,
+              constraints.maxWidth,
+              minWidth: minWidth,
+              aspectRatio: aspectRatio,
+              small: small,
+            ),
+            children: tiles,
+          ),
+        );
+
+  Widget _group(String title, int count, Widget child) => Padding(
+    padding: const EdgeInsets.only(bottom: 24),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            '$title  $count',
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        child,
+      ],
+    ),
+  );
+
+  Widget _cardGrid(String title, String resource, List<Map> entries) {
+    final kit = _kit(resource);
+    return _group(
+      title,
+      entries.length,
+      _grid(
+        [
+          for (final entry in entries.map((e) => e.cast<String, Object?>()))
+            Tile(
+              title: kit.title(entry),
+              subtitle: kit.subtitle(entry),
+              adornments: kit.adornments(entry),
+              images: kit.images(entry),
+              aspectRatio: kit.profile.aspectRatio,
+              fit: kit.profile.fit,
+              marks: kit.marks(entry),
+              onTap: () => openEntity(context, kit.profile, entry),
+            ),
+        ],
+        minWidth: kit.profile.minWidth,
+        aspectRatio: kit.profile.aspectRatio,
+      ),
+    );
+  }
+
+  Widget _songGrid(List<Map> songs) {
+    final kit = _kit('songs');
+    const categories = ['', 'original', 'virtual', 'jpop', 'anime', 'game'];
+    return _grid([
+      for (final song in songs.map((e) => e.cast<String, Object?>()))
+        Tile(
+          title: kit.title(song),
+          subtitle: kit.bandName(song['bandId']),
+          adornments: [?widget.visuals?.bandIcon(song['bandId'])],
+          images: kit.images(song),
+          marks: [
+            if (widget.visuals?.musicTypeMark(song['musicType'])
+                case final mark?)
+              TileMark.image(MarkAt.start, mark),
+            if ([
+                  for (final category
+                      in (song['musicCategories'] as List? ?? const []))
+                    if (categories.elementAtOrNull(_num(category).toInt())
+                        case final name? when name.isNotEmpty)
+                      t.label(name, name),
+                ]
+                case final names when names.isNotEmpty)
+              TileMark.text(MarkAt.bottomStart, names.join(' / ')),
+          ],
+          onTap: () => openEntity(context, kit.profile, song),
+        ),
+    ], minWidth: kit.profile.minWidth);
+  }
+
+  Map? _storyChapter(Map entry) => _values(
+    aux['stories'],
+    'chapters',
+  ).where((c) => _num(c['chapterId']) == _num(entry['chapterId'])).firstOrNull;
+
+  Map? _homeSpot(Map entry) => _values(aux['stories'], 'homeSpots')
+      .where(
+        (spot) => _values(spot['talks']).any(
+          (talk) =>
+              '${talk['storyKey']}' ==
+              '${entry['storyId'] ?? entry['storyKey']}',
+        ),
+      )
+      .firstOrNull;
+
+  Widget _storyGrid(String title, List<Map> entries) => _group(
+    title,
+    entries.length,
+    _grid(
+      [
+        for (final entry in entries)
+          () {
+            final category = _storyCategory(entry);
+            final chapter = _storyChapter(entry) ?? const {};
+            final Object? image;
+            if (category == 'home') {
+              final spine = _homeSpot(entry)?['spine'];
+              image = spine is Map ? spine['backgroundPreview'] : null;
+            } else if (category == 'afterlive') {
+              image = null;
+            } else {
+              image =
+                  entry['banner'] ??
+                  entry['image'] ??
+                  chapter['banner'] ??
+                  chapter['image'];
+            }
+            final cast = category == 'afterlive' || category == 'home';
+            return Tile(
+              title: switch (t.text(entry['title'])) {
+                '' => t.text(entry['chapterName']),
+                final title => title,
+              },
+              subtitle: category == 'band' || category == 'tutorial'
+                  ? switch (t.text(entry['chapterName'])) {
+                      '' => t.text(chapter['chapterName']),
+                      final name => name,
+                    }
+                  : category == 'afterlive'
+                  ? '${t.label('friendship', 'Friendship')} ${entry['unlockCharacterFriendshipLevel'] == null ? '—' : 'Lv.${entry['unlockCharacterFriendshipLevel']}'}'
+                  : '',
+              images: [if (image is String && image.isNotEmpty) _asset(image)],
+              aspectRatio: 16 / 9,
+              fit: BoxFit.cover,
+              media: cast
+                  ? StoryFaces(
+                      faces: [for (final other in _ids(entry)) ?_face(other)],
+                    )
+                  : null,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => StoryReaderScreen(
+                    episode: {
+                      ...entry.cast<String, Object?>(),
+                      'storyKey': entry['storyKey'] ?? entry['storyId'],
+                    },
+                  ),
+                ),
+              ),
+            );
+          }(),
+      ],
+      minWidth: 220,
+      aspectRatio: 16 / 9,
+    ),
+  );
+
+  Widget _rewardRow(Map row, {String? caption}) {
+    final reward = (row['reward'] as Map?) ?? row;
+    final reference = reward['reference'] as Map?;
+    final resolved = (reward['resolved'] as Map?) ?? const {};
+    final name = switch (t.text(reference?['name'] ?? resolved['name'])) {
+      '' => '${reward['resourceTypeName'] ?? t.label('rewards', 'Rewards')}',
+      final name => name,
+    };
+    final image = reference?['image'] ?? resolved['image'];
+    final linked = reference != null && reference['id'] != null;
+    return InkWell(
+      onTap: linked
+          ? () => openLink(
+              context,
+              '/${state.server}/${t.locale}/${reference['resource'] == 'cards' ? 'member-cards' : reference['resource']}/${reference['id']}/',
+            )
+          : null,
+      borderRadius: BorderRadius.circular(Corner.medium),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: Row(
+          children: [
+            SizedBox.square(
+              dimension: 36,
+              child: image is String && image.isNotEmpty
+                  ? AppImage(candidates: [_asset(image)])
+                  : Icon(
+                      Symbols.redeem_rounded,
+                      color: scheme.onSurfaceVariant,
+                    ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(name, style: theme.textTheme.titleSmall),
+                  if (caption != null)
+                    Text(
+                      caption,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Text(
+              '×${number(reward['resourceCount'])}',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---------- Profile ----------
+
+  Widget _profile() {
+    final name = t.text(item['characterName']);
+    final alternate = t.text(item['englishName']);
+    final voice = t
+        .text(item['voiceActor'])
+        .replaceFirst(RegExp(r'^CV\s*[.．:：]\s*', caseSensitive: false), '');
+    final catchCopy = t.text(item['catchCopy']);
+    final description = t.text(item['description']).replaceAll('\r', '');
+    final part = '${item['bandPart'] ?? ''}';
+    final logo = widget.visuals?.bandLogo(item['bandId']);
+    final format = ValueFormat(t);
+    final profile = catalogProfiles.firstWhere(
+      (p) => p.resource == 'characters',
+    );
+    final fields = [
+      for (final key in profile.detail)
+        if (!const {'voiceActor', 'bandPart', 'englishName'}.contains(key))
+          if (item[key] case final value?)
+            if (format.format(key, value).trim() case final text
+                when text.isNotEmpty)
+              (t.label(key, key), text),
+    ];
+    final accent = switch ('${item['colorCode'] ?? ''}'.replaceFirst('#', '')) {
+      final String hex when hex.length == 6 => Color(
+        0xFF000000 | (int.tryParse(hex, radix: 16) ?? 0),
+      ),
+      _ => scheme.primaryContainer,
+    };
+    final images = {
+      for (final key in [
+        'profileImage',
+        'thumbnailImage',
+        'spriteImage',
+        'faceImage',
+      ])
+        if (item[key] case final String path when path.isNotEmpty) _asset(path),
+    }.toList();
+    final wide = MediaQuery.sizeOf(context).width >= 840;
+    final visual = CustomPaint(
+      painter: _Stripes(accent, scheme.surface.withValues(alpha: 0.24)),
+      child: Padding(
+        padding: wide
+            ? const EdgeInsets.fromLTRB(12, 24, 12, 16)
+            : const EdgeInsets.all(16),
+        child: images.isEmpty
+            ? const SizedBox(height: 240)
+            : ImageGallery(images: images, aspectRatio: 3 / 4, framed: false),
+      ),
+    );
+    final body = Padding(
+      padding: EdgeInsets.all(wide ? 40 : 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (logo != null)
+            Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: Padding(
+                padding: EdgeInsets.only(bottom: wide ? 24 : 20),
+                child: SizedBox(
+                  width: wide ? 128 : 112,
+                  height: wide ? 64 : 56,
+                  child: AppImage(
+                    candidates: [logo],
+                    alignment: Alignment.centerRight,
+                  ),
+                ),
+              ),
+            ),
+          if (part.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(
+                part,
+                style: const TextStyle(
+                  fontSize: 28,
+                  height: 1.2,
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 1.68,
+                ),
+              ),
+            ),
+          Text(
+            name,
+            style: TextStyle(
+              fontSize: wide ? 40 : 30,
+              height: 1.25,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.4,
+            ),
+          ),
+          if (alternate.isNotEmpty && alternate != name)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                alternate,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  letterSpacing: 0.84,
+                ),
+              ),
+            ),
+          if (voice.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 16),
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    const TextSpan(
+                      text: 'CV. ',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                    TextSpan(text: voice),
+                  ],
+                ),
+                style: const TextStyle(
+                  fontSize: 24,
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.96,
+                ),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 28),
+            child: Divider(height: 1, color: scheme.outlineVariant),
+          ),
+          if (catchCopy.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Text(
+                catchCopy,
+                style: TextStyle(
+                  fontSize: 18,
+                  height: 1.7,
+                  fontWeight: FontWeight.w500,
+                  color: scheme.primary,
+                ),
+              ),
+            ),
+          if (description.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 28),
+              child: Text(
+                description,
+                style: const TextStyle(
+                  fontSize: 15,
+                  height: 1.9,
+                  letterSpacing: 0.6,
+                ),
+              ),
+            ),
+          for (final (label, value) in fields)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 4,
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 14,
+                        height: 1.65,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 10,
+                    child: Text(
+                      value,
+                      style: const TextStyle(fontSize: 14, height: 1.65),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Material(
+        color: scheme.surface,
+        clipBehavior: Clip.antiAlias,
+        shape: RoundedRectangleBorder(
+          side: BorderSide(color: scheme.outlineVariant),
+          borderRadius: BorderRadius.circular(
+            wide ? Corner.extraLarge : Corner.large,
+          ),
+        ),
+        child: wide
+            ? IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Expanded(flex: 85, child: visual),
+                    Expanded(flex: 115, child: body),
+                  ],
+                ),
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [visual, body],
+              ),
+      ),
+    );
+  }
+
+  Widget? _rankRewards() {
+    final associations = (aux['associations'] as Map?) ?? const {};
+    final ranks = _values(associations['ranks'])..sort(_by('rank'));
+    if (ranks.isEmpty) return null;
+    final selected = ranks.firstWhere(
+      (r) => _num(r['rank']) == _rank,
+      orElse: () => ranks.first,
+    );
+    final rank = _num(selected['rank']).toInt();
+    final rewards = _values(associations['rewards'])
+        .where((r) => _num(r['rank']) == rank)
+        .toList();
+    return DetailSection(
+      icon: Symbols.redeem_rounded,
+      title: t.label('characterRankRewards', 'Character rank rewards'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          LevelSwitch(
+            label: t.label('rank', 'Rank'),
+            levels: [for (final r in ranks) _num(r['rank']).toInt()],
+            value: rank,
+            onChanged: (value) => setState(() => _rank = value),
+          ),
+          SpecList(
+            facts: [
+              Fact(t.label('exp', 'EXP'), number(selected['exp'])),
+              Fact(t.label('bonus', 'Bonus'), number(selected['bonus'])),
+            ],
+          ),
+          const SizedBox(height: 8),
+          for (final row in rewards) _rewardRow(row),
+        ],
+      ),
+    );
+  }
+
+  // ---------- Voices ----------
+
+  Widget _voices() {
+    final future = _load('voices');
+    return FutureBuilder(
+      future: future,
+      builder: (context, snapshot) {
+        if (future != null && !snapshot.hasData && !snapshot.hasError) {
+          return const Padding(
+            padding: EdgeInsets.all(32),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final entries =
+            _values(snapshot.data).where((e) => _ids(e).contains(id)).toList()
+              ..sort((a, b) {
+                for (final compare in [
+                  _voiceGroup(a).compareTo(_voiceGroup(b)),
+                  _num(a['masterType']).compareTo(_num(b['masterType'])),
+                  _num(a['masterId']).compareTo(_num(b['masterId'])),
+                ]) {
+                  if (compare != 0) return compare;
+                }
+                return 0;
+              });
+        if (entries.isEmpty) return _empty();
+        String v(String key, [Object? value]) =>
+            t('media.voice.$key', key, {'0': value});
+        String title(Map entry) {
+          final rank = _num(entry['scoreRank']).toInt();
+          final type = entry['masterType'];
+          return [
+            switch (t.text(entry['title'])) {
+              '' => v(_voiceTitleKey(entry)),
+              final title => title,
+            },
+            if (type == 1 && entry['characterVoiceType'] == 7 && rank > 0)
+              const ['', 'E', 'D', 'C', 'B', 'A', 'S', 'SS'][rank.clamp(0, 7)],
+            if (type == 5 || type == 6)
+              if (entry['dialogueCallType'] == 1)
+                v('call')
+              else if (entry['dialogueCallType'] == 2)
+                v('response'),
+          ].where((s) => s.isNotEmpty).join(' · ');
+        }
+
+        String condition(Map entry) => _num(entry['unlockCharacterRank']) > 0
+            ? v('unlockRank', entry['unlockCharacterRank'])
+            : _num(entry['unlockFriendshipRank']) > 0
+            ? v('unlockBond', entry['unlockFriendshipRank'])
+            : '';
+        final audio = state.audio;
+        return ListenableBuilder(
+          listenable: audio,
+          builder: (context, _) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (final (index, (_, _, label)) in _voiceGroups.indexed)
+                if (entries.where((e) => _voiceGroup(e) == index).toList()
+                    case final items when items.isNotEmpty)
+                  _section$(
+                    Symbols.mic_rounded,
+                    v(label),
+                    items.length,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (final (position, entry) in items.indexed) ...[
+                          if (position == 0 ||
+                              title(entry) != title(items[position - 1]) ||
+                              condition(entry) !=
+                                  condition(items[position - 1]) ||
+                              entry['cardId'] != items[position - 1]['cardId'])
+                            Padding(
+                              padding: const EdgeInsets.only(
+                                top: 12,
+                                bottom: 4,
+                              ),
+                              child: InkWell(
+                                onTap: entry['cardId'] == null
+                                    ? null
+                                    : () => openLink(
+                                        context,
+                                        '/${state.server}/${t.locale}/member-cards/${entry['cardId']}/',
+                                      ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      title(entry),
+                                      style: theme.textTheme.titleSmall
+                                          ?.copyWith(
+                                            color: entry['cardId'] == null
+                                                ? null
+                                                : scheme.primary,
+                                          ),
+                                    ),
+                                    if (condition(entry).isNotEmpty)
+                                      Text(
+                                        condition(entry),
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color: scheme.onSurfaceVariant,
+                                            ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          for (final (lineIndex, line)
+                              in (entry['lines'] is List
+                                      ? _values(entry['lines'])
+                                      : [entry])
+                                  .indexed)
+                            _voiceLine(entry, lineIndex, line, audio, v),
+                        ],
+                      ],
+                    ),
+                  ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _voiceLine(
+    Map entry,
+    int index,
+    Map line,
+    AudioService audio,
+    String Function(String, [Object?]) v,
+  ) {
+    final sound = (line['sound'] as Map?) ?? const {};
+    final url = sound['playableUrl'] ?? line['playableUrl'];
+    final speaker = _num(line['characterId']) > 0
+        ? _num(line['characterId']).toInt()
+        : (_ids(entry).firstOrNull ?? id);
+    final key =
+        'voice:${entry['voiceKey'] ?? '${entry['masterType']}:${entry['masterId']}'}:$index';
+    final playing = audio.isPlaying(key);
+    final text = t.text(line['text']);
+    final face = _face(speaker);
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipOval(
+            child: SizedBox.square(
+              dimension: 40,
+              child: face == null
+                  ? ColoredBox(
+                      color: scheme.surfaceContainerHighest,
+                      child: const Icon(Symbols.person_rounded),
+                    )
+                  : AppImage(candidates: [face], fit: BoxFit.cover),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _name(speaker),
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                Text(
+                  text.isEmpty ? v('noText') : text.replaceAll('\r', ''),
+                  style: theme.textTheme.bodyLarge,
+                ),
+                if (url is! String || url.isEmpty)
+                  Text(
+                    v('unavailable'),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: '${v(playing ? 'stop' : 'playLine')} · ${_name(speaker)}',
+            onPressed: url is String && url.isNotEmpty
+                ? () => audio.toggle(
+                    Track(
+                      id: key,
+                      url: _asset(url),
+                      title: text.isEmpty ? _name(speaker) : text,
+                      artwork: face,
+                    ),
+                  )
+                : null,
+            icon: Icon(
+              playing ? Symbols.stop_rounded : Symbols.play_arrow_rounded,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ---------- Bonds ----------
+
+  Widget _bonds(List<Map> friendships, List<Map> stories) {
+    final characters = _values(aux['characters'])..sort(_by('displayOrder'));
+    final others = characters
+        .where((c) => _num(c['characterId']) != id)
+        .toList();
+    final partner = _partner == -1
+        ? 0
+        : _partner ?? _num(others.firstOrNull?['characterId']).toInt();
+    final friendship = friendships
+        .where((e) => _ids(e).contains(partner))
+        .firstOrNull;
+    final linked = stories
+        .where(
+          (e) =>
+              _storyCategory(e) == 'link' &&
+              (partner == 0 || _ids(e).contains(partner)),
+        )
+        .toList();
+    final rewards = _values(friendship?['rewards']);
+    final bands = {
+      for (final c in characters)
+        if (_num(c['bandId']) > 0) _num(c['bandId']).toInt(),
+    }.toList();
+    final selected = characters
+        .where((c) => _num(c['characterId']) == (partner == 0 ? id : partner))
+        .firstOrNull;
+    final band = _band ?? _num(selected?['bandId'] ?? item['bandId']).toInt();
+    final partners = others.where((c) => _num(c['bandId']) == band).toList();
+    final sameBand = _num(item['bandId']) == band;
+    return _section$(
+      Symbols.handshake_rounded,
+      t.label('characterBonds', 'Character Bonds'),
+      friendships.length,
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.all(4),
+            child: Row(
+              children: [
+                for (final other in bands)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: Material(
+                      color: band == other
+                          ? scheme.secondaryContainer
+                          : scheme.surfaceContainer,
+                      shape: RoundedRectangleBorder(
+                        side: BorderSide(
+                          width: 2,
+                          color: band == other
+                              ? scheme.primary
+                              : Colors.transparent,
+                        ),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: InkWell(
+                        onTap: () => setState(() => _band = other),
+                        child: Container(
+                          constraints: const BoxConstraints(
+                            minWidth: 64,
+                            minHeight: 48,
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          alignment: Alignment.center,
+                          child: switch (widget.visuals?.bandLogo(other)) {
+                            final String logo => SizedBox(
+                              height: 32,
+                              width: 96,
+                              child: AppImage(candidates: [logo]),
+                            ),
+                            _ => Text('$other'),
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          _FriendshipBoard(
+            root:
+                'https://haneoka.org/assets/${state.server}/Assets/AddressableResources',
+            band: band,
+            lead: id,
+            sameBand: sameBand,
+            partners: [
+              for (final c in partners)
+                (_num(c['characterId']).toInt(), t.text(c['characterName'])),
+            ],
+            selected: partner,
+            onSelected: (value) => setState(() {
+              _partner = partner == value ? -1 : value;
+            }),
+          ),
+          if (friendship != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Material(
+                color: scheme.surfaceContainer,
+                borderRadius: BorderRadius.circular(Corner.large),
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () => openLink(context, '/catalog/stories/link'),
+                  child: Row(
+                    children: [
+                      if (friendship['storyBanner'] case final String banner)
+                        SizedBox(
+                          width: 144,
+                          child: AspectRatio(
+                            aspectRatio: 16 / 9,
+                            child: AppImage(
+                              candidates: [_asset(banner)],
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '${_name(id)} × ${_name(partner)}',
+                              style: theme.textTheme.titleSmall,
+                            ),
+                            Text(
+                              t.label('characterBonds', 'Character Bonds'),
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          if (linked.isNotEmpty)
+            _section$(
+              Symbols.auto_stories_rounded,
+              t.label('story', 'Story'),
+              linked.length,
+              _grid(
+                [
+                  for (final entry in linked)
+                    Tile(
+                      title: t.text(entry['title']),
+                      subtitle: '',
+                      images: [
+                        for (final key in ['banner', 'image'])
+                          if (entry[key] case final String path) _asset(path),
+                      ],
+                      aspectRatio: 16 / 9,
+                      fit: BoxFit.cover,
+                      media: entry['banner'] == null && entry['image'] == null
+                          ? StoryFaces(
+                              faces: [
+                                for (final other in _ids(entry)) ?_face(other),
+                              ],
+                            )
+                          : null,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => StoryReaderScreen(
+                            episode: {
+                              ...entry.cast<String, Object?>(),
+                              'storyKey': entry['storyKey'] ?? entry['storyId'],
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+                minWidth: 220,
+                aspectRatio: 16 / 9,
+              ),
+            ),
+          if (rewards.isNotEmpty)
+            _section$(
+              Symbols.redeem_rounded,
+              t.label('rewards', 'Rewards'),
+              rewards.length,
+              Column(
+                children: [
+                  for (final row in rewards)
+                    _rewardRow(
+                      row,
+                      caption:
+                          '${t.label('friendship', 'Friendship')} ${row['rank'] ?? ''}',
+                    ),
+                ],
+              ),
+            ),
+          if (friendship == null && linked.isEmpty && rewards.isEmpty) _empty(),
+        ],
+      ),
+    );
+  }
+
+  // ---------- Missions ----------
+
+  Widget _missions() {
+    final future = _load('character-missions');
+    return FutureBuilder(
+      future: future,
+      builder: (context, snapshot) {
+        if (future != null && !snapshot.hasData && !snapshot.hasError) {
+          return const Padding(
+            padding: EdgeInsets.all(32),
+            child: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final missions = _values(snapshot.data, 'missions')
+          ..sort((a, b) {
+            for (final key in ['missionType', 'priority', 'missionId']) {
+              final compare = _num(a[key]).compareTo(_num(b[key]));
+              if (compare != 0) return compare;
+            }
+            return 0;
+          });
+        final groups = <int, List<Map>>{};
+        for (final mission in missions) {
+          (groups[_num(mission['missionType']).toInt()] ??= []).add(mission);
+        }
+        final types = groups.keys.toList()..sort();
+        final type = types.contains(_missionType)
+            ? _missionType
+            : (types.firstOrNull ?? 0);
+        String typeLabel(int type) {
+          final first = groups[type]!.first;
+          final title = t.text(first['title']);
+          return '${title.isEmpty ? '${first['missionTypeName'] ?? type}' : title} (${groups[type]!.length})';
+        }
+
+        final name = t.text(item['characterName']);
+        return _section$(
+          Symbols.checklist_rounded,
+          t.label('missions', 'Missions'),
+          missions.length,
+          missions.isEmpty
+              ? _empty()
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    DropdownMenu<int>(
+                      key: ValueKey(type),
+                      expandedInsets: EdgeInsets.zero,
+                      label: Text(t.label('type', 'Type')),
+                      initialSelection: type,
+                      onSelected: (value) =>
+                          setState(() => _missionType = value ?? type),
+                      dropdownMenuEntries: [
+                        for (final value in types)
+                          DropdownMenuEntry(
+                            value: value,
+                            label: typeLabel(value),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    for (final entry in groups[type] ?? const <Map>[])
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(switch (t.text(entry['title'])) {
+                                    '' => '${entry['missionTypeName'] ?? ''}',
+                                    final title => title,
+                                  }, style: theme.textTheme.titleSmall),
+                                  Text(
+                                    t
+                                        .text(entry['description'])
+                                        .replaceAll('{CharacterId}', name)
+                                        .replaceAll(
+                                          '{AchievementCount}',
+                                          '${entry['achievementCount'] ?? ''}',
+                                        )
+                                        .replaceAll(
+                                          '{Value}',
+                                          '${entry['value'] ?? ''}',
+                                        ),
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            for (final reward in _values(entry['rewards']))
+                              Padding(
+                                padding: const EdgeInsets.only(left: 12),
+                                child: Tooltip(
+                                  message: switch (t.text(
+                                    (reward['resolved'] as Map?)?['name'],
+                                  )) {
+                                    '' => '${reward['resourceTypeName'] ?? ''}',
+                                    final name => name,
+                                  },
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      SizedBox.square(
+                                        dimension: 28,
+                                        child: switch ((reward['resolved']
+                                            as Map?)?['image']) {
+                                          final String image => AppImage(
+                                            candidates: [_asset(image)],
+                                          ),
+                                          _ => Icon(
+                                            Symbols.redeem_rounded,
+                                            size: 22,
+                                            color: scheme.onSurfaceVariant,
+                                          ),
+                                        },
+                                      ),
+                                      const SizedBox(width: 4),
+                                      Text(
+                                        '×${number(reward['resourceCount'])}',
+                                        style: theme.textTheme.titleSmall,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+}
+
+/// The profile's accent ground with its five lighter rules
+/// (`.character-profile__visual`).
+class _Stripes extends CustomPainter {
+  _Stripes(this.color, this.rule);
+  final Color color;
+  final Color rule;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(Offset.zero & size, Paint()..color = color);
+    final paint = Paint()..color = rule;
+    for (var i = 1; i <= 5; i++) {
+      canvas.drawRect(
+        Rect.fromLTWH(size.width * 0.2 * i - 1, 0, 1, size.height),
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(_Stripes old) => old.color != color || old.rule != rule;
+}
+
+/// The game's friendship photo board (`.story-board`): the lead's sprite in
+/// front of the band's board, each partner a portrait with the ribbon that
+/// points at it, all placed from the asset's measured coordinates.
+class _FriendshipBoard extends StatelessWidget {
+  const _FriendshipBoard({
+    required this.root,
+    required this.band,
+    required this.lead,
+    required this.sameBand,
+    required this.partners,
+    required this.selected,
+    required this.onSelected,
+  });
+  final String root;
+  final int band;
+  final int lead;
+  final bool sameBand;
+  final List<(int id, String name)> partners;
+  final int selected;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final view = MediaQuery.sizeOf(context);
+    final height = view.width < 600
+        ? (view.width * 0.95).clamp(0.0, 420.0)
+        : (view.height * 0.46).clamp(240.0, 460.0);
+    final slots = sameBand ? _selfSlots : _otherSlots;
+    return Container(
+      height: height,
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(Corner.extraLarge),
+      ),
+      clipBehavior: Clip.antiAlias,
+      alignment: Alignment.center,
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      child: AspectRatio(
+        aspectRatio: 1312 / 964,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final w = constraints.maxWidth, h = constraints.maxHeight;
+            final portrait = w * 0.2668;
+            return Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Positioned.fill(
+                  child: AppImage(
+                    candidates: ['$root/Band/$band/Friendship/photo_board.png'],
+                  ),
+                ),
+                Positioned(
+                  left: w * 0.5 - w * 0.7805 / 2,
+                  bottom: -h * 0.038,
+                  width: w * 0.7805,
+                  height: h * 1.0622,
+                  child: AppImage(
+                    candidates: [
+                      '$root/Character/Image/$lead/character_sprite.png',
+                    ],
+                    alignment: Alignment.bottomCenter,
+                  ),
+                ),
+                if (sameBand)
+                  Positioned(
+                    left: w * 0.1335,
+                    top: h * 0.0892,
+                    width: w * 0.1905,
+                    height: h * 0.1452,
+                    child: AppImage(
+                      candidates: ['$root/Band/$band/band_logo.png'],
+                    ),
+                  ),
+                for (final (index, (id, name)) in partners.indexed)
+                  () {
+                    final slot = slots.elementAtOrNull(index) ?? _otherSlots[0];
+                    final rotation = sameBand && band == 2 && index == 0
+                        ? 168.146055
+                        : slot.$5;
+                    final left = w * slot.$1 / 100 - portrait / 2;
+                    final top = h * slot.$2 / 100 - portrait / 2;
+                    final arrowW = portrait * 0.4571;
+                    final arrowH = portrait * 0.2286;
+                    return Positioned(
+                      left: left,
+                      top: top,
+                      width: portrait,
+                      height: portrait,
+                      child: Semantics(
+                        button: true,
+                        selected: selected == id,
+                        label: name,
+                        child: GestureDetector(
+                          onTap: () => onSelected(id),
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              Positioned(
+                                left: portrait * slot.$3 / 100 - arrowW / 2,
+                                top: portrait * slot.$4 / 100 - arrowH / 2,
+                                width: arrowW,
+                                height: arrowH,
+                                child: Transform.rotate(
+                                  angle: rotation * 3.141592653589793 / 180,
+                                  child: AppImage(
+                                    candidates: [
+                                      '$root/Band/$band/Friendship/FriendshipArrow_1.png',
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              Positioned.fill(
+                                child: DecoratedBox(
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    boxShadow: selected == id
+                                        ? const [
+                                            BoxShadow(
+                                              color: Color(0xFF48DBEA),
+                                              blurRadius: 9,
+                                              spreadRadius: 1,
+                                            ),
+                                            BoxShadow(
+                                              color: Colors.white,
+                                              blurRadius: 2,
+                                            ),
+                                          ]
+                                        : null,
+                                  ),
+                                  child: AppImage(
+                                    candidates: [
+                                      '$root/Character/Image/$id/board_icon.png',
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }(),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
