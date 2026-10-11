@@ -31,10 +31,14 @@ void main() {
         await tester.pump();
       }
       if (scroll > 0) {
-        await tester.drag(
-          find.byType(Scrollable).last,
-          const Offset(0, -scroll * 1.0),
-        );
+        // In steps, so a long page scrolls past one viewport.
+        for (var left = scroll; left > 0; left -= 500) {
+          await tester.dragFrom(
+            Offset(size.width * 0.75, size.height - 120),
+            Offset(0, -(left < 500 ? left : 500) * 1.0),
+          );
+          await tester.pump();
+        }
         for (var i = 0; i < 12; i++) {
           await tester.runAsync(
             () => Future<void>.delayed(const Duration(milliseconds: 250)),

@@ -54,6 +54,15 @@ Future<bool> openLink(
     navigate?.call('/');
     return navigate != null;
   }
+  // The catalogue's older addresses: `/catalog/items?item=42`.
+  if (parts.length == 2 &&
+      parts.first == 'catalog' &&
+      _kindResources.containsKey(parts[1]) &&
+      uri.queryParameters.isNotEmpty) {
+    parts
+      ..removeAt(0)
+      ..add(uri.queryParameters.values.first);
+  }
   final resource = _kindResources[parts.first];
   if (resource != null) {
     final profile = catalogProfiles.firstWhere((p) => p.resource == resource);

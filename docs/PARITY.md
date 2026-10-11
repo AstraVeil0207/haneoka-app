@@ -33,14 +33,14 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 
 - [x] Songs · [~] song detail (missing: skill timeline, gekisou sections, MV, comments)
 - [~] Song meta (table, tiers, live/gekisou; missing: scatter chart view)
-- [~] Events · [x] event tracker (challenge and point rankings, live)
+- [x] Events · [x] event detail (overview, recruitments, reward cards, bonuses by card rank, song, story, live rewards with boost and bonus, rewards, missions) · [x] event tracker (challenge and point rankings, live)
 - [x] Characters · [~] character detail (voices, related cards, archive)
 - [x] Members · [x] member and snapshot detail (level, training, awakening, rank and skill sliders, stats, upgrade costs, skill text per level)
 - [x] Snapshots
 - [x] Skills (catalogue, detail, upgrade materials)
-- [~] Comics · [~] gacha · [~] login campaigns · [~] missions · [~] passes · [~] T.G.W card
+- [~] Comics · [x] gacha (featured, rates, simulator with image export) · [x] login campaigns · [~] missions · [x] passes · [~] T.G.W card
 - [x] Studio
-- [~] Shop · [~] exchange · [~] stamps · [~] stickers · [~] backgrounds · [~] items · [~] band items · [~] real lives
+- [x] Shop (storefront prices with conversion) · [x] exchange · [~] stamps · [~] stickers · [~] backgrounds · [~] items · [~] band items · [x] real lives
 
 ## Stories
 

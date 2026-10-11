@@ -15,11 +15,15 @@ class LevelSwitch extends StatelessWidget {
     required this.levels,
     required this.value,
     required this.onChanged,
+    this.format,
   });
   final String label;
   final List<int> levels;
   final int value;
   final ValueChanged<int> onChanged;
+
+  /// How a level reads ("Rank 3"); its number when null.
+  final String Function(int level)? format;
 
   @override
   Widget build(BuildContext context) {
@@ -48,7 +52,10 @@ class LevelSwitch extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelSmall,
                 ),
-                Text('${levels[index]}', style: theme.textTheme.titleSmall),
+                Text(
+                  format?.call(levels[index]) ?? '${levels[index]}',
+                  style: theme.textTheme.titleSmall,
+                ),
               ],
             ),
           ),
@@ -64,7 +71,7 @@ class LevelSwitch extends StatelessWidget {
                 value: index.toDouble(),
                 max: (levels.length - 1).toDouble(),
                 divisions: levels.length - 1,
-                label: '${levels[index]}',
+                label: format?.call(levels[index]) ?? '${levels[index]}',
                 onChanged: (v) => onChanged(levels[v.round()]),
               ),
             ),

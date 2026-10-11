@@ -16,6 +16,7 @@ import 'catalog_screen.dart';
 import 'format.dart';
 import 'labels.g.dart';
 import 'profiles.dart';
+import 'system_detail.dart';
 import 'visuals.dart';
 
 const _difficultyNames = ['EASY', 'NORMAL', 'HARD', 'EXPERT', 'SPECIAL'];
@@ -522,20 +523,33 @@ class _Page {
             Fact(_named(key) ?? key, text),
       if (kind == Presentation.system) ...[
         if (_date(record['startAt']).isNotEmpty)
-          Fact(t.label('start'), _date(record['startAt'])),
+          Fact(t.label('starts', 'Starts'), _date(record['startAt'])),
         if (_date(record['endAt']).isNotEmpty)
-          Fact(t.label('end'), _date(record['endAt'])),
+          Fact(t.label('ends', 'Ends'), _date(record['endAt'])),
       ],
     ];
     final description = kit.plain(record['description']);
+    final resource = kit.profile.resource;
+    final rotating = resource == 'events' || resource == 'gacha';
+    final titled = kind == Presentation.item || kind == Presentation.bandItem;
+    final details = facts.isEmpty || rotating
+        ? null
+        : DetailSection(
+            icon: Symbols.info_rounded,
+            title: t('common.actions.details', 'Details'),
+            child: SpecList(facts: facts),
+          );
     return [
-      if (facts.isNotEmpty)
-        DetailSection(
-          icon: Symbols.info_rounded,
-          title: t('common.actions.details', 'Details'),
-          child: SpecList(facts: facts),
+      if (description.isNotEmpty && !titled && !rotating)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 24),
+          child: SelectableText(
+            description,
+            style: Theme.of(context).textTheme.bodyLarge,
+          ),
         ),
-      if (description.isNotEmpty)
+      ?details,
+      if (description.isNotEmpty && titled)
         DetailSection(
           icon: Symbols.notes_rounded,
           title: t.label('content', 'Content'),
@@ -543,6 +557,13 @@ class _Page {
             description,
             style: Theme.of(context).textTheme.bodyLarge,
           ),
+        ),
+      if (kind == Presentation.system)
+        SystemDetail(
+          key: ValueKey('$resource:${kit.id(record)}'),
+          resource: resource,
+          item: record,
+          visuals: kit.visuals,
         ),
     ];
   }

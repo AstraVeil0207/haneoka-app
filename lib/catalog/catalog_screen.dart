@@ -174,6 +174,10 @@ class _CatalogScreenState extends State<CatalogScreen> {
   }
 }
 
+/// A card rarity's name, as the game prints it (`cardRarityName`).
+String cardRarityName(Object? value) =>
+    _rarities[(value as num?)?.toInt()] ?? '';
+
 /// What a catalogue entry shows, by presentation; the website's
 /// `tileDescription`, `tileAdornment`, `cardTileOptions` and facet groups.
 class CatalogKit {
@@ -267,7 +271,7 @@ class CatalogKit {
     return const [];
   }
 
-  String rarityName(Object? value) => _rarities[(value as num?)?.toInt()] ?? '';
+  String rarityName(Object? value) => cardRarityName(value);
 
   String attributeName(Object? value) {
     final id = (value as num?)?.toInt() ?? 0;

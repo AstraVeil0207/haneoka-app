@@ -33,8 +33,24 @@ class SiteText {
   }
 
   /// A catalogue field's label by its id, as the website's `label()`.
-  String label(String key, [String? fallback]) =>
-      call(catalogLabelPaths[key] ?? key, fallback ?? key);
+  String label(String key, [String? fallback]) {
+    final alias = catalogLabelPaths[key] ?? key;
+    return call(uiLabelPaths[alias] ?? alias, fallback ?? key);
+  }
+
+  /// A rotating-system label (`eventText`): event paths, then system paths.
+  String system(
+    String key,
+    String fallback, [
+    Map<String, Object?> values = const {},
+  ]) => call(
+    eventLabelPaths[key] ??
+        systemLabelPaths[key] ??
+        catalogLabelPaths[key] ??
+        key,
+    fallback,
+    values,
+  );
 
   /// The site's tuple order for localized game text.
   static const tupleOrder = ['ja', 'en', 'zh-TW', 'zh-CN', 'ko'];
