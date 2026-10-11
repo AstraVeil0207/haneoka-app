@@ -146,7 +146,8 @@ class _ShellPageState extends State<ShellPage> {
             child: Stack(
               children: [
                 ListenableBuilder(
-                  listenable: AppScope.of(context).audio,
+                  listenable:
+                      AppScope.maybeOf(context)?.audio ?? const _Silent(),
                   builder: (context, _) => _bar(context, compact),
                 ),
                 if (compact && _searching && widget.search != null)
@@ -238,7 +239,7 @@ class _ShellPageState extends State<ShellPage> {
     final search = widget.search;
     final children = <Widget>[];
     var room = width;
-    if (compact && AppScope.of(context).audio.current != null) {
+    if (compact && AppScope.maybeOf(context)?.audio.current != null) {
       children.add(const NowPlaying());
       room -= 48;
     }
@@ -412,4 +413,13 @@ class ShellSearch {
   const ShellSearch({required this.label, required this.onChanged});
   final String label;
   final ValueChanged<String> onChanged;
+}
+
+/// A listenable that never changes, for pages shown without the app's state.
+class _Silent implements Listenable {
+  const _Silent();
+  @override
+  void addListener(VoidCallback listener) {}
+  @override
+  void removeListener(VoidCallback listener) {}
 }
