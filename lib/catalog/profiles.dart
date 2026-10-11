@@ -152,7 +152,7 @@ const catalogProfiles = <CatalogProfile>[
     presentation: Presentation.comic,
     id: ['comicId', 'id'],
     image: ['thumbnail', 'image'],
-    detail: ['publicStartAt'],
+    detail: ['subTitle', 'characterIds', 'publicStartAt'],
     minWidth: 240,
     defaultSort: 'release',
   ),
@@ -174,6 +174,7 @@ const catalogProfiles = <CatalogProfile>[
     document: 'entries',
     aspectRatio: 16 / 9,
     defaultSort: 'start',
+    detail: ['kind', 'startAt', 'endAt'],
   ),
   CatalogProfile(
     resource: 'missions',
@@ -190,6 +191,7 @@ const catalogProfiles = <CatalogProfile>[
     presentation: Presentation.system,
     document: 'entries',
     aspectRatio: 16 / 9,
+    detail: ['kind', 'startAt', 'endAt'],
   ),
   CatalogProfile(
     resource: 'tgw-card',
@@ -207,6 +209,7 @@ const catalogProfiles = <CatalogProfile>[
     presentation: Presentation.system,
     document: 'entries',
     aspectRatio: 16 / 9,
+    detail: ['startAt', 'endAt'],
   ),
   CatalogProfile(
     resource: 'exchange',
@@ -216,6 +219,7 @@ const catalogProfiles = <CatalogProfile>[
     document: 'entries',
     aspectRatio: 16 / 9,
     defaultSort: 'start',
+    detail: ['category', 'startAt', 'endAt'],
   ),
   CatalogProfile(
     resource: 'stamps',
@@ -223,7 +227,7 @@ const catalogProfiles = <CatalogProfile>[
     icon: Symbols.emoji_emotions_rounded,
     presentation: Presentation.stamp,
     id: ['stampId', 'id'],
-    detail: ['releasedAt'],
+    detail: ['characterIds', 'releasedAt'],
     minWidth: 132,
     small: true,
   ),
@@ -234,7 +238,7 @@ const catalogProfiles = <CatalogProfile>[
     presentation: Presentation.stamp,
     id: ['stickerId', 'id'],
     document: 'entries',
-    detail: ['description'],
+    detail: ['description', 'characterIds', 'releasedAt'],
     minWidth: 132,
     small: true,
   ),
@@ -248,6 +252,7 @@ const catalogProfiles = <CatalogProfile>[
     image: ['thumbnail', 'image'],
     aspectRatio: 16 / 9,
     fit: BoxFit.cover,
+    detail: ['description'],
   ),
   CatalogProfile(
     resource: 'items',
@@ -260,6 +265,7 @@ const catalogProfiles = <CatalogProfile>[
     small: true,
     defaultSort: 'order',
     descending: false,
+    detail: ['itemTypeName', 'max'],
   ),
   CatalogProfile(
     resource: 'band-items',
@@ -272,6 +278,7 @@ const catalogProfiles = <CatalogProfile>[
     small: true,
     defaultSort: 'order',
     descending: false,
+    detail: ['bandId'],
   ),
   CatalogProfile(
     resource: 'real-lives',
@@ -281,6 +288,7 @@ const catalogProfiles = <CatalogProfile>[
     document: 'entries',
     aspectRatio: 16 / 9,
     defaultSort: 'start',
+    detail: ['kind', 'startAt', 'endAt'],
   ),
 ];
 

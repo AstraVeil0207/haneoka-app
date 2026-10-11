@@ -553,18 +553,61 @@ class _Page {
 
   List<Widget> _generic() {
     final format = ValueFormat(t);
+
+    /// A field as the website prints it (`fieldValue`).
+    String value(String key) {
+      final raw = readPath(record, key);
+      String names(Iterable<Object?> ids) => [
+        for (final id in ids)
+          if (id is num && kit.characterName(id.toInt()).isNotEmpty)
+            kit.characterName(id.toInt()),
+      ].join(', ');
+      return switch (key) {
+        'kind' => switch ('${raw ?? ''}') {
+          '' => '',
+          final kind => t.label(kind, kind),
+        },
+        'characterId' => names([raw]),
+        'characterIds' => names(kit.characterIds(record)),
+        'bandId' => kit.bandName(raw),
+        'type' || 'category' => switch (format.format(key, raw)) {
+          '' => '',
+          final text => t.label(text, text),
+        },
+        'description' => '',
+        _ when key.endsWith('At') => _date(raw),
+        _ => switch (format.format(key, raw)) {
+          final text when text.startsWith('/assets/') => '',
+          final text => text,
+        },
+      };
+    }
+
+    /// A field's label (`detailLabel`).
+    String label(String key) {
+      const aliases = {
+        'characterId': 'character',
+        'characterIds': 'characters',
+        'subTitle': 'subtitle',
+        'bandId': 'band',
+        'cardType': 'attribute',
+        'releasedAt': 'release',
+        'publishedAt': 'release',
+        'publicStartAt': 'release',
+        'startAt': 'starts',
+        'endAt': 'ends',
+        'itemTypeName': 'type',
+        'max': 'size',
+        'maximum': 'size',
+      };
+      final alias = aliases[key] ?? key;
+      return _named(alias) ?? t.label(alias, alias);
+    }
+
     final facts = [
       for (final key in kit.profile.detail)
-        if (readPath(record, key) case final value?)
-          if (format.format(key, value) case final text
-              when text.isNotEmpty && !text.startsWith('/assets/'))
-            Fact(_named(key) ?? key, text),
-      if (kind == Presentation.system) ...[
-        if (_date(record['startAt']).isNotEmpty)
-          Fact(t.label('starts', 'Starts'), _date(record['startAt'])),
-        if (_date(record['endAt']).isNotEmpty)
-          Fact(t.label('ends', 'Ends'), _date(record['endAt'])),
-      ],
+        if (value(key) case final text when text.isNotEmpty)
+          Fact(label(key), text),
     ];
     final description = kit.plain(record['description']);
     final resource = kit.profile.resource;
