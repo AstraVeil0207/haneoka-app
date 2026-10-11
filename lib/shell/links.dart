@@ -82,6 +82,11 @@ Future<bool> openLink(
     navigate?.call('/catalog/${parts.first}');
     return navigate != null;
   }
+  // A playlist is addressed by query: `/community/playlists?playlist=<id>`.
+  final playlist = uri.queryParameters['playlist'];
+  if (parts.join('/') == 'community/playlists' && playlist != null) {
+    parts.add(playlist);
+  }
   final route = '/${parts.join('/')}';
   if (navigate != null) {
     navigate(route);

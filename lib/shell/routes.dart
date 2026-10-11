@@ -6,6 +6,7 @@ import '../community/feed_screen.dart';
 import '../community/post_screen.dart';
 import '../community/sections.dart';
 import '../community/user_screen.dart';
+import '../playlists/playlists_screen.dart';
 import '../help/help_screen.dart';
 import '../search/search_screen.dart';
 import '../tools/song_progress.dart';
@@ -112,6 +113,14 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   }
   if (route == '/community/posts/new') return const PostEditorScreen();
   if (route == '/community/tags') return const CommunityTagsScreen();
+  if (route == '/community/playlists') return const PlaylistsScreen();
+  if (route.startsWith('/community/playlists/')) {
+    return PlaylistsScreen(
+      open: Uri.decodeComponent(
+        route.substring('/community/playlists/'.length),
+      ),
+    );
+  }
   if (route == '/community/forums') return const CommunityForumsScreen();
   if (route == '/community/notifications') {
     return const CommunityNotificationsScreen();
