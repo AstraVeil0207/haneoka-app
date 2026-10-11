@@ -10,6 +10,7 @@ import '../ui/app_image.dart';
 import '../ui/theme.dart';
 import '../ui/tile.dart';
 import 'community_widgets.dart';
+import 'editor.dart';
 import 'markup.dart';
 import 'post_screen.dart';
 import 'reactions.dart';
@@ -175,6 +176,20 @@ class _CommunityFeedScreenState extends State<CommunityFeedScreen> {
         },
       ),
       actions: [
+        BarAction(
+          icon: Symbols.edit_rounded,
+          label: communityLabel(context, 'newPost', 'New post'),
+          tonal: true,
+          onPressed: () async {
+            if (!await requireSession(context) || !context.mounted) return;
+            await Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => PostEditorScreen(forum: widget.forum),
+              ),
+            );
+            if (mounted) _load(reset: true);
+          },
+        ),
         BarAction(
           icon: Symbols.refresh_rounded,
           label: AppScope.of(context).text('common.actions.refresh', 'Refresh'),

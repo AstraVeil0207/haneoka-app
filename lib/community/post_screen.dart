@@ -10,6 +10,7 @@ import '../ui/detail.dart';
 import '../ui/theme.dart';
 import '../ui/tile.dart';
 import 'community_widgets.dart';
+import 'editor.dart';
 import 'feed_screen.dart';
 import 'reactions.dart';
 import 'user_screen.dart';
@@ -981,6 +982,7 @@ class _ComposerState extends State<_Composer> {
                 style: theme.textTheme.labelLarge,
               ),
             ),
+          MarkupToolbar(controller: _controller),
           TextField(
             controller: _controller,
             autofocus: true,

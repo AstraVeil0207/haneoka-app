@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../about/about_screen.dart';
+import '../community/editor.dart';
 import '../community/feed_screen.dart';
 import '../community/post_screen.dart';
 import '../community/sections.dart';
@@ -109,6 +110,7 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (_communityFeeds[route] case final scope?) {
     return CommunityFeedScreen(key: ValueKey(scope), scope: scope);
   }
+  if (route == '/community/posts/new') return const PostEditorScreen();
   if (route == '/community/tags') return const CommunityTagsScreen();
   if (route == '/community/forums') return const CommunityForumsScreen();
   if (route == '/community/notifications') {

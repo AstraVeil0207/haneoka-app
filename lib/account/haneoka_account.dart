@@ -73,6 +73,11 @@ class HaneokaAccount extends ChangeNotifier {
   Map<String, Object?>? get user => _user;
   List<LinkedPlayer> get players => _players;
 
+  /// The bearer header for requests made outside [request] (uploads).
+  Map<String, String> get authorization => {
+    if (_token != null) 'Authorization': 'Bearer $_token',
+  };
+
   LinkedPlayer? linkOf(GameSave save) => _players
       .where(
         (p) =>
