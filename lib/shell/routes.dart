@@ -10,6 +10,8 @@ import '../core/app_state.dart';
 import '../home/announcements.dart';
 import '../home/calendar.dart';
 import '../home/home_screen.dart';
+import '../records/player.dart';
+import '../records/tracker.dart';
 import '../home/join.dart';
 import '../ui/import_screen.dart';
 import 'page.dart';
@@ -62,6 +64,8 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/calendar') return const CalendarScreen();
   if (route == '/join') return const JoinScreen();
   if (route == '/catalog/song-meta') return const SongMetaScreen();
+  if (route == '/catalog/events/tracker') return const EventTrackerScreen();
+  if (route == '/player-profile') return const PlayerProfileScreen();
   if (route == '/team-builder') return const ImportScreen();
   final resource = catalogRoutes[route];
   if (resource != null) {

@@ -14,6 +14,7 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   final out = Platform.environment['SHOTS'] ?? '/tmp';
   const route = String.fromEnvironment('HANEOKA_ROUTE', defaultValue: '/');
+  const scroll = int.fromEnvironment('HANEOKA_SCROLL');
   final name = route.replaceAll('/', '_');
   for (final (width, size) in [
     ('phone', const Size(412, 915)),
@@ -28,6 +29,18 @@ void main() {
           () => Future<void>.delayed(const Duration(milliseconds: 250)),
         );
         await tester.pump();
+      }
+      if (scroll > 0) {
+        await tester.drag(
+          find.byType(Scrollable).last,
+          const Offset(0, -scroll * 1.0),
+        );
+        for (var i = 0; i < 12; i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 250)),
+          );
+          await tester.pump();
+        }
       }
       final boundary = tester.renderObject<RenderRepaintBoundary>(
         find.byType(RepaintBoundary).first,

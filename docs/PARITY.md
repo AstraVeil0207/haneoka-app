@@ -26,14 +26,14 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 
 - [~] Dashboard (banners, event, birthdays, latest songs and cards; missing: announcements, community, news, fan info, layout editing)
 - [x] Announcements (list, detail, home module)
-- [~] Calendar
-- [ ] Join
+- [x] Calendar
+- [x] Join
 
 ## Library
 
 - [x] Songs · [~] song detail (missing: skill timeline, gekisou sections, MV, comments)
 - [~] Song meta (table, tiers, live/gekisou; missing: scatter chart view)
-- [~] Events · [ ] event tracker
+- [~] Events · [x] event tracker (challenge and point rankings, live)
 - [x] Characters · [~] character detail (voices, related cards, archive)
 - [x] Members · [~] member detail (level/rank/skill sliders, costs)
 - [x] Snapshots
@@ -49,7 +49,7 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 ## Tools
 
 - [ ] Live2D viewer · [ ] Spine viewer · [ ] Assets · [ ] Help
-- [ ] Player profile · [ ] Team builder · [ ] Song progress · [ ] Stamp maker · [ ] Chart editor
+- [x] Player profile · [ ] Team builder · [ ] Song progress · [ ] Stamp maker · [ ] Chart editor
 
 ## Games
 

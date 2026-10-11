@@ -63,8 +63,12 @@ class BarChoice {
     required this.label,
     required this.selected,
     required this.onSelected,
+    this.image,
   });
   final IconData icon;
+
+  /// Drawn instead of [icon]: a flag, a logo.
+  final Widget? image;
   final String label;
   final bool selected;
   final VoidCallback onSelected;
@@ -105,7 +109,9 @@ class ShellPage extends StatefulWidget {
 class _ShellPageState extends State<ShellPage> {
   bool _scrolled = false;
   bool _searching = false;
-  final _searchController = TextEditingController();
+  late final _searchController = TextEditingController(
+    text: widget.search?.initial,
+  );
 
   @override
   void dispose() {
@@ -297,12 +303,12 @@ class _ShellPageState extends State<ShellPage> {
               ? IconButton.filledTonal(
                   tooltip: option.label,
                   onPressed: option.onSelected,
-                  icon: Icon(option.icon, fill: 1),
+                  icon: option.image ?? Icon(option.icon, fill: 1),
                 )
               : IconButton(
                   tooltip: option.label,
                   onPressed: option.onSelected,
-                  icon: Icon(option.icon),
+                  icon: option.image ?? Icon(option.icon),
                 ),
       ];
     }
@@ -343,7 +349,7 @@ class _ShellPageState extends State<ShellPage> {
           else
             for (final option in action.options)
               MenuItemButton(
-                leadingIcon: Icon(option.icon),
+                leadingIcon: option.image ?? Icon(option.icon),
                 trailingIcon: option.selected
                     ? const Icon(Symbols.check_rounded, size: 20)
                     : null,
@@ -377,6 +383,8 @@ class _ShellPageState extends State<ShellPage> {
           icon: const Icon(Symbols.close_rounded),
         ),
     ],
+    keyboardType: search.keyboardType,
+    onSubmitted: search.onSubmitted,
     onChanged: (value) {
       setState(() {});
       search.onChanged(value);
@@ -419,9 +427,20 @@ class _RevealFromEnd extends CustomClipper<Path> {
 }
 
 class ShellSearch {
-  const ShellSearch({required this.label, required this.onChanged});
+  const ShellSearch({
+    required this.label,
+    required this.onChanged,
+    this.onSubmitted,
+    this.initial,
+    this.keyboardType,
+  });
   final String label;
   final ValueChanged<String> onChanged;
+
+  /// For a lookup rather than a filter (a player ID).
+  final ValueChanged<String>? onSubmitted;
+  final String? initial;
+  final TextInputType? keyboardType;
 }
 
 /// A listenable that never changes, for pages shown without the app's state.

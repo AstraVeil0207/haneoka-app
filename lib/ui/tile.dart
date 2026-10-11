@@ -42,8 +42,13 @@ class Tile extends StatelessWidget {
     this.placeholder,
     this.onTap,
     this.action,
+    this.selected = false,
   });
   final String title;
+
+  /// For a tile that chooses something (a challenge song, a band): the
+  /// secondary container, as `.tile.is-selected`.
+  final bool selected;
   final Locale? titleLanguage;
 
   /// Null drops the subhead; an empty string keeps its height.
@@ -67,7 +72,7 @@ class Tile extends StatelessWidget {
     final scheme = theme.colorScheme;
     final compact = MediaQuery.sizeOf(context).width < ShellMetrics.compact;
     final card = Material(
-      color: scheme.surfaceContainerLow,
+      color: selected ? scheme.secondaryContainer : scheme.surfaceContainerLow,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(Corner.medium),
       ),

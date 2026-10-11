@@ -52,6 +52,9 @@ class HaneokaApi {
     return json(path);
   }
 
+  /// Live data (game records), never cached.
+  Future<Object?> live(String path) async => (await _download(path)).$1;
+
   /// Any API path, through the per-release cache.
   Future<Object?> json(String path) =>
       _inFlight[path] ??= _cached(path).whenComplete(() {
