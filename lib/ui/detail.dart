@@ -145,10 +145,14 @@ class DetailFold extends StatelessWidget {
     required this.title,
     required this.child,
     this.meta,
+    this.open = false,
   });
   final String title;
   final String? meta;
   final Widget child;
+
+  /// Whether the fold starts open.
+  final bool open;
 
   @override
   Widget build(BuildContext context) {
@@ -161,6 +165,8 @@ class DetailFold extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(top: 8),
       child: ExpansionTile(
+        initiallyExpanded: open,
+        expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
         shape: shape,
         collapsedShape: shape,
         backgroundColor: scheme.surfaceContainerLow,

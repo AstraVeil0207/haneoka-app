@@ -13,6 +13,7 @@ import '../ui/app_image.dart';
 import '../ui/detail.dart';
 import 'card_growth.dart';
 import 'character_detail.dart';
+import 'entity_extras.dart';
 import 'catalog_screen.dart';
 import 'format.dart';
 import 'labels.g.dart';
@@ -586,7 +587,7 @@ class _Page {
           ),
         ),
       ?details,
-      if (description.isNotEmpty && titled)
+      if (description.isNotEmpty && kind == Presentation.item)
         DetailSection(
           icon: Symbols.notes_rounded,
           title: t.label('content', 'Content'),
@@ -595,6 +596,16 @@ class _Page {
             style: Theme.of(context).textTheme.bodyLarge,
           ),
         ),
+      if (kind == Presentation.bandItem)
+        BandItemLevels(
+          key: ValueKey('levels:${kit.id(record)}'),
+          item: record,
+          page: page,
+        ),
+      if (resource == 'stickers') StickerExtras(page: page),
+      if (kind == Presentation.item)
+        if ((page?['document'] as Map?)?['itemRelations'] case final Map data)
+          ItemRelations(data: data),
       if (kind == Presentation.system)
         SystemDetail(
           key: ValueKey('$resource:${kit.id(record)}'),
