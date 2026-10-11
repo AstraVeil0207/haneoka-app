@@ -69,3 +69,15 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 ## Save
 
 - [x] Import on every platform · [x] save view · [x] export to the team builder
+
+## One-to-one audit
+
+Every screen is compared against what haneoka.org actually renders, read from
+the live DOM (`img` candidates, computed `object-fit`/`object-position`, marks,
+app-bar buttons) and from the website source, never inferred.
+
+- [x] Collection tiles: image field order, locale image variants, fit and framing, accent ground, event artwork, Ended/Retired marks, column counts
+- [ ] Detail galleries: entries, order and locale variants per kind (`detailMediaItems`, `CHARACTER_ART`)
+- [ ] App bar: view switch (grid/list/table) shown as buttons rather than in the overflow menu; entity Back, previous/next; identity marks
+- [ ] Cross-server catalogue: collections merge JP and international entries with the server mark, as the website's union catalogue does
+- [ ] Rails, home modules, stories and tools re-checked the same way
