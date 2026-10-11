@@ -1,12 +1,10 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:haneoka/l10n/app_localizations.dart';
 import 'package:haneoka/save/export.dart';
 import 'package:haneoka/save/game_save.dart';
-import 'package:haneoka/ui/save_screen.dart';
+import 'package:haneoka/save/account_store.dart';
 
 GameSave _fixture() {
   final collector = SaveCollector()
@@ -49,17 +47,17 @@ void main() {
         .writeAsStringSync(text);
   });
 
-  testWidgets('the save screen shows the player facts without a section list', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: SaveScreen(save: _fixture()),
-      ),
+  test('an imported account reads back as it was stored', () {
+    final save = _fixture();
+    final copy = AccountStore.decode(
+      jsonDecode(jsonEncode(AccountStore.encode(save))),
+    )!;
+    expect(copy.profileId, save.profileId);
+    expect(copy.release, GameRelease.jp);
+    expect(copy.player['_memberCards'], save.player['_memberCards']);
+    expect(
+      copy.documents[SaveDocumentKind.persist]?.data['_latestLiveScore'],
+      900000,
     );
-    expect(find.text('123456789012'), findsWidgets);
-    expect(find.text('Members'), findsNothing);
   });
 }

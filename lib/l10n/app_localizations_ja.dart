@@ -31,13 +31,13 @@ class AppLocalizationsJa extends AppLocalizations {
   String get sourceIosBackup => 'iPhone / iPad のバックアップ';
 
   @override
-  String get releaseIntlOfficial => 'グローバル · 公式';
+  String get releaseIntlOfficial => 'グローバル版 · 公式サイト版';
 
   @override
-  String get releaseIntlStore => 'グローバル · Google Play';
+  String get releaseIntlStore => 'グローバル版 · ストア版';
 
   @override
-  String get releaseJp => '日本';
+  String get releaseJp => '日本版';
 
   @override
   String get release => 'リリース';
@@ -298,4 +298,191 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get sec_shop => 'ショップ';
+
+  @override
+  String get importHeadline => 'Our Notes のセーブを読み込む';
+
+  @override
+  String get importIntro =>
+      'ゲームが端末に保存しているセーブを読み込み、ランク・カード・楽曲クリア・アイテムを表示します。セーブはこの端末にだけ残り、書き出しには名前とアカウント ID を含めません。';
+
+  @override
+  String get versionQuestion => 'どのバージョンで遊んでいますか？';
+
+  @override
+  String get versionHint => 'バージョンが分からないファイルに使います。';
+
+  @override
+  String get methodsTitle => '読み込み方法';
+
+  @override
+  String get recommended => 'おすすめ';
+
+  @override
+  String get stepsShow => '手順';
+
+  @override
+  String get methodShizukuTitle => 'この端末 · Shizuku で';
+
+  @override
+  String get methodShizukuSummary => 'ゲームのセーブを直接読み込みます。Shizuku の起動が必要です。';
+
+  @override
+  String get methodShizukuSteps =>
+      'Shizuku をインストールし、ワイヤレスデバッグか root で起動します。\n「セーブを読み込む」を押し、Shizuku の確認で Haneoka を許可します。';
+
+  @override
+  String get methodFolderTitle => 'この端末 · ゲームフォルダの許可';
+
+  @override
+  String get methodFolderSummary =>
+      'Android 13 以前ではゲームのデータフォルダへのアクセスを一度許可すれば、以後は設定なしで読み込めます。';
+
+  @override
+  String get methodFolderSteps =>
+      '上でバージョンを選び、「フォルダを選ぶ」を押します。\nゲームのフォルダが開いたら「このフォルダを使用」を押して許可します。';
+
+  @override
+  String get methodFilesTitle => 'コピーしたファイルから';
+
+  @override
+  String get methodFilesSummary =>
+      '端末からコピーしたセーブ：ゲームの files フォルダ、その ZIP、iPhone アプリの書き出し（.imazingapp）、Haneoka の書き出しファイル。';
+
+  @override
+  String get methodFilesSteps =>
+      'Android：ファイルマネージャーかパソコンで Android/data/<ゲーム>/files をこの端末にコピーします。\niPhone：パソコンで iMazing を開き、Our Notes を選んでアプリのデータを書き出します。\n「ファイルを選ぶ」（または「フォルダを選ぶ」）でコピーしたものを選びます。';
+
+  @override
+  String get methodBackupTitle => 'iPhone / iPad のバックアップ';
+
+  @override
+  String get methodBackupSummary =>
+      'このパソコンにある iPhone / iPad の Finder・iTunes バックアップを読み込みます。';
+
+  @override
+  String get methodBackupSteps =>
+      'Finder か iTunes で端末をこのパソコンにバックアップします。暗号化したバックアップも読み込めます（パスワードを尋ねます）。\n「バックアップを開く」を押して端末を選びます。';
+
+  @override
+  String get methodAdbTitle => 'Android 端末 · USB または Wi-Fi';
+
+  @override
+  String get methodAdbSummary => 'ADB でこのパソコンに接続した端末からセーブを読み込みます。';
+
+  @override
+  String get methodAdbSteps =>
+      '端末で開発者向けオプションと USB デバッグをオンにします。\nケーブルでつなぐか、Wi-Fi でペア設定します。\n「接続」を押して端末を選び、端末の確認を許可します。';
+
+  @override
+  String get iosNote => 'iOS では他のアプリのデータを読めないため、iPhone ではパソコンで書き出したコピーを使います。';
+
+  @override
+  String get readSave => 'セーブを読み込む';
+
+  @override
+  String get chooseFolder => 'フォルダを選ぶ';
+
+  @override
+  String get chooseFiles => 'ファイルを選ぶ';
+
+  @override
+  String get openBackups => 'バックアップを開く';
+
+  @override
+  String get connect => '接続';
+
+  @override
+  String get readAgain => 'もう一度読み込む';
+
+  @override
+  String get importedAccounts => '読み込んだアカウント';
+
+  @override
+  String savedOn(String time) {
+    return '$time のセーブ';
+  }
+
+  @override
+  String get removeAccount => 'この端末から削除';
+
+  @override
+  String removeAccountConfirm(String name) {
+    return '$name を Haneoka から削除しますか？ゲーム本体のセーブには影響しません。';
+  }
+
+  @override
+  String get cancel => 'キャンセル';
+
+  @override
+  String get remove => '削除';
+
+  @override
+  String get importMore => 'セーブを読み込む';
+
+  @override
+  String foundAccounts(int count) {
+    return '$count 件のアカウントが見つかりました';
+  }
+
+  @override
+  String get profileOverview => '概要';
+
+  @override
+  String get songClears => '楽曲クリア';
+
+  @override
+  String get cleared => 'クリア';
+
+  @override
+  String get fullCombo => 'フルコンボ';
+
+  @override
+  String get allPerfect => 'オールパーフェクト';
+
+  @override
+  String ofSongs(String total) {
+    return '/ $total';
+  }
+
+  @override
+  String get ownedMembers => 'メンバー';
+
+  @override
+  String get ownedSnapshots => 'スナップ';
+
+  @override
+  String get viewAll => 'すべて見る';
+
+  @override
+  String get currencies => 'アイテム';
+
+  @override
+  String get eventsPlayed => 'イベント';
+
+  @override
+  String eventPoints(String points) {
+    return '$points pt';
+  }
+
+  @override
+  String get exportsTitle => 'ほかで使う';
+
+  @override
+  String get exportTeamHint => 'チームビルダー用のカードと進捗。';
+
+  @override
+  String get exportSaveHint => '名前とアカウント ID を除いたセーブ全体の JSON。';
+
+  @override
+  String get rawData => '生データ';
+
+  @override
+  String get copyId => 'ID をコピー';
+
+  @override
+  String get tutorialDone => 'プレイ開始';
+
+  @override
+  String get noAccountsYet => 'まだアカウントがありません';
 }

@@ -31,10 +31,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get sourceIosBackup => 'iPhone or iPad backup';
 
   @override
-  String get releaseIntlOfficial => 'Global · official';
+  String get releaseIntlOfficial => 'International · official site';
 
   @override
-  String get releaseIntlStore => 'Global · Google Play';
+  String get releaseIntlStore => 'International · app store';
 
   @override
   String get releaseJp => 'Japan';
@@ -298,4 +298,196 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sec_shop => 'Shop';
+
+  @override
+  String get importHeadline => 'Bring in your Our Notes save';
+
+  @override
+  String get importIntro =>
+      'Haneoka reads the save the game keeps on your device and shows your rank, cards, song clears and items. The save stays on this device; exports leave out your name and account ID.';
+
+  @override
+  String get versionQuestion => 'Which version do you play?';
+
+  @override
+  String get versionHint =>
+      'Used for files that don\'t say which version they come from.';
+
+  @override
+  String get methodsTitle => 'How to read it';
+
+  @override
+  String get recommended => 'Recommended';
+
+  @override
+  String get stepsShow => 'Steps';
+
+  @override
+  String get methodShizukuTitle => 'This phone, with Shizuku';
+
+  @override
+  String get methodShizukuSummary =>
+      'Reads the game\'s save directly. Needs the Shizuku app running.';
+
+  @override
+  String get methodShizukuSteps =>
+      'Install Shizuku and start it with wireless debugging or root.\nTap Read save, then allow Haneoka when Shizuku asks.';
+
+  @override
+  String get methodFolderTitle => 'This phone, game folder access';
+
+  @override
+  String get methodFolderSummary =>
+      'On Android 13 and earlier you can let Haneoka read the game\'s data folder once; later reads need no setup.';
+
+  @override
+  String get methodFolderSteps =>
+      'Choose the version above, then tap Choose folder.\nIn the system picker that opens on the game\'s folder, tap Use this folder and Allow.';
+
+  @override
+  String get methodFilesTitle => 'From copied files';
+
+  @override
+  String get methodFilesSummary =>
+      'A save copied off a device: the game\'s files folder, a ZIP of it, an iPhone app export (.imazingapp), or a Haneoka export.';
+
+  @override
+  String get methodFilesSteps =>
+      'Android: copy Android/data/<game>/files to this device with a file manager or a computer.\niPhone: on a computer, open iMazing, select Our Notes and export its app data.\nTap Choose files (or Choose folder) and pick what you copied.';
+
+  @override
+  String get methodBackupTitle => 'iPhone or iPad backup';
+
+  @override
+  String get methodBackupSummary =>
+      'Reads a Finder or iTunes backup of your iPhone or iPad on this computer.';
+
+  @override
+  String get methodBackupSteps =>
+      'Back up the device to this computer in Finder or iTunes. Encrypted backups work; you\'ll be asked for the password.\nTap Open backups and choose the device.';
+
+  @override
+  String get methodAdbTitle => 'Android phone, over USB or Wi-Fi';
+
+  @override
+  String get methodAdbSummary =>
+      'Reads the save from a phone connected to this computer with ADB.';
+
+  @override
+  String get methodAdbSteps =>
+      'On the phone, turn on Developer options and USB debugging.\nConnect it by cable, or pair it over Wi-Fi.\nTap Connect, choose the phone and allow the prompt on it.';
+
+  @override
+  String get iosNote =>
+      'iOS doesn\'t let one app read another app\'s data, so on iPhone the save comes from a copy made on a computer.';
+
+  @override
+  String get readSave => 'Read save';
+
+  @override
+  String get chooseFolder => 'Choose folder';
+
+  @override
+  String get chooseFiles => 'Choose files';
+
+  @override
+  String get openBackups => 'Open backups';
+
+  @override
+  String get connect => 'Connect';
+
+  @override
+  String get readAgain => 'Read again';
+
+  @override
+  String get importedAccounts => 'Imported accounts';
+
+  @override
+  String savedOn(String time) {
+    return 'Saved $time';
+  }
+
+  @override
+  String get removeAccount => 'Remove from this device';
+
+  @override
+  String removeAccountConfirm(String name) {
+    return 'Remove $name from Haneoka? The game\'s own save is not touched.';
+  }
+
+  @override
+  String get cancel => 'Cancel';
+
+  @override
+  String get remove => 'Remove';
+
+  @override
+  String get importMore => 'Import a save';
+
+  @override
+  String foundAccounts(int count) {
+    return '$count accounts found';
+  }
+
+  @override
+  String get profileOverview => 'Overview';
+
+  @override
+  String get songClears => 'Song clears';
+
+  @override
+  String get cleared => 'Cleared';
+
+  @override
+  String get fullCombo => 'Full combo';
+
+  @override
+  String get allPerfect => 'All perfect';
+
+  @override
+  String ofSongs(String total) {
+    return 'of $total';
+  }
+
+  @override
+  String get ownedMembers => 'Members';
+
+  @override
+  String get ownedSnapshots => 'Snapshots';
+
+  @override
+  String get viewAll => 'View all';
+
+  @override
+  String get currencies => 'Items';
+
+  @override
+  String get eventsPlayed => 'Events';
+
+  @override
+  String eventPoints(String points) {
+    return '$points pt';
+  }
+
+  @override
+  String get exportsTitle => 'Use it elsewhere';
+
+  @override
+  String get exportTeamHint => 'Your cards and progress for the team builder.';
+
+  @override
+  String get exportSaveHint =>
+      'The whole save as JSON, without your name or account ID.';
+
+  @override
+  String get rawData => 'Raw data';
+
+  @override
+  String get copyId => 'Copy ID';
+
+  @override
+  String get tutorialDone => 'Started';
+
+  @override
+  String get noAccountsYet => 'No accounts yet';
 }

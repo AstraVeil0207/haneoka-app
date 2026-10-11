@@ -31,13 +31,13 @@ class AppLocalizationsKo extends AppLocalizations {
   String get sourceIosBackup => 'iPhone 또는 iPad 백업';
 
   @override
-  String get releaseIntlOfficial => '글로벌 · 공식';
+  String get releaseIntlOfficial => '글로벌 · 공식 사이트판';
 
   @override
-  String get releaseIntlStore => '글로벌 · Google Play';
+  String get releaseIntlStore => '글로벌 · 스토어판';
 
   @override
-  String get releaseJp => '일본';
+  String get releaseJp => '일본판';
 
   @override
   String get release => '버전';
@@ -298,4 +298,192 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get sec_shop => '상점';
+
+  @override
+  String get importHeadline => 'Our Notes 세이브 가져오기';
+
+  @override
+  String get importIntro =>
+      '게임이 기기에 저장한 세이브를 읽어 랭크·카드·곡 클리어·아이템을 보여 줍니다. 세이브는 이 기기에만 남고, 내보낼 때 이름과 계정 ID는 포함하지 않습니다.';
+
+  @override
+  String get versionQuestion => '어느 버전을 플레이하나요?';
+
+  @override
+  String get versionHint => '버전을 알 수 없는 파일에 사용합니다.';
+
+  @override
+  String get methodsTitle => '가져오는 방법';
+
+  @override
+  String get recommended => '추천';
+
+  @override
+  String get stepsShow => '순서';
+
+  @override
+  String get methodShizukuTitle => '이 휴대폰 · Shizuku로';
+
+  @override
+  String get methodShizukuSummary => '게임 세이브를 바로 읽습니다. Shizuku가 실행 중이어야 합니다.';
+
+  @override
+  String get methodShizukuSteps =>
+      'Shizuku를 설치하고 무선 디버깅이나 루트로 실행합니다.\n‘세이브 읽기’를 누르고 Shizuku가 물으면 Haneoka를 허용합니다.';
+
+  @override
+  String get methodFolderTitle => '이 휴대폰 · 게임 폴더 권한';
+
+  @override
+  String get methodFolderSummary =>
+      'Android 13 이하에서는 게임 데이터 폴더 접근을 한 번 허용하면 이후엔 설정 없이 읽을 수 있습니다.';
+
+  @override
+  String get methodFolderSteps =>
+      '위에서 버전을 고르고 ‘폴더 선택’을 누릅니다.\n게임 폴더가 열리면 ‘이 폴더 사용’을 누르고 허용합니다.';
+
+  @override
+  String get methodFilesTitle => '복사한 파일에서';
+
+  @override
+  String get methodFilesSummary =>
+      '기기에서 복사한 세이브: 게임의 files 폴더, 그 ZIP, iPhone 앱 내보내기(.imazingapp), Haneoka 내보내기 파일.';
+
+  @override
+  String get methodFilesSteps =>
+      'Android: 파일 관리자나 컴퓨터로 Android/data/<게임>/files를 이 기기로 복사합니다.\niPhone: 컴퓨터에서 iMazing을 열고 Our Notes를 선택해 앱 데이터를 내보냅니다.\n‘파일 선택’(또는 ‘폴더 선택’)으로 복사한 것을 고릅니다.';
+
+  @override
+  String get methodBackupTitle => 'iPhone / iPad 백업';
+
+  @override
+  String get methodBackupSummary =>
+      '이 컴퓨터에 있는 iPhone / iPad의 Finder·iTunes 백업을 읽습니다.';
+
+  @override
+  String get methodBackupSteps =>
+      'Finder나 iTunes로 기기를 이 컴퓨터에 백업합니다. 암호화된 백업도 되며, 비밀번호를 묻습니다.\n‘백업 열기’를 누르고 기기를 고릅니다.';
+
+  @override
+  String get methodAdbTitle => 'Android 휴대폰 · USB 또는 Wi-Fi';
+
+  @override
+  String get methodAdbSummary => 'ADB로 이 컴퓨터에 연결한 휴대폰에서 세이브를 읽습니다.';
+
+  @override
+  String get methodAdbSteps =>
+      '휴대폰에서 개발자 옵션과 USB 디버깅을 켭니다.\n케이블로 연결하거나 Wi-Fi로 페어링합니다.\n‘연결’을 누르고 휴대폰을 고른 뒤 휴대폰의 확인을 허용합니다.';
+
+  @override
+  String get iosNote =>
+      'iOS는 다른 앱의 데이터를 읽을 수 없어, iPhone에서는 컴퓨터로 내보낸 사본을 사용합니다.';
+
+  @override
+  String get readSave => '세이브 읽기';
+
+  @override
+  String get chooseFolder => '폴더 선택';
+
+  @override
+  String get chooseFiles => '파일 선택';
+
+  @override
+  String get openBackups => '백업 열기';
+
+  @override
+  String get connect => '연결';
+
+  @override
+  String get readAgain => '다시 읽기';
+
+  @override
+  String get importedAccounts => '가져온 계정';
+
+  @override
+  String savedOn(String time) {
+    return '$time 세이브';
+  }
+
+  @override
+  String get removeAccount => '이 기기에서 삭제';
+
+  @override
+  String removeAccountConfirm(String name) {
+    return 'Haneoka에서 $name을(를) 삭제할까요? 게임 자체 세이브에는 영향이 없습니다.';
+  }
+
+  @override
+  String get cancel => '취소';
+
+  @override
+  String get remove => '삭제';
+
+  @override
+  String get importMore => '세이브 가져오기';
+
+  @override
+  String foundAccounts(int count) {
+    return '계정 $count개를 찾았습니다';
+  }
+
+  @override
+  String get profileOverview => '개요';
+
+  @override
+  String get songClears => '곡 클리어';
+
+  @override
+  String get cleared => '클리어';
+
+  @override
+  String get fullCombo => '풀 콤보';
+
+  @override
+  String get allPerfect => '올 퍼펙트';
+
+  @override
+  String ofSongs(String total) {
+    return '/ $total';
+  }
+
+  @override
+  String get ownedMembers => '멤버';
+
+  @override
+  String get ownedSnapshots => '스냅';
+
+  @override
+  String get viewAll => '모두 보기';
+
+  @override
+  String get currencies => '아이템';
+
+  @override
+  String get eventsPlayed => '이벤트';
+
+  @override
+  String eventPoints(String points) {
+    return '$points pt';
+  }
+
+  @override
+  String get exportsTitle => '다른 곳에서 사용';
+
+  @override
+  String get exportTeamHint => '팀 빌더용 카드와 진행도.';
+
+  @override
+  String get exportSaveHint => '이름과 계정 ID를 뺀 세이브 전체 JSON.';
+
+  @override
+  String get rawData => '원본 데이터';
+
+  @override
+  String get copyId => 'ID 복사';
+
+  @override
+  String get tutorialDone => '시작';
+
+  @override
+  String get noAccountsYet => '아직 계정이 없습니다';
 }

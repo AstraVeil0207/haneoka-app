@@ -148,13 +148,13 @@ abstract class AppLocalizations {
   /// No description provided for @releaseIntlOfficial.
   ///
   /// In en, this message translates to:
-  /// **'Global · official'**
+  /// **'International · official site'**
   String get releaseIntlOfficial;
 
   /// No description provided for @releaseIntlStore.
   ///
   /// In en, this message translates to:
-  /// **'Global · Google Play'**
+  /// **'International · app store'**
   String get releaseIntlStore;
 
   /// No description provided for @releaseJp.
@@ -678,6 +678,342 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Shop'**
   String get sec_shop;
+
+  /// No description provided for @importHeadline.
+  ///
+  /// In en, this message translates to:
+  /// **'Bring in your Our Notes save'**
+  String get importHeadline;
+
+  /// No description provided for @importIntro.
+  ///
+  /// In en, this message translates to:
+  /// **'Haneoka reads the save the game keeps on your device and shows your rank, cards, song clears and items. The save stays on this device; exports leave out your name and account ID.'**
+  String get importIntro;
+
+  /// No description provided for @versionQuestion.
+  ///
+  /// In en, this message translates to:
+  /// **'Which version do you play?'**
+  String get versionQuestion;
+
+  /// No description provided for @versionHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Used for files that don\'t say which version they come from.'**
+  String get versionHint;
+
+  /// No description provided for @methodsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'How to read it'**
+  String get methodsTitle;
+
+  /// No description provided for @recommended.
+  ///
+  /// In en, this message translates to:
+  /// **'Recommended'**
+  String get recommended;
+
+  /// No description provided for @stepsShow.
+  ///
+  /// In en, this message translates to:
+  /// **'Steps'**
+  String get stepsShow;
+
+  /// No description provided for @methodShizukuTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone, with Shizuku'**
+  String get methodShizukuTitle;
+
+  /// No description provided for @methodShizukuSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'Reads the game\'s save directly. Needs the Shizuku app running.'**
+  String get methodShizukuSummary;
+
+  /// No description provided for @methodShizukuSteps.
+  ///
+  /// In en, this message translates to:
+  /// **'Install Shizuku and start it with wireless debugging or root.\nTap Read save, then allow Haneoka when Shizuku asks.'**
+  String get methodShizukuSteps;
+
+  /// No description provided for @methodFolderTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This phone, game folder access'**
+  String get methodFolderTitle;
+
+  /// No description provided for @methodFolderSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'On Android 13 and earlier you can let Haneoka read the game\'s data folder once; later reads need no setup.'**
+  String get methodFolderSummary;
+
+  /// No description provided for @methodFolderSteps.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose the version above, then tap Choose folder.\nIn the system picker that opens on the game\'s folder, tap Use this folder and Allow.'**
+  String get methodFolderSteps;
+
+  /// No description provided for @methodFilesTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'From copied files'**
+  String get methodFilesTitle;
+
+  /// No description provided for @methodFilesSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'A save copied off a device: the game\'s files folder, a ZIP of it, an iPhone app export (.imazingapp), or a Haneoka export.'**
+  String get methodFilesSummary;
+
+  /// No description provided for @methodFilesSteps.
+  ///
+  /// In en, this message translates to:
+  /// **'Android: copy Android/data/<game>/files to this device with a file manager or a computer.\niPhone: on a computer, open iMazing, select Our Notes and export its app data.\nTap Choose files (or Choose folder) and pick what you copied.'**
+  String get methodFilesSteps;
+
+  /// No description provided for @methodBackupTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'iPhone or iPad backup'**
+  String get methodBackupTitle;
+
+  /// No description provided for @methodBackupSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'Reads a Finder or iTunes backup of your iPhone or iPad on this computer.'**
+  String get methodBackupSummary;
+
+  /// No description provided for @methodBackupSteps.
+  ///
+  /// In en, this message translates to:
+  /// **'Back up the device to this computer in Finder or iTunes. Encrypted backups work; you\'ll be asked for the password.\nTap Open backups and choose the device.'**
+  String get methodBackupSteps;
+
+  /// No description provided for @methodAdbTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Android phone, over USB or Wi-Fi'**
+  String get methodAdbTitle;
+
+  /// No description provided for @methodAdbSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'Reads the save from a phone connected to this computer with ADB.'**
+  String get methodAdbSummary;
+
+  /// No description provided for @methodAdbSteps.
+  ///
+  /// In en, this message translates to:
+  /// **'On the phone, turn on Developer options and USB debugging.\nConnect it by cable, or pair it over Wi-Fi.\nTap Connect, choose the phone and allow the prompt on it.'**
+  String get methodAdbSteps;
+
+  /// No description provided for @iosNote.
+  ///
+  /// In en, this message translates to:
+  /// **'iOS doesn\'t let one app read another app\'s data, so on iPhone the save comes from a copy made on a computer.'**
+  String get iosNote;
+
+  /// No description provided for @readSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Read save'**
+  String get readSave;
+
+  /// No description provided for @chooseFolder.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose folder'**
+  String get chooseFolder;
+
+  /// No description provided for @chooseFiles.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose files'**
+  String get chooseFiles;
+
+  /// No description provided for @openBackups.
+  ///
+  /// In en, this message translates to:
+  /// **'Open backups'**
+  String get openBackups;
+
+  /// No description provided for @connect.
+  ///
+  /// In en, this message translates to:
+  /// **'Connect'**
+  String get connect;
+
+  /// No description provided for @readAgain.
+  ///
+  /// In en, this message translates to:
+  /// **'Read again'**
+  String get readAgain;
+
+  /// No description provided for @importedAccounts.
+  ///
+  /// In en, this message translates to:
+  /// **'Imported accounts'**
+  String get importedAccounts;
+
+  /// No description provided for @savedOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Saved {time}'**
+  String savedOn(String time);
+
+  /// No description provided for @removeAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from this device'**
+  String get removeAccount;
+
+  /// No description provided for @removeAccountConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove {name} from Haneoka? The game\'s own save is not touched.'**
+  String removeAccountConfirm(String name);
+
+  /// No description provided for @cancel.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel'**
+  String get cancel;
+
+  /// No description provided for @remove.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove'**
+  String get remove;
+
+  /// No description provided for @importMore.
+  ///
+  /// In en, this message translates to:
+  /// **'Import a save'**
+  String get importMore;
+
+  /// No description provided for @foundAccounts.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} accounts found'**
+  String foundAccounts(int count);
+
+  /// No description provided for @profileOverview.
+  ///
+  /// In en, this message translates to:
+  /// **'Overview'**
+  String get profileOverview;
+
+  /// No description provided for @songClears.
+  ///
+  /// In en, this message translates to:
+  /// **'Song clears'**
+  String get songClears;
+
+  /// No description provided for @cleared.
+  ///
+  /// In en, this message translates to:
+  /// **'Cleared'**
+  String get cleared;
+
+  /// No description provided for @fullCombo.
+  ///
+  /// In en, this message translates to:
+  /// **'Full combo'**
+  String get fullCombo;
+
+  /// No description provided for @allPerfect.
+  ///
+  /// In en, this message translates to:
+  /// **'All perfect'**
+  String get allPerfect;
+
+  /// No description provided for @ofSongs.
+  ///
+  /// In en, this message translates to:
+  /// **'of {total}'**
+  String ofSongs(String total);
+
+  /// No description provided for @ownedMembers.
+  ///
+  /// In en, this message translates to:
+  /// **'Members'**
+  String get ownedMembers;
+
+  /// No description provided for @ownedSnapshots.
+  ///
+  /// In en, this message translates to:
+  /// **'Snapshots'**
+  String get ownedSnapshots;
+
+  /// No description provided for @viewAll.
+  ///
+  /// In en, this message translates to:
+  /// **'View all'**
+  String get viewAll;
+
+  /// No description provided for @currencies.
+  ///
+  /// In en, this message translates to:
+  /// **'Items'**
+  String get currencies;
+
+  /// No description provided for @eventsPlayed.
+  ///
+  /// In en, this message translates to:
+  /// **'Events'**
+  String get eventsPlayed;
+
+  /// No description provided for @eventPoints.
+  ///
+  /// In en, this message translates to:
+  /// **'{points} pt'**
+  String eventPoints(String points);
+
+  /// No description provided for @exportsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Use it elsewhere'**
+  String get exportsTitle;
+
+  /// No description provided for @exportTeamHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Your cards and progress for the team builder.'**
+  String get exportTeamHint;
+
+  /// No description provided for @exportSaveHint.
+  ///
+  /// In en, this message translates to:
+  /// **'The whole save as JSON, without your name or account ID.'**
+  String get exportSaveHint;
+
+  /// No description provided for @rawData.
+  ///
+  /// In en, this message translates to:
+  /// **'Raw data'**
+  String get rawData;
+
+  /// No description provided for @copyId.
+  ///
+  /// In en, this message translates to:
+  /// **'Copy ID'**
+  String get copyId;
+
+  /// No description provided for @tutorialDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Started'**
+  String get tutorialDone;
+
+  /// No description provided for @noAccountsYet.
+  ///
+  /// In en, this message translates to:
+  /// **'No accounts yet'**
+  String get noAccountsYet;
 }
 
 class _AppLocalizationsDelegate

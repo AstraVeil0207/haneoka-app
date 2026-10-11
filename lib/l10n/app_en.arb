@@ -7,8 +7,8 @@
   "sourceFiles": "Files or folder",
   "sourceAdb": "Android phone · USB or Wi-Fi",
   "sourceIosBackup": "iPhone or iPad backup",
-  "releaseIntlOfficial": "Global · official",
-  "releaseIntlStore": "Global · Google Play",
+  "releaseIntlOfficial": "International · official site",
+  "releaseIntlStore": "International · app store",
   "releaseJp": "Japan",
   "release": "Release",
   "shizukuNotRunning": "Shizuku is not running",
@@ -102,5 +102,96 @@
   "sec_friendshipRewards": "Bond rewards",
   "sec_stampFavorites": "Favourite stamps",
   "sec_exchange": "Exchange",
-  "sec_shop": "Shop"
+  "sec_shop": "Shop",
+  "importHeadline": "Bring in your Our Notes save",
+  "importIntro": "Haneoka reads the save the game keeps on your device and shows your rank, cards, song clears and items. The save stays on this device; exports leave out your name and account ID.",
+  "versionQuestion": "Which version do you play?",
+  "versionHint": "Used for files that don't say which version they come from.",
+  "methodsTitle": "How to read it",
+  "recommended": "Recommended",
+  "stepsShow": "Steps",
+  "methodShizukuTitle": "This phone, with Shizuku",
+  "methodShizukuSummary": "Reads the game's save directly. Needs the Shizuku app running.",
+  "methodShizukuSteps": "Install Shizuku and start it with wireless debugging or root.\nTap Read save, then allow Haneoka when Shizuku asks.",
+  "methodFolderTitle": "This phone, game folder access",
+  "methodFolderSummary": "On Android 13 and earlier you can let Haneoka read the game's data folder once; later reads need no setup.",
+  "methodFolderSteps": "Choose the version above, then tap Choose folder.\nIn the system picker that opens on the game's folder, tap Use this folder and Allow.",
+  "methodFilesTitle": "From copied files",
+  "methodFilesSummary": "A save copied off a device: the game's files folder, a ZIP of it, an iPhone app export (.imazingapp), or a Haneoka export.",
+  "methodFilesSteps": "Android: copy Android/data/<game>/files to this device with a file manager or a computer.\niPhone: on a computer, open iMazing, select Our Notes and export its app data.\nTap Choose files (or Choose folder) and pick what you copied.",
+  "methodBackupTitle": "iPhone or iPad backup",
+  "methodBackupSummary": "Reads a Finder or iTunes backup of your iPhone or iPad on this computer.",
+  "methodBackupSteps": "Back up the device to this computer in Finder or iTunes. Encrypted backups work; you'll be asked for the password.\nTap Open backups and choose the device.",
+  "methodAdbTitle": "Android phone, over USB or Wi-Fi",
+  "methodAdbSummary": "Reads the save from a phone connected to this computer with ADB.",
+  "methodAdbSteps": "On the phone, turn on Developer options and USB debugging.\nConnect it by cable, or pair it over Wi-Fi.\nTap Connect, choose the phone and allow the prompt on it.",
+  "iosNote": "iOS doesn't let one app read another app's data, so on iPhone the save comes from a copy made on a computer.",
+  "readSave": "Read save",
+  "chooseFolder": "Choose folder",
+  "chooseFiles": "Choose files",
+  "openBackups": "Open backups",
+  "connect": "Connect",
+  "readAgain": "Read again",
+  "importedAccounts": "Imported accounts",
+  "savedOn": "Saved {time}",
+  "@savedOn": {
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "removeAccount": "Remove from this device",
+  "removeAccountConfirm": "Remove {name} from Haneoka? The game's own save is not touched.",
+  "@removeAccountConfirm": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "cancel": "Cancel",
+  "remove": "Remove",
+  "importMore": "Import a save",
+  "foundAccounts": "{count} accounts found",
+  "@foundAccounts": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "profileOverview": "Overview",
+  "songClears": "Song clears",
+  "cleared": "Cleared",
+  "fullCombo": "Full combo",
+  "allPerfect": "All perfect",
+  "ofSongs": "of {total}",
+  "@ofSongs": {
+    "placeholders": {
+      "total": {
+        "type": "String"
+      }
+    }
+  },
+  "ownedMembers": "Members",
+  "ownedSnapshots": "Snapshots",
+  "viewAll": "View all",
+  "currencies": "Items",
+  "eventsPlayed": "Events",
+  "eventPoints": "{points} pt",
+  "@eventPoints": {
+    "placeholders": {
+      "points": {
+        "type": "String"
+      }
+    }
+  },
+  "exportsTitle": "Use it elsewhere",
+  "exportTeamHint": "Your cards and progress for the team builder.",
+  "exportSaveHint": "The whole save as JSON, without your name or account ID.",
+  "rawData": "Raw data",
+  "copyId": "Copy ID",
+  "tutorialDone": "Started",
+  "noAccountsYet": "No accounts yet"
 }

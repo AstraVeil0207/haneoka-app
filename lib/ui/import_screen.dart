@@ -2,19 +2,34 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
+import 'package:intl/intl.dart';
+import 'package:material_new_shapes/material_new_shapes.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+import '../core/app_state.dart';
 import '../l10n/app_localizations.dart';
+import '../save/account_store.dart';
 import '../save/game_save.dart';
+import '../save/save_view.dart';
+import '../shell/page.dart';
 import '../sources/android.dart';
 import '../sources/files.dart';
-import '../shell/page.dart';
 import 'adb_sheet.dart';
 import 'backup_sheet.dart';
 import 'labels.dart';
 import 'save_screen.dart';
+import 'shapes.dart';
+import 'theme.dart';
+import 'tile.dart';
 
-/// Every way this platform can reach the game's save, then the accounts found.
+/// The emblem of a release's publisher, as the settings page shows it.
+String releaseEmblem(GameRelease? release) => release == GameRelease.jp
+    ? 'assets/settings/bushimo-circle.svg'
+    : 'assets/settings/bilibili-circle.svg';
+
+/// Reading the game's save: what it is for, the version, and every way this
+/// platform can reach the save, each with what it needs and its steps.
 class ImportScreen extends StatefulWidget {
   const ImportScreen({super.key});
   @override
@@ -22,15 +37,23 @@ class ImportScreen extends StatefulWidget {
 }
 
 class _ImportScreenState extends State<ImportScreen> {
-  final List<GameSave> _saves = [];
   bool _busy = false;
   ShizukuStatus? _shizuku;
   bool _canGrant = false;
+  GameRelease? _release;
 
   @override
   void initState() {
     super.initState();
     if (Platform.isAndroid) _refreshAndroid();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _release ??= AppScope.maybeOf(context)?.server == 'jp'
+        ? GameRelease.jp
+        : GameRelease.intlStore;
   }
 
   Future<void> _refreshAndroid() async {
@@ -44,17 +67,20 @@ class _ImportScreenState extends State<ImportScreen> {
   }
 
   AppLocalizations get t => AppLocalizations.of(context);
+  GameRelease get release => _release ?? GameRelease.intlStore;
 
   void _say(String message) => ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(content: Text(message)));
 
-  /// Runs one import and adds what it found; a run that finds nothing says so.
+  /// Runs one import; every account found is kept, and one opens directly.
   Future<void> _run(Future<void> Function(SaveCollector collector) read) async {
     setState(() => _busy = true);
     final collector = SaveCollector();
     try {
       await read(collector);
+    } catch (error) {
+      if (mounted) _say('$error');
     } finally {
       if (mounted) setState(() => _busy = false);
     }
@@ -63,36 +89,21 @@ class _ImportScreenState extends State<ImportScreen> {
       _say(t.noSaves);
       return;
     }
-    setState(() {
-      for (final save in collector.saves) {
-        _saves.removeWhere(
-          (s) => s.profileId == save.profileId && s.release == save.release,
-        );
-        _saves.insert(0, save);
-      }
-    });
-    if (collector.saves.length == 1) _open(collector.saves.single);
+    for (final save in collector.saves) {
+      await AccountStore.instance.put(save);
+    }
+    if (!mounted) return;
+    if (collector.saves.length == 1) {
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => SaveScreen(save: collector.saves.single),
+        ),
+      );
+    } else {
+      _say(t.foundAccounts(collector.saves.length));
+      Navigator.of(context).pop();
+    }
   }
-
-  void _open(GameSave save) => Navigator.of(context)
-      .push(MaterialPageRoute<void>(builder: (_) => SaveScreen(save: save)));
-
-  Future<GameRelease?> _pickRelease() => showModalBottomSheet<GameRelease>(
-    context: context,
-    showDragHandle: true,
-    builder: (context) => SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final release in GameRelease.values)
-            ListTile(
-              title: Text(release.label(t)),
-              onTap: () => Navigator.pop(context, release),
-            ),
-        ],
-      ),
-    ),
-  );
 
   Future<void> _readShizuku() async {
     var status = await AndroidSaveSource.shizukuStatus();
@@ -115,8 +126,6 @@ class _ImportScreenState extends State<ImportScreen> {
   }
 
   Future<void> _grantFolder() async {
-    final release = await _pickRelease();
-    if (release == null) return;
     final uri = await AndroidSaveSource.grantGameFolder(release);
     if (uri == null) return;
     await _run(
@@ -132,8 +141,6 @@ class _ImportScreenState extends State<ImportScreen> {
   });
 
   Future<void> _pickFiles({bool folder = false}) async {
-    final release = await _pickRelease();
-    if (release == null) return;
     if (folder) {
       final path = await FilePicker.platform.getDirectoryPath();
       if (path == null) return;
@@ -167,94 +174,591 @@ class _ImportScreenState extends State<ImportScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final methods = <Widget>[
       if (Platform.isAndroid) ...[
-        ListTile(
-          leading: const Icon(Symbols.adb_rounded),
-          title: Text(t.sourceShizuku),
-          subtitle: switch (_shizuku) {
-            ShizukuStatus.notRunning => Text(t.shizukuNotRunning),
-            ShizukuStatus.unsupported => Text(t.shizukuUnsupported),
+        _Method(
+          icon: Symbols.bolt_rounded,
+          title: t.methodShizukuTitle,
+          summary: t.methodShizukuSummary,
+          steps: t.methodShizukuSteps,
+          recommended: true,
+          status: switch (_shizuku) {
+            ShizukuStatus.notRunning => t.shizukuNotRunning,
+            ShizukuStatus.unsupported => t.shizukuUnsupported,
             _ => null,
           },
-          trailing: _shizuku == ShizukuStatus.notRunning
-              ? TextButton(
-                  onPressed: AndroidSaveSource.openShizuku,
-                  child: Text(t.openShizuku),
-                )
-              : null,
-          onTap: _busy ? null : _readShizuku,
+          actions: [
+            if (_shizuku == ShizukuStatus.notRunning)
+              TextButton(
+                onPressed: AndroidSaveSource.openShizuku,
+                child: Text(t.openShizuku),
+              ),
+            FilledButton.icon(
+              onPressed: _busy ? null : _readShizuku,
+              icon: const Icon(Symbols.download_rounded),
+              label: Text(t.readSave),
+            ),
+          ],
         ),
         if (_canGrant)
-          ListTile(
-            leading: const Icon(Symbols.folder_special_rounded),
-            title: Text(t.sourceGrantFolder),
-            trailing: IconButton(
-              tooltip: t.refresh,
-              onPressed: _busy ? null : _readGranted,
-              icon: const Icon(Symbols.refresh_rounded),
-            ),
-            onTap: _busy ? null : _grantFolder,
+          _Method(
+            icon: Symbols.folder_special_rounded,
+            title: t.methodFolderTitle,
+            summary: t.methodFolderSummary,
+            steps: t.methodFolderSteps,
+            actions: [
+              TextButton(
+                onPressed: _busy ? null : _readGranted,
+                child: Text(t.readAgain),
+              ),
+              FilledButton.tonalIcon(
+                onPressed: _busy ? null : _grantFolder,
+                icon: const Icon(Symbols.folder_open_rounded),
+                label: Text(t.chooseFolder),
+              ),
+            ],
           ),
       ],
       if (_desktop) ...[
-        ListTile(
-          leading: const Icon(Symbols.phone_android_rounded),
-          title: Text(t.sourceAdb),
-          onTap: _busy ? null : () => showAdbSheet(context, onRead: _run),
+        _Method(
+          icon: Symbols.phone_android_rounded,
+          title: t.methodAdbTitle,
+          summary: t.methodAdbSummary,
+          steps: t.methodAdbSteps,
+          recommended: true,
+          actions: [
+            FilledButton.icon(
+              onPressed: _busy
+                  ? null
+                  : () => showAdbSheet(context, onRead: _run),
+              icon: const Icon(Symbols.cable_rounded),
+              label: Text(t.connect),
+            ),
+          ],
         ),
-        ListTile(
-          leading: const Icon(Symbols.phone_iphone_rounded),
-          title: Text(t.sourceIosBackup),
-          onTap: _busy ? null : () => showBackupSheet(context, onRead: _run),
+        _Method(
+          icon: Symbols.phone_iphone_rounded,
+          title: t.methodBackupTitle,
+          summary: t.methodBackupSummary,
+          steps: t.methodBackupSteps,
+          actions: [
+            FilledButton.tonalIcon(
+              onPressed: _busy
+                  ? null
+                  : () => showBackupSheet(context, onRead: _run),
+              icon: const Icon(Symbols.backup_rounded),
+              label: Text(t.openBackups),
+            ),
+          ],
         ),
       ],
-      ListTile(
-        leading: const Icon(Symbols.file_open_rounded),
-        title: Text(t.sourceFiles),
-        trailing: _hasPaths
-            ? IconButton(
-                tooltip: t.sourceFiles,
-                onPressed: _busy ? null : () => _pickFiles(folder: true),
-                icon: const Icon(Symbols.folder_open_rounded),
-              )
-            : null,
-        onTap: _busy ? null : _pickFiles,
+      _Method(
+        icon: Symbols.file_open_rounded,
+        title: t.methodFilesTitle,
+        summary: t.methodFilesSummary,
+        steps: t.methodFilesSteps,
+        recommended: Platform.isIOS,
+        note: Platform.isIOS ? t.iosNote : null,
+        actions: [
+          if (_hasPaths)
+            TextButton(
+              onPressed: _busy ? null : () => _pickFiles(folder: true),
+              child: Text(t.chooseFolder),
+            ),
+          FilledButton.tonalIcon(
+            onPressed: _busy ? null : _pickFiles,
+            icon: const Icon(Symbols.upload_file_rounded),
+            label: Text(t.chooseFiles),
+          ),
+        ],
       ),
     ];
     return ShellPage(
       title: t.importTitle,
-      body: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+      body: Stack(
         children: [
-          if (_busy) const LinearProgressIndicator(),
-          ...methods,
-          if (_saves.isNotEmpty) ...[
-            const Divider(),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Text(
-                t.accounts,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  color: theme.colorScheme.primary,
+          ListView(
+            padding: pagePadding(context),
+            children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 720),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          ShapedIcon(
+                            shape: MaterialShapes.cookie9Sided,
+                            size: 56,
+                            child: const Icon(
+                              Symbols.sd_card_rounded,
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  t.importHeadline,
+                                  style: theme.textTheme.headlineSmall
+                                      ?.copyWith(fontWeight: FontWeight.w600),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  t.importIntro,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: scheme.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      Text(
+                        t.versionQuestion,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        t.versionHint,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final value in const [
+                            GameRelease.jp,
+                            GameRelease.intlStore,
+                            GameRelease.intlOfficial,
+                          ])
+                            ChoiceChip(
+                              showCheckmark: false,
+                              selected: release == value,
+                              avatar: SvgPicture.asset(
+                                releaseEmblem(value),
+                                width: 18,
+                                height: 18,
+                              ),
+                              label: Text(value.label(t)),
+                              onSelected: (_) =>
+                                  setState(() => _release = value),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 28),
+                      Text(
+                        t.methodsTitle,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      for (final method in methods)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: method,
+                        ),
+                    ],
+                  ),
                 ),
+              ),
+            ],
+          ),
+          if (_busy)
+            const Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              child: LinearProgressIndicator(),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One way to reach the save: what it is, what it needs, its steps and its
+/// button, as an M3 Expressive card.
+class _Method extends StatelessWidget {
+  const _Method({
+    required this.icon,
+    required this.title,
+    required this.summary,
+    required this.steps,
+    required this.actions,
+    this.recommended = false,
+    this.status,
+    this.note,
+  });
+  final IconData icon;
+  final String title;
+  final String summary;
+  final String steps;
+  final List<Widget> actions;
+  final bool recommended;
+  final String? status;
+  final String? note;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final lines = steps.split('\n');
+    return Material(
+      color: recommended
+          ? scheme.secondaryContainer.withValues(alpha: 0.55)
+          : scheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(Corner.extraLarge),
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ShapedIcon(
+                  shape: MaterialShapes.cookie9Sided,
+                  size: 44,
+                  color: recommended ? scheme.primary : null,
+                  foreground: recommended ? scheme.onPrimary : null,
+                  child: Icon(icon, size: 22),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        children: [
+                          Text(
+                            title,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (recommended)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: scheme.primary,
+                                borderRadius: BorderRadius.circular(
+                                  Corner.full,
+                                ),
+                              ),
+                              child: Text(
+                                t.recommended,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: scheme.onPrimary,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(summary, style: theme.textTheme.bodyMedium),
+                      if (status != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Symbols.error_rounded,
+                                size: 16,
+                                color: scheme.error,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                status!,
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: scheme.error,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            Theme(
+              data: theme.copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: const EdgeInsets.only(left: 58, right: 0),
+                childrenPadding: const EdgeInsets.only(left: 58, bottom: 4),
+                dense: true,
+                title: Text(t.stepsShow, style: theme.textTheme.labelLarge),
+                children: [
+                  for (final (index, line) in lines.indexed)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: 22,
+                            height: 22,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: scheme.surfaceContainerHighest,
+                              shape: BoxShape.circle,
+                            ),
+                            child: Text(
+                              '${index + 1}',
+                              style: theme.textTheme.labelSmall,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              line,
+                              style: theme.textTheme.bodyMedium,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (note != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        note!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
-            for (final save in _saves)
-              ListTile(
-                leading: const Icon(Symbols.person_rounded),
-                title: Text(save.name ?? save.profileId),
-                subtitle: Text(
-                  [
-                    save.release?.label(t),
-                    save.profileId,
-                  ].whereType<String>().join(' · '),
-                ),
-                trailing: const Icon(Symbols.chevron_right_rounded),
-                onTap: () => _open(save),
-              ),
+            Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 8,
+              runSpacing: 8,
+              children: actions,
+            ),
           ],
-        ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The imported accounts (`/account`): each player's card, opening their
+/// profile; importing another account is the primary action.
+class AccountsScreen extends StatefulWidget {
+  const AccountsScreen({super.key});
+  @override
+  State<AccountsScreen> createState() => _AccountsScreenState();
+}
+
+class _AccountsScreenState extends State<AccountsScreen> {
+  @override
+  void initState() {
+    super.initState();
+    AccountStore.instance.load();
+  }
+
+  void _import() =>
+      Navigator.of(context)
+          .push(MaterialPageRoute<void>(builder: (_) => const ImportScreen()));
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final site = AppScope.of(context).text;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return ShellPage(
+      title: site('navigation.account', 'Account'),
+      actions: [
+        BarAction(
+          icon: Symbols.add_rounded,
+          label: t.importMore,
+          onPressed: _import,
+        ),
+      ],
+      body: ListenableBuilder(
+        listenable: AccountStore.instance,
+        builder: (context, _) {
+          final saves = AccountStore.instance.saves;
+          return ListView(
+            padding: pagePadding(context),
+            children: [
+              Text(
+                t.importedAccounts,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (saves.isEmpty)
+                Material(
+                  color: scheme.surfaceContainerLow,
+                  borderRadius: BorderRadius.circular(Corner.extraLarge),
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      children: [
+                        ShapedIcon(
+                          shape: MaterialShapes.cookie9Sided,
+                          size: 64,
+                          child: const Icon(Symbols.sd_card_rounded, size: 32),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          t.noAccountsYet,
+                          style: theme.textTheme.titleMedium,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          t.importIntro,
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        FilledButton.icon(
+                          onPressed: _import,
+                          icon: const Icon(Symbols.add_rounded),
+                          label: Text(t.importMore),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                for (final save in saves)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: AccountCard(
+                      save: save,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => SaveScreen(save: save),
+                        ),
+                      ),
+                    ),
+                  ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// A player as one card: name, version emblem, rank and ID, last saved.
+class AccountCard extends StatelessWidget {
+  const AccountCard({super.key, required this.save, this.onTap});
+  final GameSave save;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppLocalizations.of(context);
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final view = SaveView(save);
+    final locale = Localizations.localeOf(context).toLanguageTag();
+    return Material(
+      color: scheme.surfaceContainerLow,
+      borderRadius: BorderRadius.circular(Corner.extraLarge),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              ShapedIcon(
+                shape: MaterialShapes.sunny,
+                size: 56,
+                color: scheme.primaryContainer,
+                foreground: scheme.onPrimaryContainer,
+                child: Text(
+                  '${view.playerRank ?? '—'}',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: scheme.onPrimaryContainer,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            save.name ?? save.profileId,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SvgPicture.asset(
+                          releaseEmblem(save.release),
+                          width: 18,
+                          height: 18,
+                        ),
+                      ],
+                    ),
+                    Text(
+                      [
+                        if (save.release != null) save.release!.label(t),
+                        'ID ${save.profileId}',
+                      ].join(' · '),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    if (save.modifiedAt != null)
+                      Text(
+                        t.savedOn(
+                          DateFormat.yMMMd(locale)
+                              .add_Hm()
+                              .format(save.modifiedAt!.toLocal()),
+                        ),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const Icon(Symbols.chevron_right_rounded),
+            ],
+          ),
+        ),
       ),
     );
   }

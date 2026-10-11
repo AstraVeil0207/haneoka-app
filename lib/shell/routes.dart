@@ -80,7 +80,7 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/catalog/studio') return const StudioScreen();
   if (route == '/catalog/events/tracker') return const EventTrackerScreen();
   if (route == '/player-profile') return const PlayerProfileScreen();
-  if (route == '/team-builder') return const ImportScreen();
+  if (route == '/account') return const AccountsScreen();
   if (route.startsWith('/catalog/stories/')) {
     final mode = route.substring('/catalog/stories/'.length);
     if (storyModes.contains(mode)) {
