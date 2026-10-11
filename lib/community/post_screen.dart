@@ -207,7 +207,7 @@ class _PostScreenState extends State<PostScreen> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (_) => _Composer(
+      builder: (_) => CommentComposer(
         postPath: _path,
         replyTo: replyTo,
         replyName: replyTo == null ? null : authorName(context, replyTo),
@@ -317,7 +317,21 @@ class _PostScreenState extends State<PostScreen> {
                                         ),
                                       )
                                     else
-                                      ..._threads(context, post),
+                                      ...commentThreads(
+                                        context,
+                                        comments: _comments,
+                                        authorUid: post['authorUid'],
+                                        expanded: _expanded,
+                                        replyLoading: _replyLoading,
+                                        onExpand: (id, open) => setState(
+                                          () => open
+                                              ? _expanded.add(id)
+                                              : _expanded.remove(id),
+                                        ),
+                                        onLoadReplies: _loadReplies,
+                                        onChanged: _replace,
+                                        onReply: (c) => _compose(replyTo: c),
+                                      ),
                                     if (_loadingComments)
                                       const Padding(
                                         padding: EdgeInsets.all(16),
@@ -395,150 +409,159 @@ class _PostScreenState extends State<PostScreen> {
       ),
     );
   }
+}
 
-  /// Comments grouped under their root, replies oldest first, two shown
-  /// until expanded (`renderCommentThreads`).
-  List<Widget> _threads(BuildContext context, Json post) {
-    final byId = {for (final c in _comments) '${c['id']}': c};
-    final groups = <String, List<Json>>{};
-    final roots = <Json>[];
-    for (final comment in _comments) {
-      var root = byId['${comment['rootId'] ?? ''}'] ?? comment;
-      final visited = {'${comment['id']}'};
-      while (root['parentId'] != null &&
-          byId.containsKey('${root['parentId']}') &&
-          !visited.contains('${root['parentId']}')) {
-        root = byId['${root['parentId']}']!;
-        visited.add('${root['id']}');
-      }
-      final id = '${root['id']}';
-      if (!groups.containsKey(id)) {
-        groups[id] = [];
-        roots.add(root);
-      }
-      if (!identical(comment, root)) groups[id]!.add(comment);
+/// Comments grouped under their root, replies oldest first, two shown
+/// until expanded (`renderCommentThreads`).
+List<Widget> commentThreads(
+  BuildContext context, {
+  required List<Json> comments,
+  required Object? authorUid,
+  required Set<String> expanded,
+  required Set<String> replyLoading,
+  required void Function(String id, bool open) onExpand,
+  required void Function(String rootId) onLoadReplies,
+  required ValueChanged<Json> onChanged,
+  required void Function(Json comment) onReply,
+}) {
+  final byId = {for (final c in comments) '${c['id']}': c};
+  final groups = <String, List<Json>>{};
+  final roots = <Json>[];
+  for (final comment in comments) {
+    var root = byId['${comment['rootId'] ?? ''}'] ?? comment;
+    final visited = {'${comment['id']}'};
+    while (root['parentId'] != null &&
+        byId.containsKey('${root['parentId']}') &&
+        !visited.contains('${root['parentId']}')) {
+      root = byId['${root['parentId']}']!;
+      visited.add('${root['id']}');
     }
-    String label(
-      String key,
-      String fallback, [
-      Map<String, Object?> v = const {},
-    ]) => communityLabel(context, key, fallback, v);
-    return [
-      for (final root in roots)
-        Builder(
-          builder: (context) {
-            final id = '${root['id']}';
-            final replies = (groups[id] ?? [])
-              ..sort((a, b) {
-                final time = ((a['createdAt'] as num?) ?? 0).compareTo(
-                  (b['createdAt'] as num?) ?? 0,
-                );
-                return time != 0 ? time : '${a['id']}'.compareTo('${b['id']}');
-              });
-            final known =
-                (root['replyCount'] as num?)?.toInt() ?? replies.length;
-            final remaining = (known - replies.length).clamp(0, 1 << 31);
-            final hasMore =
-                root['replyCursor'] != null ||
-                remaining > 0 ||
-                replies.length > 2;
-            final expanded = _expanded.contains(id);
-            final visible = expanded ? replies : replies.take(2).toList();
-            final moreCount = remaining > 0
-                ? remaining
-                : (replies.length - 2).clamp(0, 1 << 31);
-            final moreLabel = moreCount > 0
-                ? label('expandReplies', 'Show {count} more replies', {
-                    'count': moreCount,
-                  })
-                : label('loadMoreComments', 'Load more comments');
-            final loading = _replyLoading.contains(id);
-            return Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  CommentTile(
-                    comment: root,
-                    postAuthorUid: post['authorUid'],
-                    onChanged: _replace,
-                    onReply: () => _compose(replyTo: root),
-                  ),
-                  if (visible.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsetsDirectional.only(start: 52),
-                      child: Column(
-                        children: [
-                          for (final reply in visible)
-                            CommentTile(
-                              comment: reply,
-                              reply: true,
-                              postAuthorUid: post['authorUid'],
-                              replyToName: () {
-                                final parent = byId['${reply['parentId']}'];
-                                return parent != null &&
-                                        parent['parentId'] != null
-                                    ? authorName(context, parent)
-                                    : null;
-                              }(),
-                              onChanged: _replace,
-                              onReply: () => _compose(replyTo: reply),
-                            ),
-                        ],
-                      ),
-                    ),
-                  if (hasMore || expanded)
-                    Padding(
-                      padding: const EdgeInsetsDirectional.only(start: 44),
-                      child: Align(
-                        alignment: AlignmentDirectional.centerStart,
-                        child: TextButton.icon(
-                          onPressed: loading
-                              ? null
-                              : () {
-                                  if (expanded) {
-                                    setState(() => _expanded.remove(id));
-                                  } else if (root['replyCursor'] != null &&
-                                      replies.length <= 2) {
-                                    _loadReplies(id);
-                                  } else {
-                                    setState(() => _expanded.add(id));
-                                  }
-                                },
-                          iconAlignment: IconAlignment.end,
-                          icon: Icon(
-                            expanded
-                                ? Symbols.expand_less_rounded
-                                : Symbols.expand_more_rounded,
-                          ),
-                          label: Text(
-                            expanded
-                                ? label('collapseReplies', 'Collapse replies')
-                                : moreLabel,
-                          ),
-                        ),
-                      ),
-                    ),
-                  if (expanded && root['replyCursor'] != null)
-                    Padding(
-                      padding: const EdgeInsetsDirectional.only(start: 44),
-                      child: Align(
-                        alignment: AlignmentDirectional.centerStart,
-                        child: TextButton.icon(
-                          onPressed: loading ? null : () => _loadReplies(id),
-                          iconAlignment: IconAlignment.end,
-                          icon: const Icon(Symbols.expand_more_rounded),
-                          label: Text(moreLabel),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            );
-          },
-        ),
-    ];
+    final id = '${root['id']}';
+    if (!groups.containsKey(id)) {
+      groups[id] = [];
+      roots.add(root);
+    }
+    if (!identical(comment, root)) groups[id]!.add(comment);
   }
+  String label(
+    String key,
+    String fallback, [
+    Map<String, Object?> v = const {},
+  ]) => communityLabel(context, key, fallback, v);
+  return [
+    for (final root in roots)
+      Builder(
+        builder: (context) {
+          final id = '${root['id']}';
+          final replies = (groups[id] ?? [])
+            ..sort((a, b) {
+              final time = ((a['createdAt'] as num?) ?? 0).compareTo(
+                (b['createdAt'] as num?) ?? 0,
+              );
+              return time != 0 ? time : '${a['id']}'.compareTo('${b['id']}');
+            });
+          final known = (root['replyCount'] as num?)?.toInt() ?? replies.length;
+          final remaining = (known - replies.length).clamp(0, 1 << 31);
+          final hasMore =
+              root['replyCursor'] != null ||
+              remaining > 0 ||
+              replies.length > 2;
+          final open = expanded.contains(id);
+          final visible = open ? replies : replies.take(2).toList();
+          final moreCount = remaining > 0
+              ? remaining
+              : (replies.length - 2).clamp(0, 1 << 31);
+          final moreLabel = moreCount > 0
+              ? label('expandReplies', 'Show {count} more replies', {
+                  'count': moreCount,
+                })
+              : label('loadMoreComments', 'Load more comments');
+          final loading = replyLoading.contains(id);
+          return Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                CommentTile(
+                  comment: root,
+                  postAuthorUid: authorUid,
+                  onChanged: onChanged,
+                  onReply: () => onReply(root),
+                ),
+                if (visible.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(start: 52),
+                    child: Column(
+                      children: [
+                        for (final reply in visible)
+                          CommentTile(
+                            comment: reply,
+                            reply: true,
+                            postAuthorUid: authorUid,
+                            replyToName: () {
+                              final parent = byId['${reply['parentId']}'];
+                              return parent != null &&
+                                      parent['parentId'] != null
+                                  ? authorName(context, parent)
+                                  : null;
+                            }(),
+                            onChanged: onChanged,
+                            onReply: () => onReply(reply),
+                          ),
+                      ],
+                    ),
+                  ),
+                if (hasMore || open)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(start: 44),
+                    child: Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: TextButton.icon(
+                        onPressed: loading
+                            ? null
+                            : () {
+                                if (open) {
+                                  onExpand(id, false);
+                                } else if (root['replyCursor'] != null &&
+                                    replies.length <= 2) {
+                                  onLoadReplies(id);
+                                } else {
+                                  onExpand(id, true);
+                                }
+                              },
+                        iconAlignment: IconAlignment.end,
+                        icon: Icon(
+                          open
+                              ? Symbols.expand_less_rounded
+                              : Symbols.expand_more_rounded,
+                        ),
+                        label: Text(
+                          open
+                              ? label('collapseReplies', 'Collapse replies')
+                              : moreLabel,
+                        ),
+                      ),
+                    ),
+                  ),
+                if (open && root['replyCursor'] != null)
+                  Padding(
+                    padding: const EdgeInsetsDirectional.only(start: 44),
+                    child: Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: TextButton.icon(
+                        onPressed: loading ? null : () => onLoadReplies(id),
+                        iconAlignment: IconAlignment.end,
+                        icon: const Icon(Symbols.expand_more_rounded),
+                        label: Text(moreLabel),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+  ];
 }
 
 class _PostHead extends StatelessWidget {
@@ -916,16 +939,16 @@ class _EngagementBar extends StatelessWidget {
 }
 
 /// Writing a comment or reply (`renderCommentComposer`).
-class _Composer extends StatefulWidget {
-  const _Composer({required this.postPath, this.replyTo, this.replyName});
+class CommentComposer extends StatefulWidget {
+  const CommentComposer({required this.postPath, this.replyTo, this.replyName});
   final String postPath;
   final Json? replyTo;
   final String? replyName;
   @override
-  State<_Composer> createState() => _ComposerState();
+  State<CommentComposer> createState() => _ComposerState();
 }
 
-class _ComposerState extends State<_Composer> {
+class _ComposerState extends State<CommentComposer> {
   final _controller = TextEditingController();
   bool _sending = false;
 

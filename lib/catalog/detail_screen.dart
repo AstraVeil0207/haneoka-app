@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:intl/intl.dart';
 
+import '../community/entity_comments.dart';
 import '../core/api.dart';
 import '../core/app_state.dart';
 import '../core/audio.dart';
@@ -375,14 +376,34 @@ class _Page {
     return gameDateTime(t.locale, RelativeTime.timestamp(value));
   }
 
-  List<Widget> sections() => [
-    ...switch (kind) {
-      Presentation.song => _song(),
-      Presentation.member || Presentation.support => _card(),
-      _ => _generic(),
-    },
-    ..._rest(),
-  ];
+  List<Widget> sections() {
+    // The site's discussion under every catalogue entry (`entity-comments`).
+    final target = host.widget.api != null
+        ? null
+        : entityCommentTarget(
+            host.widget.profile.resource,
+            record,
+            '${host.widget.summary[serverKey] ?? kit.api.server}',
+          );
+    return [
+      ...switch (kind) {
+        Presentation.song => _song(),
+        Presentation.member || Presentation.support => _card(),
+        _ => _generic(),
+      },
+      ..._rest(),
+      if (target != null)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: EntityComments(
+            key: ValueKey('${target.type}/${target.id}'),
+            type: target.type,
+            id: target.id,
+            server: '${host.widget.summary[serverKey] ?? kit.api.server}',
+          ),
+        ),
+    ];
+  }
 
   // ---------- Songs ----------
 
