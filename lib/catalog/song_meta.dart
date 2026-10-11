@@ -403,7 +403,7 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
     final scheme = theme.colorScheme;
     final compact = MediaQuery.sizeOf(context).width < 600;
     final columns = <(String, String, double, bool)>[
-      ('title', label('title'), compact ? 200 : 280, false),
+      ('title', label('title'), compact ? 132 : 280, false),
       ('musicType', label('attribute'), 72, false),
       ('band', label('band'), 168, false),
       ('level', label('level'), 96, true),
@@ -511,13 +511,16 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
         case 'title':
           final jacket = c.song['jacketThumbUrl'] ?? c.song['jacketUrl'];
           return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: EdgeInsets.symmetric(
+              horizontal: compact ? 8 : 12,
+              vertical: 8,
+            ),
             child: Row(
               children: [
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: SizedBox.square(
-                    dimension: 44,
+                    dimension: compact ? 36 : 44,
                     child: jacket is String
                         ? AppImage(
                             candidates: [state.api.asset(jacket).toString()],
@@ -526,7 +529,7 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
                         : null,
                   ),
                 ),
-                const SizedBox(width: 12),
+                SizedBox(width: compact ? 8 : 12),
                 Expanded(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -536,7 +539,9 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
                         state.songTitle(c.song['musicTitle']),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall,
+                        style: compact
+                            ? theme.textTheme.labelLarge
+                            : theme.textTheme.titleSmall,
                       ),
                       Text(
                         t.text(visuals.bands[band]?['bandName']),
