@@ -40,7 +40,7 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 - [x] Skills (catalogue, detail, upgrade materials)
 - [~] Comics · [x] gacha (featured, rates, simulator with image export) · [x] login campaigns · [~] missions · [x] passes · [~] T.G.W card
 - [x] Studio
-- [x] Shop (storefront prices with conversion) · [x] exchange · [~] stamps · [~] stickers · [~] backgrounds · [~] items · [~] band items · [x] real lives
+- [x] Shop (storefront prices with conversion) · [x] exchange · [x] stamps · [x] stickers (unlock conditions, artwork card) · [x] backgrounds · [x] items (acquisition and uses) · [x] band items (effects and costs by level) · [x] real lives
 
 ## Stories
 

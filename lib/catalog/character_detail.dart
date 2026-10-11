@@ -360,6 +360,10 @@ class _CharacterDetailState extends State<CharacterDetail> {
                 subtitle: _name(id),
                 adornments: [?_face(id)],
                 images: [
+                  for (final key in ['image', 'runtime'])
+                    if ((model['preview'] as Map?)?[key] case final String path
+                        when path.isNotEmpty)
+                      _asset(path),
                   for (final key in ['thumbnailImage', 'faceImage'])
                     if (model[key] case final String path) _asset(path),
                 ],
