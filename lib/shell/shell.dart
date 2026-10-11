@@ -1,106 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
-import '../catalog/catalog_screen.dart';
-import '../catalog/detail_screen.dart';
-import '../catalog/profiles.dart';
-import '../catalog/songs.dart';
 import '../core/app_state.dart';
-import '../home/home_screen.dart';
-import '../l10n/app_localizations.dart';
-import '../ui/import_screen.dart';
 import '../ui/player.dart';
 import '../ui/theme.dart';
+import 'navigation.dart';
 import 'page.dart';
-import 'settings_screen.dart';
-import 'web_sections.dart';
+import 'routes.dart';
 
-/// A place in the navigation: a top-level destination and, below it, one of its pages.
-class NavEntry {
-  const NavEntry(this.id, this.label, this.icon, this.build, {this.url});
-  final String id;
-  final String label;
-  final IconData icon;
-  final WidgetBuilder build;
-
-  /// A website page not yet built into the app, opened in the in-app browser.
-  final Uri? url;
-}
-
-class NavDestination {
-  const NavDestination(this.id, this.label, this.icon, this.entries);
-  final String id;
-  final String label;
-  final IconData icon;
-  final List<NavEntry> entries;
-}
-
-List<NavDestination> _destinations(
-  String Function(String, [String]) t,
-  String importLabel,
-  ValueChanged<String> select,
-  String server,
-  String locale,
-) => [
-  NavDestination('home', t('navigation.home', 'Home'), Symbols.home_rounded, [
-    NavEntry(
-      'home',
-      t('navigation.home', 'Home'),
-      Symbols.home_rounded,
-      (_) => HomeScreen(onBrowse: select),
-    ),
-  ]),
-  NavDestination(
-    'catalog',
-    t('navigation.library', 'Library'),
-    Symbols.category_rounded,
-    [
-      for (final profile in catalogProfiles)
-        NavEntry(
-          'catalog/${profile.resource}',
-          t(profile.label, profile.resource),
-          profile.icon,
-          (_) {
-            void open(BuildContext context, Map<String, Object?> item) =>
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => DetailScreen(
-                      profile: profile,
-                      id: '${firstOf(item, profile.id) ?? item['_key']}',
-                      summary: item,
-                    ),
-                  ),
-                );
-            return profile.presentation == Presentation.song
-                ? SongsScreen(onOpen: open)
-                : CatalogScreen(profile: profile, onOpen: open);
-          },
-        ),
-    ],
-  ),
-  for (final section in webSections)
-    NavDestination(section.id, t(section.label), section.icon, [
-      if (section.id == 'tools')
-        NavEntry(
-          'tools/save',
-          importLabel,
-          Symbols.download_rounded,
-          (_) => const ImportScreen(),
-        ),
-      for (final page in section.pages)
-        NavEntry(
-          '${section.id}${page.route}',
-          t(page.label),
-          page.icon,
-          (_) => const SizedBox.shrink(),
-          url: page.url(server, locale),
-        ),
-    ]),
-];
-
-/// The website's shell: an expanded navigation drawer on wide windows, a rail
-/// on medium ones, a modal drawer on phones; the page's bar and pane beside it.
+/// The website's shell: an expanded drawer on wide windows, a rail on medium
+/// ones, a modal drawer on phones; the page's bar and pane beside it.
 class AppShell extends StatefulWidget {
   const AppShell({super.key});
   @override
@@ -109,62 +18,51 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   final _scaffold = GlobalKey<ScaffoldState>();
-  String _selected = 'home';
-  bool _settings = false;
+  String _route = '/';
 
-  Map<String, NavEntry> _entries = const {};
-
-  void _select(String id) {
-    final url = _entries[id]?.url;
-    if (url != null) {
-      _scaffold.currentState?.closeDrawer();
-      launchUrl(url, mode: LaunchMode.inAppBrowserView);
-      return;
-    }
-    setState(() {
-      _selected = id;
-      _settings = false;
-    });
+  void _navigate(String route) {
+    setState(() => _route = route);
     _scaffold.currentState?.closeDrawer();
+  }
+
+  NavDestination? get _destination {
+    bool contains(List<NavItem> items) =>
+        items.any((item) => item.route == _route || contains(item.children));
+    for (final destination in navDestinations) {
+      if (destination.route == _route) return destination;
+      if (destination.sections.any((s) => contains(s.items))) {
+        return destination;
+      }
+    }
+    return null;
   }
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.of(context);
-    final t = state.text;
-    final destinations = _destinations(
-      (path, [fallback = '']) => t(path, fallback),
-      AppLocalizations.of(context).importTitle,
-      _select,
-      state.server,
-      state.text.locale,
-    );
-    final entries = {
-      for (final d in destinations)
-        for (final e in d.entries) e.id: e,
-    };
-    _entries = entries;
-    final entry = entries[_selected] ?? destinations.first.entries.first;
+    final t = AppScope.of(context).text;
+    final label = allNavItems
+        .where((item) => item.route == _route)
+        .map((item) => item.label)
+        .firstOrNull;
     final page = Navigator(
-      key: ValueKey(_settings ? 'settings' : entry.id),
+      key: ValueKey(_route),
       onGenerateRoute: (_) => MaterialPageRoute<void>(
-        builder: _settings ? (_) => const SettingsScreen() : entry.build,
+        builder: (_) =>
+            screenFor(_route, navigate: _navigate) ??
+            PendingScreen(label: label ?? _route),
       ),
     );
-
     return LayoutBuilder(
       builder: (context, constraints) {
         final width = constraints.maxWidth;
         final compact = width < ShellMetrics.compact;
-        final drawer = _NavTree(
-          destinations: destinations,
-          selected: _settings ? 'settings' : entry.id,
-          onSelect: _select,
-          onSettings: () => setState(() {
-            _settings = true;
-            _scaffold.currentState?.closeDrawer();
-          }),
-          settingsLabel: t('navigation.settings', 'Settings'),
+        final destination = _destination;
+        Widget drawer(bool modal) => _Drawer(
+          route: _route,
+          current: destination,
+          modal: modal,
+          onNavigate: _navigate,
+          onClose: () => _scaffold.currentState?.closeDrawer(),
         );
         final body = ShellScope(
           compact: compact,
@@ -174,50 +72,66 @@ class _AppShellState extends State<AppShell> {
         if (compact) {
           return Scaffold(
             key: _scaffold,
-            drawer: Drawer(child: drawer),
+            drawer: Drawer(
+              width: ShellMetrics.drawer + 40,
+              child: drawer(true),
+            ),
             body: SafeArea(child: body),
           );
         }
         if (width < ShellMetrics.expanded) {
-          final current = destinations.indexWhere(
-            (d) => d.entries.any((e) => e.id == entry.id),
-          );
           return Scaffold(
             key: _scaffold,
-            drawer: Drawer(child: drawer),
+            drawer: Drawer(
+              width: ShellMetrics.drawer + 40,
+              child: drawer(true),
+            ),
             body: Row(
               children: [
                 NavigationRail(
-                  selectedIndex: _settings ? null : current,
+                  selectedIndex: destination == null
+                      ? null
+                      : navDestinations.indexOf(destination),
                   labelType: NavigationRailLabelType.all,
-                  leading: Column(
-                    children: [
-                      const SizedBox(height: 8),
-                      IconButton(
-                        onPressed: () => _scaffold.currentState?.openDrawer(),
-                        icon: const Icon(Symbols.menu_rounded),
+                  leading: Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: IconButton(
+                      tooltip: MaterialLocalizations.of(context)
+                          .openAppDrawerTooltip,
+                      onPressed: () => _scaffold.currentState?.openDrawer(),
+                      icon: const Icon(Symbols.menu_rounded),
+                    ),
+                  ),
+                  trailing: Expanded(
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const NowPlaying(),
+                            for (final item in utilityItems)
+                              IconButton(
+                                tooltip: t(item.label),
+                                isSelected: _route == item.route,
+                                onPressed: () => _navigate(item.route),
+                                icon: Icon(item.icon),
+                                selectedIcon: Icon(item.icon, fill: 1),
+                              ),
+                          ],
+                        ),
                       ),
-                    ],
+                    ),
                   ),
-                  trailing: IconButton(
-                    tooltip: t('navigation.settings', 'Settings'),
-                    onPressed: () => setState(() => _settings = true),
-                    icon: const Icon(Symbols.settings_rounded),
-                  ),
-                  onDestinationSelected: (index) {
-                    final first = destinations[index].entries.first;
-                    if (first.url != null) {
-                      _scaffold.currentState?.openDrawer();
-                    } else {
-                      _select(first.id);
-                    }
-                  },
+                  onDestinationSelected: (index) =>
+                      _navigate(navDestinations[index].route),
                   destinations: [
-                    for (final d in destinations)
+                    for (final d in navDestinations)
                       NavigationRailDestination(
                         icon: Icon(d.icon),
                         selectedIcon: Icon(d.icon, fill: 1),
-                        label: Text(d.label),
+                        label: Text(t(d.label)),
                       ),
                   ],
                 ),
@@ -230,7 +144,7 @@ class _AppShellState extends State<AppShell> {
           key: _scaffold,
           body: Row(
             children: [
-              SizedBox(width: ShellMetrics.drawer, child: drawer),
+              SizedBox(width: ShellMetrics.drawer, child: drawer(false)),
               Expanded(child: body),
             ],
           ),
@@ -240,100 +154,124 @@ class _AppShellState extends State<AppShell> {
   }
 }
 
-/// The drawer's tree: brand, destinations, the open destination's pages, settings.
-class _NavTree extends StatefulWidget {
-  const _NavTree({
-    required this.destinations,
-    required this.selected,
-    required this.onSelect,
-    required this.onSettings,
-    required this.settingsLabel,
+/// The website's drawer (`.nav`): brand, then each destination as a header
+/// that opens its page and its tree, the current one open; Account,
+/// Settings and About at the foot.
+class _Drawer extends StatefulWidget {
+  const _Drawer({
+    required this.route,
+    required this.current,
+    required this.modal,
+    required this.onNavigate,
+    required this.onClose,
   });
-  final List<NavDestination> destinations;
-  final String selected;
-  final ValueChanged<String> onSelect;
-  final VoidCallback onSettings;
-  final String settingsLabel;
+  final String route;
+  final NavDestination? current;
+  final bool modal;
+  final ValueChanged<String> onNavigate;
+  final VoidCallback onClose;
 
   @override
-  State<_NavTree> createState() => _NavTreeState();
+  State<_Drawer> createState() => _DrawerState();
 }
 
-/// Sections fold as on the website: the one holding the current page starts
-/// open, a section's heading opens or closes it.
-class _NavTreeState extends State<_NavTree> {
-  late final Set<String> _open = {
-    for (final d in widget.destinations)
-      if (d.entries.any((e) => e.id == widget.selected)) d.id,
-  };
+class _DrawerState extends State<_Drawer> {
+  late final Set<String> _open = {?widget.current?.id};
+
+  /// Collapsible sections (the archive mirrors) the reader opened.
+  final Set<String> _expanded = {};
+
+  @override
+  void didUpdateWidget(_Drawer old) {
+    super.didUpdateWidget(old);
+    if (widget.current != null) _open.add(widget.current!.id);
+  }
+
+  void _toggle(Set<String> set, String id) =>
+      setState(() => set.contains(id) ? set.remove(id) : set.add(id));
 
   @override
   Widget build(BuildContext context) {
-    final destinations = widget.destinations;
-    final selected = widget.selected;
-    final onSelect = widget.onSelect;
+    final t = AppScope.of(context).text;
     final theme = Theme.of(context);
-    Widget item(
-      String label,
-      IconData icon,
-      bool active,
-      VoidCallback onTap, {
+    final scheme = theme.colorScheme;
+
+    Widget row({
+      required String label,
+      IconData? icon,
+      required bool active,
+      required VoidCallback onTap,
       double indent = 0,
+      double height = 56,
       Widget? trailing,
+      TextStyle? style,
     }) => Padding(
-      padding: EdgeInsets.fromLTRB(12 + indent, 1, 12, 1),
+      padding: EdgeInsets.fromLTRB(16 + indent, 0, 12, 0),
       child: Material(
-        color: active
-            ? theme.colorScheme.secondaryContainer
-            : Colors.transparent,
+        color: active ? scheme.secondaryContainer : Colors.transparent,
         shape: const StadiumBorder(),
         child: InkWell(
           customBorder: const StadiumBorder(),
           onTap: onTap,
           child: SizedBox(
-            height: indent > 0 ? 44 : 56,
+            height: height,
             child: Row(
               children: [
                 const SizedBox(width: 16),
-                Icon(
-                  icon,
-                  fill: active ? 1 : 0,
-                  size: indent > 0 ? 20 : 24,
-                  color: active
-                      ? theme.colorScheme.onSecondaryContainer
-                      : theme.colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 12),
+                if (icon != null) ...[
+                  Icon(
+                    icon,
+                    fill: active ? 1 : 0,
+                    color: active
+                        ? scheme.onSecondaryContainer
+                        : scheme.onSurfaceVariant,
+                  ),
+                  const SizedBox(width: 12),
+                ],
                 Expanded(
                   child: Text(
                     label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelLarge?.copyWith(
+                    style: (style ?? theme.textTheme.labelLarge)?.copyWith(
                       color: active
-                          ? theme.colorScheme.onSecondaryContainer
-                          : theme.colorScheme.onSurfaceVariant,
-                      fontWeight: active ? FontWeight.w600 : FontWeight.w500,
+                          ? scheme.onSecondaryContainer
+                          : scheme.onSurfaceVariant,
                     ),
                   ),
                 ),
-                if (trailing != null) ...[
-                  IconTheme.merge(
-                    data: IconThemeData(
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
-                    child: trailing,
-                  ),
-                  const SizedBox(width: 16),
-                ],
+                ?trailing,
+                const SizedBox(width: 12),
               ],
             ),
           ),
         ),
       ),
     );
+
+    List<Widget> items(List<NavItem> list, double indent) => [
+      for (final item in list) ...[
+        row(
+          label: t(item.label),
+          icon: item.icon,
+          active: item.route == widget.route,
+          onTap: () => widget.onNavigate(item.route),
+          indent: indent,
+          height: 50,
+        ),
+        ...items(item.children, indent + 16),
+      ],
+    ];
+
+    Icon chevron(bool open) => Icon(
+      open
+          ? Symbols.keyboard_arrow_up_rounded
+          : Symbols.keyboard_arrow_down_rounded,
+      color: scheme.onSurfaceVariant,
+    );
+
     return ColoredBox(
-      color: theme.colorScheme.surfaceContainer,
+      color: scheme.surfaceContainer,
       child: SafeArea(
         child: Column(
           children: [
@@ -341,11 +279,21 @@ class _NavTreeState extends State<_NavTree> {
               height: ShellMetrics.topBar,
               child: Row(
                 children: [
-                  const SizedBox(width: 28),
+                  const SizedBox(width: 16),
+                  if (widget.modal)
+                    IconButton(
+                      tooltip: MaterialLocalizations.of(context)
+                          .closeButtonTooltip,
+                      onPressed: widget.onClose,
+                      icon: const Icon(Symbols.menu_open_rounded),
+                    )
+                  else
+                    const SizedBox(width: 8),
+                  const SizedBox(width: 4),
                   Image.asset(
                     'assets/brand/android-chrome-512x512.png',
-                    width: 28,
-                    height: 28,
+                    width: 32,
+                    height: 32,
                   ),
                   const SizedBox(width: 12),
                   Text('haneoka', style: theme.textTheme.titleLarge),
@@ -354,58 +302,61 @@ class _NavTreeState extends State<_NavTree> {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(vertical: 8),
                 children: [
-                  for (final destination in destinations) ...[
-                    item(
-                      destination.label,
-                      destination.icon,
-                      destination.entries.length == 1 &&
-                          destination.entries.first.id == selected,
-                      () => destination.entries.length == 1
-                          ? onSelect(destination.entries.first.id)
-                          : setState(() {
-                              if (!_open.remove(destination.id)) {
-                                _open.add(destination.id);
-                              }
-                            }),
-                      trailing: destination.entries.length == 1
+                  for (final destination in navDestinations) ...[
+                    row(
+                      label: t(destination.label),
+                      icon: destination.icon,
+                      active: widget.current?.id == destination.id,
+                      onTap: () {
+                        setState(() => _open.add(destination.id));
+                        widget.onNavigate(destination.route);
+                      },
+                      trailing: destination.sections.isEmpty
                           ? null
-                          : Icon(
-                              _open.contains(destination.id)
-                                  ? Symbols.expand_less_rounded
-                                  : Symbols.expand_more_rounded,
-                              size: 20,
+                          : InkResponse(
+                              onTap: () => _toggle(_open, destination.id),
+                              child: chevron(_open.contains(destination.id)),
                             ),
                     ),
-                    if (destination.entries.length > 1 &&
-                        _open.contains(destination.id))
-                      for (final entry in destination.entries)
-                        item(
-                          entry.label,
-                          entry.icon,
-                          entry.id == selected,
-                          () => onSelect(entry.id),
-                          indent: 16,
-                          trailing: entry.url == null
-                              ? null
-                              : const Icon(
-                                  Symbols.open_in_new_rounded,
-                                  size: 16,
-                                ),
-                        ),
+                    if (_open.contains(destination.id))
+                      for (final section in destination.sections) ...[
+                        if (section.collapsible)
+                          row(
+                            label: t(section.label),
+                            active: false,
+                            onTap: () => _toggle(_expanded, section.id),
+                            indent: 16,
+                            height: 48,
+                            style: theme.textTheme.titleSmall,
+                            trailing: chevron(_expanded.contains(section.id)),
+                          )
+                        else if (destination.sections.length > 1)
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(48, 12, 12, 8),
+                            child: Text(
+                              t(section.label),
+                              style: theme.textTheme.titleSmall,
+                            ),
+                          ),
+                        if (!section.collapsible ||
+                            _expanded.contains(section.id))
+                          ...items(section.items, 16),
+                      ],
                   ],
                 ],
               ),
             ),
             const NowPlaying(expanded: true),
-            item(
-              widget.settingsLabel,
-              Symbols.settings_rounded,
-              selected == 'settings',
-              widget.onSettings,
-            ),
-            const SizedBox(height: 12),
+            for (final item in utilityItems)
+              row(
+                label: t(item.label),
+                icon: item.icon,
+                active: widget.route == item.route,
+                onTap: () => widget.onNavigate(item.route),
+              ),
+            const SizedBox(height: 8),
           ],
         ),
       ),

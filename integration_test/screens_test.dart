@@ -3,11 +3,11 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:material_symbols_icons/symbols.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:haneoka/main.dart' as app;
 import 'package:haneoka/ui/tile.dart';
 import 'package:integration_test/integration_test.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 /// Walks the main screens against the live API and saves a picture of each.
 void main() {
@@ -33,101 +33,96 @@ void main() {
     File('$out/$name.png').writeAsBytesSync(bytes!.buffer.asUint8List());
   }
 
+  final tiles = find.descendant(
+    of: find.byType(Tile),
+    matching: find.byType(InkWell),
+  );
+
   Future<void> untilTiles(WidgetTester tester) async {
-    final tiles = find.descendant(
-      of: find.byWidgetPredicate((w) => w is Tile || w is Card),
-      matching: find.byType(InkWell),
-    );
     for (var i = 0; i < 160 && tiles.evaluate().isEmpty; i++) {
       await wait(tester, 0.25);
     }
+    await wait(tester, 3);
   }
 
   for (final (name, size) in [
     ('desktop', const Size(1280, 860)),
     ('phone', const Size(412, 915)),
   ]) {
+    final phone = name == 'phone';
+
+    /// Opens the drawer on phones, unfolds [destination] by its chevron when
+    /// [page] is not showing, and opens [page].
+    Future<void> go(
+      WidgetTester tester,
+      String page, {
+      String? destination,
+    }) async {
+      if (phone) {
+        await tester.tap(find.byIcon(Symbols.menu_rounded).first);
+        await wait(tester, 1);
+      }
+      if (destination != null && find.text(page).evaluate().isEmpty) {
+        await tester.tap(
+          find
+              .descendant(
+                of: find
+                    .ancestor(
+                      of: find.text(destination).first,
+                      matching: find.byType(Row),
+                    )
+                    .first,
+                matching: find.byType(InkResponse),
+              )
+              .last,
+        );
+        await wait(tester, 1);
+      }
+      await tester.tap(find.text(page).last);
+      await wait(tester, 1);
+    }
+
+    Future<void> openFirstTile(WidgetTester tester) async {
+      await tester.tap(tiles.first);
+      await wait(tester, 6);
+    }
+
     testWidgets('screens at $name width', (tester) async {
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
       await app.main();
       await untilTiles(tester);
-      await wait(tester, 4);
       await shot(tester, '$name-home');
-      if (name == 'phone') {
-        await tester.tap(find.byIcon(Symbols.menu_rounded).first);
-        await wait(tester, 1);
-      }
-      await tester.tap(find.text('Library').first);
-      await wait(tester, 1);
-      await tester.tap(find.text('Songs').last);
+      await go(tester, 'Songs', destination: 'Catalog');
       await untilTiles(tester);
-      await wait(tester, 4);
       await shot(tester, '$name-songs');
-      await tester.tap(
-        find
-            .descendant(
-              of: find.byWidgetPredicate((w) => w is Tile || w is Card),
-              matching: find.byType(InkWell),
-            )
-            .first,
-      );
-      await wait(tester, 6);
+      await openFirstTile(tester);
       await shot(tester, '$name-song');
       await tester.tap(find.byType(BackButton).first);
       await wait(tester, 1);
-      if (name == 'phone') {
+      if (phone) {
         await tester.tap(find.byIcon(Symbols.menu_rounded).first);
         await wait(tester, 1);
         await shot(tester, '$name-drawer');
+        await tester.tap(find.text('Characters').last);
+      } else {
+        await go(tester, 'Characters');
       }
-      await tester.tap(find.text('Characters').last);
       await untilTiles(tester);
-      await wait(tester, 3);
       await shot(tester, '$name-characters');
-      await tester.tap(
-        find
-            .descendant(
-              of: find.byWidgetPredicate((w) => w is Tile || w is Card),
-              matching: find.byType(InkWell),
-            )
-            .first,
-      );
-      await wait(tester, 6);
+      await openFirstTile(tester);
       await shot(tester, '$name-character');
       await tester.tap(find.byType(BackButton).first);
       await wait(tester, 1);
-      if (name == 'phone') {
-        await tester.tap(find.byIcon(Symbols.menu_rounded).first);
-        await wait(tester, 1);
-      }
-      await tester.tap(find.text('Members').last);
+      await go(tester, 'Members');
       await untilTiles(tester);
-      await wait(tester, 3);
       await shot(tester, '$name-cards');
-      await tester.tap(
-        find
-            .descendant(
-              of: find.byWidgetPredicate((w) => w is Tile || w is Card),
-              matching: find.byType(InkWell),
-            )
-            .first,
-      );
-      await wait(tester, 6);
+      await openFirstTile(tester);
       await shot(tester, '$name-card');
       await tester.tap(find.byType(BackButton).first);
       await wait(tester, 1);
-      if (name == 'phone') {
-        await tester.tap(find.byIcon(Symbols.menu_rounded).first);
-        await wait(tester, 1);
-        await tester.tap(find.text('Library').first);
-        await wait(tester, 1);
-        await tester.tap(find.text('Tools').first);
-        await wait(tester, 1);
-        await shot(tester, '$name-drawer-tools');
-      }
-      await tester.tap(find.text('Settings').last);
-      await wait(tester, 3);
+      await go(tester, 'Settings');
+      await wait(tester, 2);
       await shot(tester, '$name-settings');
     });
   }

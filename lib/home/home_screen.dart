@@ -220,7 +220,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Symbols.library_music_rounded,
                   title: t('home.dashboard.latestSongs', 'Latest songs'),
                   viewAll: t('home.dashboard.viewAll', 'View all'),
-                  onViewAll: () => widget.onBrowse?.call('catalog/songs'),
+                  onViewAll: () => widget.onBrowse?.call('/catalog/songs'),
                   child: _Rail(
                     width: 148,
                     aspectRatio: 1,
@@ -253,7 +253,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Symbols.style_rounded,
                   title: t('home.dashboard.latestCards', 'Latest cards'),
                   viewAll: t('home.dashboard.viewAll', 'View all'),
-                  onViewAll: () => widget.onBrowse?.call('catalog/cards'),
+                  onViewAll: () =>
+                      widget.onBrowse?.call('/catalog/member-cards'),
                   child: _Rail(
                     width: 132,
                     aspectRatio: 3 / 4,
