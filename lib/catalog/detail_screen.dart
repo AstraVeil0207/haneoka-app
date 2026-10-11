@@ -74,7 +74,13 @@ class _DetailScreenState extends State<DetailScreen> {
       builder: (context, snapshot) {
         final record = snapshot.data?.$1 ?? widget.summary;
         final visuals = snapshot.data?.$2;
-        final kit = CatalogKit(widget.profile, t, state.api, visuals);
+        final kit = CatalogKit(
+          widget.profile,
+          t,
+          state.api,
+          visuals,
+          songTitles: state.songTitle,
+        );
         final page = _Page(kit, record, this);
         return ShellPage(
           title: kit.title(record),
@@ -272,6 +278,15 @@ class _Page {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             DifficultyChips(
+              captions: {
+                if (AppScope.of(context).difficultyEstimates)
+                  for (final c in charts)
+                    if (readPath(c, 'difficultyEstimate.estimatedConstant')
+                        case final num value)
+                      (c['difficulty'] as num).toInt(): value.toStringAsFixed(
+                        1,
+                      ),
+              },
               selected: chosen,
               onSelected: (index) =>
                   host.refresh(() => host._difficulty = index),

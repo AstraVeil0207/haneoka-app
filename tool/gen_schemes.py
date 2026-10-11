@@ -41,5 +41,22 @@ for name in dict.fromkeys(n for n, _ in blocks):
     if len(pair) == 2:
         out.append(f"  '{name}': (\n    {pair[0]},\n    {pair[1]},\n  ),")
 out.append("};")
+# The settings swatches (`--md-ref-band-N`, its container and on-container),
+# per brightness: (light, dark) triples of key colour, container and accent.
+refs = {}
+for selector, body in re.findall(r"([^{}]+)\{([^{}]*)\}", css):
+    if not selector.strip().startswith(":root") or "data-seed" in selector:
+        continue
+    dark = "dark" in selector
+    for band, kind, value in re.findall(r"--md-ref-(band-\d)(-container|-on-container)?:\s*(#[0-9a-fA-F]{6})", body):
+        refs.setdefault((band, dark), {})[kind or "key"] = value
+out += ["", "/// Theme colour swatches: key, container and on-container, (light, dark).", "const bandSwatches = <String, (List<Color>, List<Color>)>{"]
+for band in sorted({b for b, _ in refs}):
+    pair = []
+    for dark in (False, True):
+        v = refs.get((band, dark), {})
+        pair.append("[" + ", ".join(f"Color(0xFF{v[k][1:].upper()})" for k in ("key", "-container", "-on-container") if k in v) + "]")
+    out.append(f"  '{band}': ({pair[0]}, {pair[1]}),")
+out.append("};")
 Path(sys.argv[2]).write_text("\n".join(out) + "\n")
 print(sorted({n for n, _ in blocks}))

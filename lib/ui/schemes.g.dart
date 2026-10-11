@@ -460,3 +460,27 @@ const haneokaSchemes = <String, (ColorScheme, ColorScheme)>{
     ),
   ),
 };
+
+/// Theme colour swatches: key, container and on-container, (light, dark).
+const bandSwatches = <String, (List<Color>, List<Color>)>{
+  'band-1': (
+    [Color(0xFF3388BB), Color(0xFFC9E6FF), Color(0xFF00344E)],
+    [Color(0xFF3388BB), Color(0xFF004B6F), Color(0xFFC9E6FF)],
+  ),
+  'band-2': (
+    [Color(0xFF881144), Color(0xFFFFD9E1), Color(0xFF65002F)],
+    [Color(0xFF881144), Color(0xFF891345), Color(0xFFFFD9E1)],
+  ),
+  'band-3': (
+    [Color(0xFFFF7788), Color(0xFFFFDADB), Color(0xFF67001D)],
+    [Color(0xFFFF7788), Color(0xFF871C32), Color(0xFFFFDADB)],
+  ),
+  'band-4': (
+    [Color(0xFFAA22EE), Color(0xFFF6D9FF), Color(0xFF500075)],
+    [Color(0xFFAA22EE), Color(0xFF7200A4), Color(0xFFF6D9FF)],
+  ),
+  'band-5': (
+    [Color(0xFFFFAA33), Color(0xFFFFDDB9), Color(0xFF472A00)],
+    [Color(0xFFFFAA33), Color(0xFF663E00), Color(0xFFFFDDB9)],
+  ),
+};

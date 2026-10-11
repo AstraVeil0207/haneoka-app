@@ -61,7 +61,7 @@ class _SongsScreenState extends State<SongsScreen> {
         final data = snapshot.data;
         final songs = data?.$1;
         final visuals = data?.$2;
-        final song = _SongText(t, visuals, state.api);
+        final song = _SongText(t, visuals, state.api, state.songTitle);
         return BrowseScreen(
           title: t('navigation.songs', 'Songs'),
           items: songs,
@@ -84,7 +84,10 @@ class _SongsScreenState extends State<SongsScreen> {
             onOpen: () => widget.onOpen?.call(context, item),
           ),
           columns: [
-            TableColumn(t.label('title'), (item) => t.text(item['musicTitle'])),
+            TableColumn(
+              t.label('title'),
+              (item) => state.songTitle(item['musicTitle']),
+            ),
             TableColumn(t.label('band'), song.artist),
             TableColumn(t.label('musicType'), song.attribute),
             TableColumn(t.label('category'), song.category),
@@ -165,7 +168,7 @@ class _SongsScreenState extends State<SongsScreen> {
             SortSpec(
               'title',
               t.label('title'),
-              (item) => t.text(item['musicTitle']),
+              (item) => state.songTitle(item['musicTitle']),
             ),
             SortSpec(
               'musicType',
@@ -196,10 +199,13 @@ class _SongsScreenState extends State<SongsScreen> {
 
 /// How a song reads: title, artist line, attribute, genre, level, release.
 class _SongText {
-  _SongText(this.t, this.visuals, this.api);
+  _SongText(this.t, this.visuals, this.api, this.title);
   final SiteText t;
   final CatalogVisuals? visuals;
   final HaneokaApi api;
+
+  /// The reader's song-title choice.
+  final String Function(Object?) title;
 
   List<int> bandIds(Entry song) => [
     for (final id in (song['bandIds'] as List? ?? [song['bandId']]))
@@ -266,7 +272,7 @@ class _SongText {
     return Track(
       id: '${song['musicId']}',
       url: api.asset(url).toString(),
-      title: t.text(song['musicTitle']),
+      title: title(song['musicTitle']),
       subtitle: artist(song),
       artwork: jackets(song).lastOrNull,
     );
@@ -286,7 +292,7 @@ class _SongTile extends StatelessWidget {
     final category = text.category(song);
     final track = text.track(song);
     return Tile(
-      title: text.t.text(song['musicTitle']),
+      title: AppScope.of(context).songTitle(song['musicTitle']),
       subtitle: text.artist(song),
       adornments: text.emblems(song),
       images: text.jackets(song),
@@ -346,7 +352,7 @@ class _SongRow extends StatelessWidget {
         ),
       ),
       title: Text(
-        text.t.text(song['musicTitle']),
+        AppScope.of(context).songTitle(song['musicTitle']),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),

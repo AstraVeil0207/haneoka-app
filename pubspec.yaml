@@ -18,6 +18,7 @@ dependencies:
   flutter_cache_manager: ^3.4.5
   flutter_localizations:
     sdk: flutter
+  flutter_svg: ^2.3.0
   http: ^1.6.0
   intl: any
   material_symbols_icons: ^4.2960.0
@@ -43,6 +44,7 @@ flutter:
   assets:
     - assets/i18n/
     - assets/brand/
+    - assets/settings/
   fonts:
     - family: Roboto
       fonts:

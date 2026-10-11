@@ -46,6 +46,10 @@ class SiteText {
     'ja': ['ja', 'en'],
   };
 
+  /// Game text read as [locale] would, with that locale's fallbacks.
+  String textIn(Object? value, String locale) =>
+      SiteText._(locale, _messages).text(value);
+
   /// Game text: a five-slot tuple, a locale map, or plain text.
   String text(Object? value) {
     if (value == null) return '';

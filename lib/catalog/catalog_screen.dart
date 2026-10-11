@@ -177,7 +177,10 @@ class _CatalogScreenState extends State<CatalogScreen> {
 /// What a catalogue entry shows, by presentation; the website's
 /// `tileDescription`, `tileAdornment`, `cardTileOptions` and facet groups.
 class CatalogKit {
-  CatalogKit(this.profile, this.t, this.api, this.visuals);
+  CatalogKit(this.profile, this.t, this.api, this.visuals, {this.songTitles});
+
+  /// The reader's song-title choice (`AppState.songTitle`).
+  final String Function(Object?)? songTitles;
   final CatalogProfile profile;
   final SiteText t;
   final HaneokaApi api;
@@ -191,7 +194,10 @@ class CatalogKit {
   String id(Entry item) => '${firstOf(item, profile.id) ?? item['_key']}';
 
   String title(Entry item) {
-    final value = plain(firstOf(item, profile.title));
+    final raw = firstOf(item, profile.title);
+    final value = kind == Presentation.song && songTitles != null
+        ? songTitles!(raw)
+        : plain(raw);
     return value.isEmpty ? '—' : value;
   }
 

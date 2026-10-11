@@ -136,6 +136,7 @@ class _HomeScreenState extends State<HomeScreen> {
             t,
             state.api,
             data.visuals,
+            songTitles: state.songTitle,
           );
           final songs = data.rows('songs')
             ..sort(

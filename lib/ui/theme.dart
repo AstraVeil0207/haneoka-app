@@ -66,12 +66,17 @@ TextTheme _typescale(Color color) {
   );
 }
 
-ThemeData haneokaTheme(Brightness brightness, {String seed = 'haneoka'}) {
+ThemeData haneokaTheme(
+  Brightness brightness, {
+  String seed = 'haneoka',
+  bool compact = false,
+}) {
   final (light, dark) = haneokaSchemes[seed] ?? haneokaSchemes['haneoka']!;
   final scheme = brightness == Brightness.dark ? dark : light;
   return ThemeData(
     colorScheme: scheme,
     useMaterial3: true,
+    visualDensity: compact ? VisualDensity.compact : VisualDensity.standard,
     fontFamily: appFont,
     fontFamilyFallback: appFontFallback,
     textTheme: _typescale(scheme.onSurface),

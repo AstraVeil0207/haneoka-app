@@ -193,7 +193,11 @@ class DifficultyChips extends StatelessWidget {
     required this.levels,
     this.selected,
     this.onSelected,
+    this.captions = const {},
   });
+
+  /// A small line under a chip's level: the estimated constant.
+  final Map<int, String> captions;
 
   /// (difficulty index, name, level).
   final List<(int, String, String)> levels;
@@ -260,6 +264,16 @@ class DifficultyChips extends StatelessWidget {
                               color: checked ? const Color(0xFF121318) : null,
                             ),
                           ),
+                          if (captions[index] case final caption?)
+                            Text(
+                              caption,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontFeatures: const [
+                                  FontFeature.tabularFigures(),
+                                ],
+                                color: checked ? const Color(0xFF121318) : null,
+                              ),
+                            ),
                         ],
                       ),
                     ),

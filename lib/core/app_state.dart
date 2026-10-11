@@ -14,7 +14,11 @@ class AppState extends ChangeNotifier {
       themeMode = ThemeMode.values.byName(
         _prefs.getString('themeMode') ?? ThemeMode.system.name,
       ),
-      seed = _prefs.getString('seed') ?? 'haneoka';
+      seed = _prefs.getString('seed') ?? 'haneoka',
+      compact = _prefs.getBool('compact') ?? false,
+      japaneseTitles = _prefs.getBool('japaneseTitles') ?? true,
+      difficultyEstimates = _prefs.getBool('difficultyEstimates') ?? false,
+      spoilers = _prefs.getBool('spoilers') ?? false;
   final SharedPreferences _prefs;
   String server;
   SiteText text;
@@ -24,6 +28,31 @@ class AppState extends ChangeNotifier {
   /// The website's appearance: light, dark or the system's, and the theme colour.
   ThemeMode themeMode;
   String seed;
+
+  /// The website's display density, song-title and difficulty switches.
+  bool compact;
+  bool japaneseTitles;
+  bool difficultyEstimates;
+  bool spoilers;
+
+  Future<void> setFlag(String key, bool value) async {
+    switch (key) {
+      case 'compact':
+        compact = value;
+      case 'japaneseTitles':
+        japaneseTitles = value;
+      case 'difficultyEstimates':
+        difficultyEstimates = value;
+      case 'spoilers':
+        spoilers = value;
+    }
+    await _prefs.setBool(key, value);
+    notifyListeners();
+  }
+
+  /// A song's title: Japanese when the reader asked for it (`songTitle`).
+  String songTitle(Object? value) =>
+      japaneseTitles ? text.textIn(value, 'ja') : text.text(value);
 
   Future<void> setThemeMode(ThemeMode value) async {
     themeMode = value;
