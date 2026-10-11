@@ -490,4 +490,66 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get noAccountsYet => 'No accounts yet';
+
+  @override
+  String get haneokaAccount => 'Haneoka account';
+
+  @override
+  String get haneokaAccountSummary =>
+      'Sign in to show imported players on your public profile.';
+
+  @override
+  String get signIn => 'Sign in';
+
+  @override
+  String get signOut => 'Sign out';
+
+  @override
+  String get signInFailed => 'Could not sign in';
+
+  @override
+  String get profileLink => 'Public profile';
+
+  @override
+  String get linkToProfile => 'Link to my account';
+
+  @override
+  String get linkSignInFirst =>
+      'Sign in to your Haneoka account to link this player.';
+
+  @override
+  String get linkExplain =>
+      'Only the player ID, name, rank, rating, collection counts and song clears are sent. The save itself stays on this device.';
+
+  @override
+  String get linked => 'Linked';
+
+  @override
+  String get showOnProfile => 'Show on my public profile';
+
+  @override
+  String get syncNow => 'Update';
+
+  @override
+  String get unlink => 'Unlink';
+
+  @override
+  String get unlinkConfirm => 'Remove this player from your Haneoka account?';
+
+  @override
+  String get linkedElsewhere => 'This player is linked to another account';
+
+  @override
+  String get linkFailed => 'Could not update the link';
+
+  @override
+  String get linkUpdated => 'Link updated';
+
+  @override
+  String syncedOn(String date) {
+    return 'Updated $date';
+  }
+
+  @override
+  String get openProfile => 'Open profile';
 }

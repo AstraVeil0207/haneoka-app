@@ -1014,6 +1014,120 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No accounts yet'**
   String get noAccountsYet;
+
+  /// No description provided for @haneokaAccount.
+  ///
+  /// In en, this message translates to:
+  /// **'Haneoka account'**
+  String get haneokaAccount;
+
+  /// No description provided for @haneokaAccountSummary.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to show imported players on your public profile.'**
+  String get haneokaAccountSummary;
+
+  /// No description provided for @signIn.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in'**
+  String get signIn;
+
+  /// No description provided for @signOut.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign out'**
+  String get signOut;
+
+  /// No description provided for @signInFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not sign in'**
+  String get signInFailed;
+
+  /// No description provided for @profileLink.
+  ///
+  /// In en, this message translates to:
+  /// **'Public profile'**
+  String get profileLink;
+
+  /// No description provided for @linkToProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Link to my account'**
+  String get linkToProfile;
+
+  /// No description provided for @linkSignInFirst.
+  ///
+  /// In en, this message translates to:
+  /// **'Sign in to your Haneoka account to link this player.'**
+  String get linkSignInFirst;
+
+  /// No description provided for @linkExplain.
+  ///
+  /// In en, this message translates to:
+  /// **'Only the player ID, name, rank, rating, collection counts and song clears are sent. The save itself stays on this device.'**
+  String get linkExplain;
+
+  /// No description provided for @linked.
+  ///
+  /// In en, this message translates to:
+  /// **'Linked'**
+  String get linked;
+
+  /// No description provided for @showOnProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Show on my public profile'**
+  String get showOnProfile;
+
+  /// No description provided for @syncNow.
+  ///
+  /// In en, this message translates to:
+  /// **'Update'**
+  String get syncNow;
+
+  /// No description provided for @unlink.
+  ///
+  /// In en, this message translates to:
+  /// **'Unlink'**
+  String get unlink;
+
+  /// No description provided for @unlinkConfirm.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove this player from your Haneoka account?'**
+  String get unlinkConfirm;
+
+  /// No description provided for @linkedElsewhere.
+  ///
+  /// In en, this message translates to:
+  /// **'This player is linked to another account'**
+  String get linkedElsewhere;
+
+  /// No description provided for @linkFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not update the link'**
+  String get linkFailed;
+
+  /// No description provided for @linkUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'Link updated'**
+  String get linkUpdated;
+
+  /// No description provided for @syncedOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Updated {date}'**
+  String syncedOn(String date);
+
+  /// No description provided for @openProfile.
+  ///
+  /// In en, this message translates to:
+  /// **'Open profile'**
+  String get openProfile;
 }
 
 class _AppLocalizationsDelegate

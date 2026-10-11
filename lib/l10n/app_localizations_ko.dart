@@ -486,4 +486,64 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get noAccountsYet => '아직 계정이 없습니다';
+
+  @override
+  String get haneokaAccount => 'Haneoka 계정';
+
+  @override
+  String get haneokaAccountSummary => '로그인하면 가져온 플레이어를 공개 프로필에 표시할 수 있습니다.';
+
+  @override
+  String get signIn => '로그인';
+
+  @override
+  String get signOut => '로그아웃';
+
+  @override
+  String get signInFailed => '로그인하지 못했습니다';
+
+  @override
+  String get profileLink => '공개 프로필';
+
+  @override
+  String get linkToProfile => '내 계정에 연결';
+
+  @override
+  String get linkSignInFirst => '이 플레이어를 연결하려면 Haneoka 계정에 로그인하세요.';
+
+  @override
+  String get linkExplain =>
+      '플레이어 ID, 이름, 랭크, 레이팅, 보유 수, 곡 클리어 수만 전송됩니다. 저장 데이터는 이 기기에 남습니다.';
+
+  @override
+  String get linked => '연결됨';
+
+  @override
+  String get showOnProfile => '공개 프로필에 표시';
+
+  @override
+  String get syncNow => '업데이트';
+
+  @override
+  String get unlink => '연결 해제';
+
+  @override
+  String get unlinkConfirm => '이 플레이어를 Haneoka 계정에서 제거할까요?';
+
+  @override
+  String get linkedElsewhere => '이 플레이어는 다른 계정에 연결되어 있습니다';
+
+  @override
+  String get linkFailed => '연결을 업데이트하지 못했습니다';
+
+  @override
+  String get linkUpdated => '연결을 업데이트했습니다';
+
+  @override
+  String syncedOn(String date) {
+    return '$date 업데이트';
+  }
+
+  @override
+  String get openProfile => '프로필 열기';
 }

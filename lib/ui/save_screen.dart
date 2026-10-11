@@ -1,3 +1,4 @@
+
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -8,6 +9,7 @@ import 'package:intl/intl.dart';
 import 'package:material_new_shapes/material_new_shapes.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+import '../account/account_widgets.dart';
 import '../catalog/catalog_screen.dart';
 import '../catalog/profiles.dart';
 import '../catalog/visuals.dart';
@@ -891,6 +893,11 @@ class _Profile extends StatelessWidget {
                       ],
                     ),
                   ),
+                section(
+                  Symbols.public_rounded,
+                  t.profileLink,
+                  PlayerLink(save: save),
+                ),
                 section(
                   Symbols.ios_share_rounded,
                   t.exportsTitle,

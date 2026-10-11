@@ -485,6 +485,65 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get noAccountsYet => '还没有导入账号';
+
+  @override
+  String get haneokaAccount => 'Haneoka 账号';
+
+  @override
+  String get haneokaAccountSummary => '登录后可将导入的玩家展示在公开主页上。';
+
+  @override
+  String get signIn => '登录';
+
+  @override
+  String get signOut => '退出登录';
+
+  @override
+  String get signInFailed => '无法登录';
+
+  @override
+  String get profileLink => '公开主页';
+
+  @override
+  String get linkToProfile => '关联到我的账号';
+
+  @override
+  String get linkSignInFirst => '登录 Haneoka 账号后即可关联此玩家。';
+
+  @override
+  String get linkExplain => '只会上传玩家 ID、名称、等级、评级、持有数量和歌曲通关数，存档本身仅保存在本设备。';
+
+  @override
+  String get linked => '已关联';
+
+  @override
+  String get showOnProfile => '在公开主页展示';
+
+  @override
+  String get syncNow => '更新';
+
+  @override
+  String get unlink => '解除关联';
+
+  @override
+  String get unlinkConfirm => '要将此玩家从 Haneoka 账号中移除吗？';
+
+  @override
+  String get linkedElsewhere => '此玩家已关联到其他账号';
+
+  @override
+  String get linkFailed => '无法更新关联';
+
+  @override
+  String get linkUpdated => '关联已更新';
+
+  @override
+  String syncedOn(String date) {
+    return '$date 更新';
+  }
+
+  @override
+  String get openProfile => '打开主页';
 }
 
 /// The translations for Chinese, as used in Taiwan (`zh_TW`).
@@ -967,4 +1026,63 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get noAccountsYet => '還沒有匯入帳號';
+
+  @override
+  String get haneokaAccount => 'Haneoka 帳號';
+
+  @override
+  String get haneokaAccountSummary => '登入後可將匯入的玩家展示在公開個人頁面上。';
+
+  @override
+  String get signIn => '登入';
+
+  @override
+  String get signOut => '登出';
+
+  @override
+  String get signInFailed => '無法登入';
+
+  @override
+  String get profileLink => '公開個人頁面';
+
+  @override
+  String get linkToProfile => '關聯到我的帳號';
+
+  @override
+  String get linkSignInFirst => '登入 Haneoka 帳號後即可關聯此玩家。';
+
+  @override
+  String get linkExplain => '只會上傳玩家 ID、名稱、等級、評級、持有數量和歌曲通關數，存檔本身僅保存在本裝置。';
+
+  @override
+  String get linked => '已關聯';
+
+  @override
+  String get showOnProfile => '在公開個人頁面展示';
+
+  @override
+  String get syncNow => '更新';
+
+  @override
+  String get unlink => '解除關聯';
+
+  @override
+  String get unlinkConfirm => '要將此玩家從 Haneoka 帳號中移除嗎？';
+
+  @override
+  String get linkedElsewhere => '此玩家已關聯到其他帳號';
+
+  @override
+  String get linkFailed => '無法更新關聯';
+
+  @override
+  String get linkUpdated => '關聯已更新';
+
+  @override
+  String syncedOn(String date) {
+    return '$date 更新';
+  }
+
+  @override
+  String get openProfile => '開啟個人頁面';
 }

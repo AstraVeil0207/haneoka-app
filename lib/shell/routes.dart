@@ -85,6 +85,9 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/catalog/events/tracker') return const EventTrackerScreen();
   if (route == '/player-profile') return const PlayerProfileScreen();
   if (route == '/account') return const AccountsScreen();
+  if (RegExp(r'^/account/(jp|intl)/(\d+)$').firstMatch(route) case final m?) {
+    return StoredPlayerScreen(server: m[1]!, profileId: m[2]!);
+  }
   if (route == '/about') return const AboutScreen();
   if (route == '/song-progress') return const SongProgressScreen();
   if (route == '/catalog/help') return const HelpScreen();

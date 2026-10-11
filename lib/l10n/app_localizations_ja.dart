@@ -485,4 +485,64 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get noAccountsYet => 'まだアカウントがありません';
+
+  @override
+  String get haneokaAccount => 'Haneoka アカウント';
+
+  @override
+  String get haneokaAccountSummary => 'サインインすると、取り込んだプレイヤーを公開プロフィールに表示できます。';
+
+  @override
+  String get signIn => 'サインイン';
+
+  @override
+  String get signOut => 'サインアウト';
+
+  @override
+  String get signInFailed => 'サインインできませんでした';
+
+  @override
+  String get profileLink => '公開プロフィール';
+
+  @override
+  String get linkToProfile => 'アカウントに連携';
+
+  @override
+  String get linkSignInFirst => 'このプレイヤーを連携するには Haneoka アカウントにサインインしてください。';
+
+  @override
+  String get linkExplain =>
+      '送信されるのはプレイヤー ID、名前、ランク、レーティング、所持数、楽曲クリア数のみです。セーブデータ自体はこの端末に残ります。';
+
+  @override
+  String get linked => '連携済み';
+
+  @override
+  String get showOnProfile => '公開プロフィールに表示';
+
+  @override
+  String get syncNow => '更新';
+
+  @override
+  String get unlink => '連携を解除';
+
+  @override
+  String get unlinkConfirm => 'このプレイヤーを Haneoka アカウントから外しますか？';
+
+  @override
+  String get linkedElsewhere => 'このプレイヤーは別のアカウントに連携されています';
+
+  @override
+  String get linkFailed => '連携を更新できませんでした';
+
+  @override
+  String get linkUpdated => '連携を更新しました';
+
+  @override
+  String syncedOn(String date) {
+    return '$date 更新';
+  }
+
+  @override
+  String get openProfile => 'プロフィールを開く';
 }

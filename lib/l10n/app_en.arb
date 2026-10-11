@@ -193,5 +193,31 @@
   "rawData": "Raw data",
   "copyId": "Copy ID",
   "tutorialDone": "Started",
-  "noAccountsYet": "No accounts yet"
+  "noAccountsYet": "No accounts yet",
+  "haneokaAccount": "Haneoka account",
+  "haneokaAccountSummary": "Sign in to show imported players on your public profile.",
+  "signIn": "Sign in",
+  "signOut": "Sign out",
+  "signInFailed": "Could not sign in",
+  "profileLink": "Public profile",
+  "linkToProfile": "Link to my account",
+  "linkSignInFirst": "Sign in to your Haneoka account to link this player.",
+  "linkExplain": "Only the player ID, name, rank, rating, collection counts and song clears are sent. The save itself stays on this device.",
+  "linked": "Linked",
+  "showOnProfile": "Show on my public profile",
+  "syncNow": "Update",
+  "unlink": "Unlink",
+  "unlinkConfirm": "Remove this player from your Haneoka account?",
+  "linkedElsewhere": "This player is linked to another account",
+  "linkFailed": "Could not update the link",
+  "linkUpdated": "Link updated",
+  "syncedOn": "Updated {date}",
+  "@syncedOn": {
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "openProfile": "Open profile"
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -7,6 +8,8 @@ import 'package:intl/intl.dart';
 import 'package:material_new_shapes/material_new_shapes.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+import '../account/account_widgets.dart';
+import '../account/haneoka_account.dart';
 import '../core/app_state.dart';
 import '../l10n/app_localizations.dart';
 import '../save/account_store.dart';
@@ -91,6 +94,7 @@ class _ImportScreenState extends State<ImportScreen> {
     }
     for (final save in collector.saves) {
       await AccountStore.instance.put(save);
+      unawaited(HaneokaAccount.instance.syncIfLinked(save));
     }
     if (!mounted) return;
     if (collector.saves.length == 1) {
@@ -607,6 +611,8 @@ class _AccountsScreenState extends State<AccountsScreen> {
           return ListView(
             padding: pagePadding(context),
             children: [
+              const HaneokaAccountCard(),
+              const SizedBox(height: 24),
               Text(
                 t.importedAccounts,
                 style: theme.textTheme.titleMedium?.copyWith(
@@ -669,6 +675,42 @@ class _AccountsScreenState extends State<AccountsScreen> {
       ),
     );
   }
+}
+
+/// An imported player opened by address (`/account/{server}/{id}`).
+class StoredPlayerScreen extends StatefulWidget {
+  const StoredPlayerScreen({
+    super.key,
+    required this.server,
+    required this.profileId,
+  });
+  final String server;
+  final String profileId;
+  @override
+  State<StoredPlayerScreen> createState() => _StoredPlayerScreenState();
+}
+
+class _StoredPlayerScreenState extends State<StoredPlayerScreen> {
+  @override
+  void initState() {
+    super.initState();
+    AccountStore.instance.load();
+  }
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: AccountStore.instance,
+    builder: (context, _) {
+      final save = AccountStore.instance.saves
+          .where(
+            (s) =>
+                s.release?.server == widget.server &&
+                s.profileId == widget.profileId,
+          )
+          .firstOrNull;
+      return save == null ? const AccountsScreen() : SaveScreen(save: save);
+    },
+  );
 }
 
 /// A player as one card: name, version emblem, rank and ID, last saved.
