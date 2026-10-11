@@ -131,3 +131,52 @@ class _HubLinkState extends State<HubLink> {
     );
   }
 }
+
+/// Clips to one Material 3 Expressive shape, scaled to the child.
+class PolygonClipper extends CustomClipper<Path> {
+  PolygonClipper(this.shape);
+  final RoundedPolygon shape;
+
+  @override
+  Path getClip(Size size) => shape.toPath().transform(
+    Matrix4.diagonal3Values(size.width, size.height, 1).storage,
+  );
+
+  @override
+  bool shouldReclip(PolygonClipper old) => old.shape != shape;
+}
+
+/// An icon on a shaped container (`.shape-*` in the website's styles).
+class ShapedIcon extends StatelessWidget {
+  const ShapedIcon({
+    super.key,
+    required this.shape,
+    required this.child,
+    this.size = 56,
+    this.color,
+    this.foreground,
+  });
+  final RoundedPolygon shape;
+  final Widget child;
+  final double size;
+  final Color? color;
+  final Color? foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ClipPath(
+      clipper: PolygonClipper(shape),
+      child: Container(
+        width: size,
+        height: size,
+        color: color ?? scheme.secondaryContainer,
+        alignment: Alignment.center,
+        child: IconTheme.merge(
+          data: IconThemeData(color: foreground ?? scheme.onSecondaryContainer),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
