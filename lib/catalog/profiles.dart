@@ -83,10 +83,10 @@ const catalogProfiles = <CatalogProfile>[
     detail: ['kind', 'startAt', 'endAt'],
     aspectRatio: 16 / 9,
 
-    defaultSort: 'start',
     id: ['id'],
     title: ['title'],
     image: ['image'],
+    defaultSort: 'release',
   ),
   CatalogProfile(
     resource: 'characters',
@@ -108,9 +108,9 @@ const catalogProfiles = <CatalogProfile>[
     minWidth: 148,
     aspectRatio: 3 / 4,
 
+    small: true,
     defaultSort: 'order',
     descending: false,
-    small: true,
   ),
   CatalogProfile(
     resource: 'cards',
@@ -158,8 +158,8 @@ const catalogProfiles = <CatalogProfile>[
     image: ['thumbnail', 'image'],
     detail: ['subTitle', 'characterIds', 'publicStartAt'],
     minWidth: 240,
-    defaultSort: 'release',
     title: ['title', 'name'],
+    defaultSort: 'release',
   ),
   CatalogProfile(
     resource: 'gacha',
@@ -169,10 +169,10 @@ const catalogProfiles = <CatalogProfile>[
     document: 'entries',
     detail: ['category', 'startAt', 'endAt'],
     aspectRatio: 16 / 9,
-    defaultSort: 'start',
     id: ['id'],
     title: ['title'],
     image: ['image'],
+    defaultSort: 'release',
   ),
   CatalogProfile(
     resource: 'login-campaigns',
@@ -181,11 +181,11 @@ const catalogProfiles = <CatalogProfile>[
     presentation: Presentation.system,
     document: 'entries',
     aspectRatio: 16 / 9,
-    defaultSort: 'start',
     detail: ['kind', 'startAt', 'endAt'],
     id: ['id'],
     title: ['title'],
     image: ['image'],
+    defaultSort: 'release',
   ),
   CatalogProfile(
     resource: 'missions',
@@ -206,6 +206,7 @@ const catalogProfiles = <CatalogProfile>[
     id: ['id'],
     title: ['title'],
     image: ['image'],
+    defaultSort: 'release',
   ),
   CatalogProfile(
     resource: 'tgw-card',
@@ -227,6 +228,8 @@ const catalogProfiles = <CatalogProfile>[
     id: ['id'],
     title: ['title'],
     image: ['image'],
+    defaultSort: 'availability',
+    descending: false,
   ),
   CatalogProfile(
     resource: 'exchange',
@@ -235,11 +238,12 @@ const catalogProfiles = <CatalogProfile>[
     presentation: Presentation.system,
     document: 'entries',
     aspectRatio: 16 / 9,
-    defaultSort: 'start',
     detail: ['category', 'startAt', 'endAt'],
     id: ['id'],
     title: ['title'],
     image: ['image'],
+    defaultSort: 'availability',
+    descending: false,
   ),
   CatalogProfile(
     resource: 'stamps',
@@ -252,6 +256,7 @@ const catalogProfiles = <CatalogProfile>[
     small: true,
     title: ['name', 'title'],
     image: ['image', 'thumbnail'],
+    defaultSort: 'release',
   ),
   CatalogProfile(
     resource: 'stickers',
@@ -265,6 +270,7 @@ const catalogProfiles = <CatalogProfile>[
     small: true,
     title: ['name', 'title'],
     image: ['image'],
+    defaultSort: 'id',
   ),
   CatalogProfile(
     resource: 'backgrounds',
@@ -278,6 +284,7 @@ const catalogProfiles = <CatalogProfile>[
 
     detail: ['description'],
     title: ['name', 'title'],
+    defaultSort: 'title',
   ),
   CatalogProfile(
     resource: 'items',
@@ -288,11 +295,11 @@ const catalogProfiles = <CatalogProfile>[
     document: 'items',
     minWidth: 132,
     small: true,
-    defaultSort: 'order',
-    descending: false,
     detail: ['itemTypeName', 'max'],
     title: ['name', 'title'],
     image: ['image', 'thumbnail'],
+    defaultSort: 'id',
+    descending: false,
   ),
   CatalogProfile(
     resource: 'band-items',
@@ -303,11 +310,11 @@ const catalogProfiles = <CatalogProfile>[
     document: 'items',
     minWidth: 132,
     small: true,
-    defaultSort: 'order',
-    descending: false,
     detail: ['bandId'],
     title: ['name', 'title'],
     image: ['image', 'icon', 'thumbnail'],
+    defaultSort: 'order',
+    descending: false,
   ),
   CatalogProfile(
     resource: 'real-lives',
@@ -316,11 +323,11 @@ const catalogProfiles = <CatalogProfile>[
     presentation: Presentation.system,
     document: 'entries',
     aspectRatio: 16 / 9,
-    defaultSort: 'start',
     detail: ['kind', 'startAt', 'endAt'],
     id: ['id'],
     title: ['title'],
     image: ['image'],
+    defaultSort: 'release',
   ),
 ];
 

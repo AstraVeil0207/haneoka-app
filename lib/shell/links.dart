@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../catalog/cross_server.dart';
 import '../catalog/profiles.dart';
+import '../core/app_state.dart';
 import 'page.dart';
 import 'routes.dart';
 
@@ -48,7 +50,9 @@ Future<bool> openLink(
     return launchUrl(uri, mode: LaunchMode.externalApplication);
   }
   final parts = uri.pathSegments.where((p) => p.isNotEmpty).toList();
-  if (parts.isNotEmpty && _servers.contains(parts.first)) parts.removeAt(0);
+  final server = parts.isNotEmpty && _servers.contains(parts.first)
+      ? parts.removeAt(0)
+      : null;
   if (parts.isNotEmpty && _locales.contains(parts.first)) parts.removeAt(0);
   if (parts.isEmpty) {
     navigate?.call('/');
@@ -67,9 +71,11 @@ Future<bool> openLink(
   if (resource != null) {
     final profile = catalogProfiles.firstWhere((p) => p.resource == resource);
     if (parts.length >= 2) {
+      final selected = AppScope.maybeOf(context)?.server;
       openEntity(context, profile, {
         profile.id.first: int.tryParse(parts[1]) ?? parts[1],
         '_key': parts[1],
+        if (server != null && server != selected) serverKey: server,
       });
       return true;
     }

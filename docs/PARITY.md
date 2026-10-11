@@ -77,7 +77,7 @@ the live DOM (`img` candidates, computed `object-fit`/`object-position`, marks,
 app-bar buttons) and from the website source, never inferred.
 
 - [x] Collection tiles: image field order, locale image variants, fit and framing, accent ground, event artwork, Ended/Retired marks, column counts
-- [ ] Detail galleries: entries, order and locale variants per kind (`detailMediaItems`, `CHARACTER_ART`)
+- [x] Detail galleries: entries, order and locale variants per kind (`detailMediaItems`, `CHARACTER_ART`), captions, natural event art · [ ] animated card movie entry
 - [x] App bar: 40 dp actions fitted as the website does, entity Back and previous/next, Menu in the overflow beside Back, identity marks kept beside the title, song ranking / play / Sonolus
-- [ ] Cross-server catalogue: collections merge JP and international entries with the server mark, as the website's union catalogue does
+- [x] Cross-server catalogue: collections merge JP and international entries with the server mark; JP-only entries open on the JP release · [x] sort options and defaults per kind · [x] shop prices
 - [ ] Rails, home modules, stories and tools re-checked the same way

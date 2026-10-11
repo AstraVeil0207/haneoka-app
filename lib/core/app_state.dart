@@ -24,6 +24,16 @@ class AppState extends ChangeNotifier {
   SiteText text;
   HaneokaApi api;
   final AudioService audio = AudioService();
+  final _apis = <String, HaneokaApi>{};
+
+  /// The client for one release server; the selected one is [api].
+  HaneokaApi apiFor(String value) =>
+      value == server ? api : _apis[value] ??= HaneokaApi(server: value);
+
+  /// Both formal releases, for the cross-server catalogue.
+  Map<String, HaneokaApi> get catalogApis => {
+    for (final value in const ['jp', 'intl']) value: apiFor(value),
+  };
 
   /// The website's appearance: light, dark or the system's, and the theme colour.
   ThemeMode themeMode;

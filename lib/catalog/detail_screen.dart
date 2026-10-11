@@ -15,6 +15,7 @@ import '../ui/app_image.dart';
 import '../ui/detail.dart';
 import 'card_growth.dart';
 import 'character_detail.dart';
+import 'cross_server.dart';
 import 'detail_media.dart';
 import 'entity_extras.dart';
 import 'catalog_screen.dart';
@@ -65,7 +66,9 @@ class _DetailScreenState extends State<DetailScreen> {
 
   Future<(Entry, CatalogVisuals, Entry?)> _load() async {
     final state = AppScope.of(context);
-    final api = state.api;
+    // An entity only the other release has opens there (`displayServer`).
+    final server = '${widget.summary[serverKey] ?? state.server}';
+    final api = state.apiFor(server);
     final resource = widget.profile.resource;
     final (record, visuals, page) = await (
       api

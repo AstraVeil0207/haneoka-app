@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import 'app_image.dart';
@@ -55,7 +56,12 @@ class Tile extends StatelessWidget {
     this.media,
     this.accent,
     this.alignment = Alignment.center,
+    this.serverMark,
   });
+
+  /// The one server an entity is on: its publisher's emblem and its label
+  /// (`.tile__server-mark`).
+  final (String asset, String label)? serverMark;
 
   /// The subject's colour, tinting the media box (`--entity-accent` on
   /// character and band tiles).
@@ -142,7 +148,19 @@ class Tile extends StatelessWidget {
                           ),
                         ),
                       ),
-                    for (final mark in marks) _Mark(mark: mark),
+                    for (final mark in marks)
+                      _Mark(mark: mark, beside: serverMark != null),
+                    if (serverMark case (final asset, final label))
+                      Positioned(
+                        right: 8,
+                        bottom: 8,
+                        width: 18,
+                        height: 18,
+                        child: Tooltip(
+                          message: label,
+                          child: SvgPicture.asset(asset, semanticsLabel: label),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -219,8 +237,11 @@ class Tile extends StatelessWidget {
 }
 
 class _Mark extends StatelessWidget {
-  const _Mark({required this.mark});
+  const _Mark({required this.mark, this.beside = false});
   final TileMark mark;
+
+  /// Leaves room for the server emblem in the bottom-end corner.
+  final bool beside;
 
   @override
   Widget build(BuildContext context) {
@@ -269,7 +290,11 @@ class _Mark extends StatelessWidget {
       MarkAt.start => Positioned(top: 8, left: 8, child: semantic),
       MarkAt.end => Positioned(top: 8, right: 8, child: semantic),
       MarkAt.bottomStart => Positioned(bottom: 8, left: 8, child: semantic),
-      MarkAt.bottomEnd => Positioned(bottom: 8, right: 8, child: semantic),
+      MarkAt.bottomEnd => Positioned(
+        bottom: 8,
+        right: beside ? 34 : 8,
+        child: semantic,
+      ),
     };
   }
 }

@@ -8,7 +8,9 @@ import '../core/relative_time.dart';
 import '../ui/app_image.dart';
 import '../ui/tile.dart';
 import 'browse.dart';
+import 'cross_server.dart';
 import 'profiles.dart';
+import 'shop_price.dart';
 import 'visuals.dart';
 
 const _rarities = {2: 'R', 3: 'SR', 4: 'SSR', 10: 'EX', 20: 'BD'};
@@ -51,8 +53,24 @@ class _CatalogScreenState extends State<CatalogScreen> {
   }
 
   Future<(List<Entry>, CatalogVisuals)> _load() async {
-    final api = AppScope.of(context).api;
+    final state = AppScope.of(context);
+    final api = state.api;
     final profile = widget.profile;
+    if (crossCatalogIds.containsKey(profile.resource)) {
+      final (rows, visuals) = await (
+        crossServerCollection(
+          resource: profile.resource,
+          selected: state.server,
+          apis: state.catalogApis,
+          rowsPath: profile.document,
+        ),
+        CatalogVisuals.of(api),
+      ).wait;
+      return _owned([
+        for (final row in rows)
+          {'_key': '${firstOf(row, profile.id) ?? ''}', ...row},
+      ], visuals);
+    }
     final (document, visuals) = await (
       api.catalog(profile.resource),
       CatalogVisuals.of(api),
@@ -68,6 +86,15 @@ class _CatalogScreenState extends State<CatalogScreen> {
       ],
       _ => <Entry>[],
     };
+    return _owned(items, visuals);
+  }
+
+  (List<Entry>, CatalogVisuals) _owned(
+    List<Entry> items,
+    CatalogVisuals visuals,
+  ) {
+    final api = AppScope.of(context).api;
+    final profile = widget.profile;
     final owned = widget.owned;
     if (owned == null) return (items, visuals);
     final kit = CatalogKit(profile, AppScope.of(context).text, api, visuals);
@@ -167,6 +194,20 @@ class _CatalogScreenState extends State<CatalogScreen> {
                     logo: kit.api.asset('${item['logo']}').toString(),
                   )
                 : null,
+            serverMark: switch (exclusiveServer(item)) {
+              'jp' => (
+                'assets/settings/bushimo-circle.svg',
+                kit.t('catalog.availability.catalogJapanOnly', 'Japan only'),
+              ),
+              'intl' => (
+                'assets/settings/bilibili-circle.svg',
+                kit.t(
+                  'catalog.availability.catalogInternationalOnly',
+                  'International only',
+                ),
+              ),
+              _ => null,
+            },
             marks: [
               ...kit.marks(item),
               if (widget.owned?[kit.id(item)] case final progress?
@@ -238,7 +279,7 @@ class CatalogKit {
       return [
         api
             .asset(
-              '/assets/${api.server}/Assets/AddressableResources/Band/$band/BandItem/${id(item)}/band_item.png',
+              '/assets/${item[serverKey] ?? api.server}/Assets/AddressableResources/Band/$band/BandItem/${id(item)}/band_item.png',
             )
             .toString(),
       ];
@@ -285,13 +326,55 @@ class CatalogKit {
           ? plain(item['description'])
           : '${item['itemTypeName'] ?? ''}',
     Presentation.background || Presentation.skill => plain(item['description']),
-    Presentation.system => t.window(
+    Presentation.system => switch (profile.resource) {
+      'shop' => shopPrice(item),
+      'challenge' => t.text(item['band']),
+      _ => systemWindow(item),
+    },
+    Presentation.song => '',
+  };
+
+  /// A rotating entry's window (`systemRelativeSubtitle`).
+  String systemWindow(Entry item) {
+    final start = RelativeTime.timestamp(item['startAt']);
+    final end = RelativeTime.timestamp(item['endAt']);
+    if (start != null && end != null && start > 0 && end > 0 && end < start) {
+      return t.label('unavailable', 'Unavailable');
+    }
+    return t.window(
       item['startAt'],
       item['endAt'],
       ongoing: t.label('ongoing', 'Ongoing'),
-    ),
-    Presentation.song => '',
-  };
+    );
+  }
+
+  /// The shop row's price as one line (`shopPriceLabel`).
+  String shopPrice(Entry item) {
+    final payment = (item['payment'] as Map?) ?? const {};
+    if (payment['advertisement'] == true) {
+      return t.label('watchAd', 'Watch an ad');
+    }
+    final regional = shopPriceLine(
+      t.locale,
+      shopPrices(payment, '${item[serverKey] ?? api.server}'),
+    );
+    if (regional.isNotEmpty) return regional;
+    final price = payment['price'];
+    if (price is num && price != 0) {
+      final amount = NumberFormat(
+        price % 1 == 0 ? '#,##0' : '#,##0.00',
+        t.locale,
+      ).format(price);
+      return payment['currencyImage'] is String &&
+              '${payment['currencyImage']}'.isNotEmpty
+          ? '${t.text(payment['currency'])} ×$amount'
+          : '$amount ${t.text(payment['currency'])}';
+    }
+    if (payment['storePurchase'] == true) {
+      return t.label('inAppPurchase', 'In-app purchase');
+    }
+    return systemWindow(item);
+  }
 
   List<String> adornments(Entry item) {
     if (kind == Presentation.character || kind == Presentation.bandItem) {
@@ -409,46 +492,185 @@ class CatalogKit {
     TableColumn(t.label('id'), id, numeric: true),
   ];
 
-  List<SortSpec> get sorts => [
-    if (kind == Presentation.character ||
-        kind == Presentation.item ||
-        kind == Presentation.bandItem)
-      SortSpec(
-        'order',
-        t.label('order'),
-        (item) =>
-            (item['displayOrder'] ?? item['order'] ?? item['sortOrder'])
-                as num?,
+  /// The website's sort options for the kind (`sortOptions`) with its
+  /// sort values (`sortValue`).
+  List<SortSpec> get sorts {
+    SortSpec sort(
+      String value,
+      String key,
+      String fallback,
+      Comparable<Object?>? Function(Entry) of,
+    ) => SortSpec(value, t.label(key, fallback), of);
+    num number(Object? value) =>
+        value is num ? value : num.tryParse('${value ?? ''}') ?? 0;
+    num firstTime(Object? value) => RelativeTime.timestamp(value) ?? 0;
+    final idSort = sort(
+      'id',
+      'id',
+      'ID',
+      (item) => num.tryParse(id(item)) ?? id(item),
+    );
+    final titleSort = sort('title', 'title', 'Title', title);
+    final release = sort(
+      'release',
+      'release',
+      'Release',
+      (item) => firstTime(
+        item['releasedAt'] ??
+            item['publishedAt'] ??
+            item['publicStartAt'] ??
+            item['startAt'],
       ),
-    SortSpec('id', t.label('id'), (item) => num.tryParse(id(item)) ?? id(item)),
-    SortSpec('title', t.label('title'), title),
-    if (kind == Presentation.system)
-      SortSpec(
-        'start',
-        t.label('start'),
-        (item) => RelativeTime.timestamp(item['startAt']),
-      )
-    else if (kind != Presentation.character &&
-        kind != Presentation.item &&
-        kind != Presentation.bandItem &&
-        kind != Presentation.skill)
-      SortSpec('release', t.label('release'), releasedAt),
-    if (kind == Presentation.member || kind == Presentation.support) ...[
-      SortSpec('rarity', t.label('rarity'), (item) => item['rarity'] as num?),
-      SortSpec(
-        'cardType',
-        t.label('attribute'),
-        (item) => item['cardType'] as num?,
+    );
+    final order = sort(
+      'order',
+      'order',
+      'Order',
+      (item) => number(
+        item['displayOrder'] ?? item['order'] ?? item['sortOrder'] ?? id(item),
       ),
-      for (final stat in ['performance', 'technique', 'visual'])
-        SortSpec(
-          stat,
-          t.label(stat),
-          (item) => readPath(item, 'stat.$stat') as num?,
+    );
+    final characters = sort(
+      'characters',
+      'characters',
+      'Characters',
+      (item) => characterIds(item).firstOrNull ?? 0,
+    );
+    String skill(Entry item, String key) {
+      final raw = (item['resolvedSkills'] as Map?)?[key];
+      final skill = raw is List ? raw.firstOrNull : raw;
+      return skill is Map ? t.text(skill['skillName']) : '';
+    }
+
+    return switch (kind) {
+      Presentation.member || Presentation.support => [
+        idSort,
+        titleSort,
+        sort(
+          'character',
+          'character',
+          'Character',
+          (item) =>
+              number(item['characterId'] ?? characterIds(item).firstOrNull),
         ),
-      SortSpec('total', t.label('total'), total),
-    ],
-  ];
+        sort(
+          'band',
+          'band',
+          'Band',
+          (item) => number(
+            item['bandId'] ??
+                visuals?.characters[characterIds(item).firstOrNull]?['bandId'],
+          ),
+        ),
+        sort(
+          'cardType',
+          'attribute',
+          'Attribute',
+          (item) => number(item['cardType']),
+        ),
+        sort('rarity', 'rarity', 'Rarity', (item) => number(item['rarity'])),
+        for (final stat in ['performance', 'technique', 'visual'])
+          sort(
+            stat,
+            stat,
+            stat,
+            (item) => number(readPath(item, 'stat.$stat')),
+          ),
+        sort('total', 'total', 'Total', total),
+        if (kind == Presentation.member) ...[
+          sort(
+            'leaderSkill',
+            'leaderSkill',
+            'Leader skill',
+            (item) => skill(item, 'leader'),
+          ),
+          sort(
+            'liveSkill',
+            'liveSkill',
+            'Live skill',
+            (item) => skill(item, 'live'),
+          ),
+          sort(
+            'gekisouSkill',
+            'gekisouSkill',
+            'Gekisou skill',
+            (item) => skill(item, 'gekisou'),
+          ),
+        ] else ...[
+          sort(
+            'supportSkill',
+            'supportSkill',
+            'Support skill',
+            (item) => skill(item, 'support'),
+          ),
+          sort(
+            'gekisouSupportSkill',
+            'gekisouSupportSkill',
+            'Gekiso support skill',
+            (item) => skill(item, 'gekisouSupport'),
+          ),
+        ],
+        release,
+      ],
+      Presentation.character => [order, idSort, titleSort],
+      Presentation.comic => [
+        idSort,
+        titleSort,
+        sort(
+          'subtitle',
+          'subtitle',
+          'Subtitle',
+          (item) => t.text(item['subTitle']),
+        ),
+        characters,
+        release,
+      ],
+      Presentation.stamp => [idSort, titleSort, characters, release],
+      Presentation.background => [titleSort],
+      Presentation.bandItem => [
+        order,
+        idSort,
+        titleSort,
+        sort('band', 'band', 'Band', (item) => number(item['bandId'])),
+        sort(
+          'levels',
+          'level',
+          'Levels',
+          (item) => (item['levels'] as List?)?.length ?? 0,
+        ),
+      ],
+      Presentation.item => [
+        sort(
+          'id',
+          'order',
+          'Order',
+          (item) => num.tryParse(id(item)) ?? id(item),
+        ),
+        titleSort,
+        sort(
+          'itemTypeName',
+          'type',
+          'Type',
+          (item) => t.text(item['itemTypeName']),
+        ),
+        sort('max', 'size', 'Maximum', (item) => number(item['max'])),
+      ],
+      Presentation.system => [
+        idSort,
+        titleSort,
+        sort('availability', 'availability', 'Ending soonest', (item) {
+          // Ending soonest leads; standing offers follow, newest ids first.
+          final end = firstTime(item['endAt']);
+          if (end > 0) return end;
+          return 9007199254740991 -
+              (num.tryParse(id(item).replaceAll(RegExp(r'\D'), '')) ?? 0) *
+                  1000;
+        }),
+        release,
+      ],
+      _ => [idSort, titleSort, release],
+    };
+  }
 
   List<FacetSpec> get facets {
     final visuals = this.visuals!;
