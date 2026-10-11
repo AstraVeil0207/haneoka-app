@@ -17,6 +17,8 @@ import 'catalog_screen.dart';
 import 'format.dart';
 import 'labels.g.dart';
 import 'profiles.dart';
+import 'song_summary.dart';
+import 'song_video.dart';
 import 'system_detail.dart';
 import 'visuals.dart';
 
@@ -261,20 +263,37 @@ class _Page {
         value.whereType<String>().where((s) => s.isNotEmpty).take(1).join(),
       _ => t.text(value),
     };
+    final estimates = AppScope.of(context).difficultyEstimates;
+    String? estimate(Entry? row) {
+      final value = readPath(
+        row ?? const {},
+        'difficultyEstimate.estimatedConstant',
+      );
+      final status = readPath(
+        row ?? const {},
+        'difficultyEstimate.quality.status',
+      );
+      return estimates &&
+              value is num &&
+              value > 0 &&
+              readPath(row!, 'difficultyEstimate.target') ==
+                  'fc-operation-load' &&
+              (status == 'estimated' || status == 'low-confidence')
+          ? value.toStringAsFixed(1)
+          : null;
+    }
+
+    final entry =
+        ((page?['songMeta'] as Map?)?['${record['musicId']}']
+                as Map?)?['$chosen']
+            as Map?;
+    final meta = (entry?['chart'] as Map?) ?? const {};
+    final gekisou = (entry?['gekisou'] as Map?) ?? const {};
+    final published = RelativeTime.timestamp(record['publishedAt']);
     final facts = [
-      if (chart != null) ...[
-        Fact(
-          t.label('level'),
-          '${chart['displayLevel'] ?? chart['playLevel'] ?? '—'}',
-        ),
-        Fact(
-          t.label('n'),
-          NumberFormat.decimalPattern(t.locale).format(chart['noteCount'] ?? 0),
-        ),
-      ],
       for (final key in ['composer', 'lyricist', 'arranger'])
         if (list(record[key]).isNotEmpty)
-          Fact(
+          (
             t.label(
               key == 'lyricist'
                   ? 'lyrics'
@@ -284,8 +303,12 @@ class _Page {
             ),
             list(record[key]),
           ),
-      if (_date(record['publishedAt']).isNotEmpty)
-        Fact(t.label('release'), _date(record['publishedAt'])),
+      if (published != null && published > 0)
+        (
+          t.label('release'),
+          DateFormat.yMd(t.locale)
+              .format(DateTime.fromMillisecondsSinceEpoch(published.toInt())),
+        ),
     ];
     return [
       DetailSection(
@@ -296,13 +319,8 @@ class _Page {
           children: [
             DifficultyChips(
               captions: {
-                if (AppScope.of(context).difficultyEstimates)
-                  for (final c in charts)
-                    if (readPath(c, 'difficultyEstimate.estimatedConstant')
-                        case final num value)
-                      (c['difficulty'] as num).toInt(): value.toStringAsFixed(
-                        1,
-                      ),
+                for (final c in charts)
+                  (c['difficulty'] as num).toInt(): ?estimate(c),
               },
               selected: chosen,
               onSelected: (index) =>
@@ -322,12 +340,28 @@ class _Page {
                   ),
               ],
             ),
-            const SizedBox(height: 16),
-            SpecList(facts: facts),
+            const SizedBox(height: 8),
+            DataGrid(
+              large: true,
+              cells: songMetrics(
+                t,
+                meta: meta,
+                chart: chart,
+                estimate: estimate(chart),
+              ),
+            ),
+            DataGrid(cells: facts, minWidth: 180),
           ],
         ),
       ),
+      if (chart?['file'] case final String file when file.isNotEmpty)
+        SongSkillPoints(
+          key: ValueKey(file),
+          source: kit.api.asset(file).toString(),
+        ),
+      GekisouStages(song: record, metrics: gekisou),
       ?_rewards(chart),
+      SongVideos(key: ValueKey('mv:${record['musicId']}'), song: record),
     ];
   }
 

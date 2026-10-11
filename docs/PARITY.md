@@ -31,7 +31,7 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 
 ## Library
 
-- [x] Songs · [~] song detail (missing: skill timeline, gekisou sections, MV, comments)
+- [x] Songs · [~] song detail (metrics, skill timeline from the chart, Gekisou stages, rewards, MV; missing: comments)
 - [~] Song meta (table, tiers, live/gekisou; missing: scatter chart view)
 - [x] Events · [x] event detail (overview, recruitments, reward cards, bonuses by card rank, song, story, live rewards with boost and bonus, rewards, missions) · [x] event tracker (challenge and point rankings, live)
 - [x] Characters · [x] character page (profile with rank rewards, cards, stamps, voices, stories, bonds on the friendship board, missions, Live2D list, songs)
