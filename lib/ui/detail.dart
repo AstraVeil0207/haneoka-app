@@ -5,7 +5,11 @@ import 'package:photo_view/photo_view_gallery.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 import '../core/net.dart';
+
+import 'package:material_new_shapes/material_new_shapes.dart';
+
 import 'app_image.dart';
+import 'shapes.dart';
 import 'theme.dart';
 
 /// The website's detail layout (`detailLayout`): media beside the sections on
@@ -67,10 +71,14 @@ class DetailSection extends StatelessWidget {
     required this.child,
     this.count,
     this.folded = false,
+    this.large = false,
   });
   final IconData icon;
   final String title;
   final int? count;
+
+  /// The `--h2` heading of a tool page's main sections.
+  final bool large;
   final Widget child;
   final bool folded;
 
@@ -80,16 +88,20 @@ class DetailSection extends StatelessWidget {
     final scheme = theme.colorScheme;
     final heading = Row(
       children: [
-        CircleAvatar(
-          radius: 18,
-          backgroundColor: scheme.secondaryContainer,
-          child: Icon(icon, size: 20, color: scheme.onSecondaryContainer),
+        ShapedIcon(
+          shape: MaterialShapes.cookie9Sided,
+          size: 36,
+          child: Icon(icon, size: 20),
         ),
         const SizedBox(width: 12),
         Flexible(
           child: Text(
             title,
-            style: theme.textTheme.titleMedium,
+            style:
+                (large
+                        ? theme.textTheme.titleLarge
+                        : theme.textTheme.titleMedium)
+                    ?.copyWith(fontWeight: FontWeight.w700),
             overflow: TextOverflow.ellipsis,
           ),
         ),

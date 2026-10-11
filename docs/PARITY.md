@@ -39,7 +39,7 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 - [x] Snapshots
 - [x] Skills (catalogue, detail, upgrade materials)
 - [~] Comics · [~] gacha · [~] login campaigns · [~] missions · [~] passes · [~] T.G.W card
-- [ ] Studio
+- [x] Studio
 - [~] Shop · [~] exchange · [~] stamps · [~] stickers · [~] backgrounds · [~] items · [~] band items · [~] real lives
 
 ## Stories

@@ -7,6 +7,7 @@ import '../catalog/profiles.dart';
 import '../catalog/skills.dart';
 import '../catalog/song_meta.dart';
 import '../catalog/songs.dart';
+import '../catalog/studio.dart';
 import '../core/app_state.dart';
 import '../home/announcements.dart';
 import '../home/calendar.dart';
@@ -65,6 +66,7 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/join') return const JoinScreen();
   if (route == '/catalog/song-meta') return const SongMetaScreen();
   if (route == '/catalog/skills') return const SkillsScreen();
+  if (route == '/catalog/studio') return const StudioScreen();
   if (route == '/catalog/events/tracker') return const EventTrackerScreen();
   if (route == '/player-profile') return const PlayerProfileScreen();
   if (route == '/team-builder') return const ImportScreen();

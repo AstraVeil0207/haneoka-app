@@ -36,8 +36,8 @@ class LevelSwitch extends StatelessWidget {
       ),
       child: Row(
         children: [
-          SizedBox(
-            width: 56,
+          ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 56, maxWidth: 96),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
