@@ -58,6 +58,8 @@ class _AppShellState extends State<AppShell> {
   );
 
   void _navigate(String route) {
+    // The stories root is band stories, as on the website.
+    if (route == '/catalog/stories') route = '/catalog/stories/band';
     setState(() {
       _route = route;
       _pages = GlobalKey<NavigatorState>();

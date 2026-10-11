@@ -96,7 +96,7 @@ class HaneokaAccount extends ChangeNotifier {
   Future<void> refresh() async {
     if (_token == null) return;
     try {
-      final session = await _request('GET', '/api/auth/get-session');
+      final session = await request('GET', '/api/auth/get-session');
       final user = (session as Map?)?['user'];
       if (user is! Map) {
         await _forget();
@@ -104,7 +104,7 @@ class HaneokaAccount extends ChangeNotifier {
       }
       _user = user.cast<String, Object?>();
       try {
-        final profile = (await _request(
+        final profile = (await request(
           'GET',
           '/api/v1/account/profile',
         ) as Map?)?['profile'];
@@ -158,7 +158,7 @@ class HaneokaAccount extends ChangeNotifier {
     if (callback['state'] != state) throw const AccountError('invalid_state');
     final code = callback['code'];
     if (code == null) throw AccountError(callback['error'] ?? 'cancelled');
-    final body = await _request(
+    final body = await request(
       'POST',
       '/api/v1/account/app/token',
       body: {'code': code, 'verifier': verifier},
@@ -177,7 +177,7 @@ class HaneokaAccount extends ChangeNotifier {
 
   Future<void> signOut() async {
     try {
-      await _request('POST', '/api/auth/sign-out', body: const {});
+      await request('POST', '/api/auth/sign-out', body: const {});
     } catch (_) {
       // The session is forgotten here either way.
     }
@@ -189,7 +189,7 @@ class HaneokaAccount extends ChangeNotifier {
   Future<void> link(GameSave save, {bool? public}) async {
     final view = SaveView(save);
     final current = linkOf(save);
-    final body = await _request(
+    final body = await request(
       'PUT',
       '/api/v1/account/game-accounts',
       body: {
@@ -217,7 +217,7 @@ class HaneokaAccount extends ChangeNotifier {
   }
 
   Future<void> unlink(GameSave save) async {
-    final body = await _request(
+    final body = await request(
       'DELETE',
       '/api/v1/account/game-accounts/${save.release?.server}/${save.profileId}',
     );
@@ -254,7 +254,7 @@ class HaneokaAccount extends ChangeNotifier {
   }
 
   Future<void> _readPlayers() async =>
-      _readPlayersFrom(await _request('GET', '/api/v1/account/game-accounts'));
+      _readPlayersFrom(await request('GET', '/api/v1/account/game-accounts'));
 
   void _readPlayersFrom(Object? body) {
     _players = [
@@ -273,7 +273,7 @@ class HaneokaAccount extends ChangeNotifier {
     } catch (_) {}
   }
 
-  Future<Object?> _request(
+  Future<Object?> request(
     String method,
     String path, {
     Object? body,

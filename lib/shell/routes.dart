@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../about/about_screen.dart';
+import '../community/feed_screen.dart';
+import '../community/post_screen.dart';
+import '../community/user_screen.dart';
 import '../help/help_screen.dart';
 import '../search/search_screen.dart';
 import '../tools/song_progress.dart';
@@ -69,6 +72,16 @@ void openEntity(
   );
 }
 
+/// The community's feeds by address and the scope each reads.
+const _communityFeeds = {
+  '/community': 'recommended',
+  '/community/feeds': 'recommended',
+  '/community/latest': 'latest',
+  '/community/following': 'following',
+  '/community/mine': 'mine',
+  '/community/bookmarks': 'bookmarked',
+};
+
 /// The native screen for a website route, or null while it is being built.
 Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/') return HomeScreen(onBrowse: navigate);
@@ -92,6 +105,17 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/song-progress') return const SongProgressScreen();
   if (route == '/catalog/help') return const HelpScreen();
   if (route == '/search') return const SearchScreen();
+  if (_communityFeeds[route] case final scope?) {
+    return CommunityFeedScreen(key: ValueKey(scope), scope: scope);
+  }
+  if (RegExp(r'^/community/posts/([0-9a-f-]{36})$').firstMatch(route)
+      case final m?) {
+    return PostScreen(id: m[1]!);
+  }
+  if (RegExp(r'^/community/users/([1-9]\d{0,15})$').firstMatch(route)
+      case final m?) {
+    return CommunityUserScreen(uid: m[1]!);
+  }
   if (route.startsWith('/catalog/stories/')) {
     final mode = route.substring('/catalog/stories/'.length);
     if (storyModes.contains(mode)) {

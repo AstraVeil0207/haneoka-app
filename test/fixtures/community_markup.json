@@ -1,0 +1,172 @@
+[
+ {
+  "source": "plain text",
+  "html": "<p>plain text</p>",
+  "excerpt": "plain text"
+ },
+ {
+  "source": "line one\nline two\n\npara two",
+  "html": "<p>line one<br>line two</p><p>para two</p>",
+  "excerpt": "line one line two para two"
+ },
+ {
+  "source": "[b]bold[/b] and [i]it[/i] [u]u[/u] [s]s[/s]",
+  "html": "<p><strong>bold</strong> and <em>it</em> <u>u</u> <s>s</s></p>",
+  "excerpt": "bold and it u s"
+ },
+ {
+  "source": "unclosed [b]bold",
+  "html": "<p>unclosed <strong></strong>bold</p>",
+  "excerpt": "unclosed bold"
+ },
+ {
+  "source": "[quote]quoted\n\nmore[/quote]after",
+  "html": "<blockquote><p>quoted</p><p>more</p></blockquote><p>after</p>",
+  "excerpt": "quoted moreafter"
+ },
+ {
+  "source": "[code][b]not bold[/b] <x>[/code]",
+  "html": "<pre><code>[b]not bold[/b] &lt;x&gt;</code></pre>",
+  "excerpt": "[b]not bold[/b] <x>"
+ },
+ {
+  "source": "[spoiler]hidden[/spoiler]",
+  "html": "<details data-spoiler><summary>Spoiler</summary><div><p>hidden</p></div></details>",
+  "excerpt": "hidden"
+ },
+ {
+  "source": "[list][*]one[*]two [b]b[/b][/list]",
+  "html": "<ul><li><p>one</p></li><li><p>two <strong>b</strong></p></li></ul>",
+  "excerpt": "onetwo b"
+ },
+ {
+  "source": "[list=1][*]a[*]b[/list]",
+  "html": "<ol><li><p>a</p></li><li><p>b</p></li></ol>",
+  "excerpt": "ab"
+ },
+ {
+  "source": "[url=https://haneoka.org]site[/url] [url]https://x.org/a?b=1&c=2[/url] [url=javascript:alert(1)]bad[/url]",
+  "html": "<p><a href=\"https://haneoka.org/\" target=\"_blank\" rel=\"nofollow noopener noreferrer\">site</a> <a href=\"https://x.org/a?b=1&amp;c=2\" target=\"_blank\" rel=\"nofollow noopener noreferrer\">https://x.org/a?b=1&amp;c=2</a> bad</p>",
+  "excerpt": "site https://x.org/a?b=1&c=2 bad"
+ },
+ {
+  "source": "only![sticker=intl:47:en]Chieri Stamp 1[/sticker]\n\nPlease",
+  "html": "<p>only!<community-sticker token=\"intl:47:en\" locale=\"en\" label=\"Chieri Stamp 1\"></community-sticker></p><p>Please</p>",
+  "excerpt": "only!Chieri Stamp 1 Please"
+ },
+ {
+  "source": "[sticker=bad token]x[/sticker]",
+  "html": "<p>x</p>",
+  "excerpt": "x"
+ },
+ {
+  "source": "[h2]Title[/h2]text[h3]Sub[/h3]",
+  "html": "<h2>Title</h2><p>text</p><h3>Sub</h3>",
+  "excerpt": "TitletextSub"
+ },
+ {
+  "source": "[align=center]centered\n\ntwo[/align]",
+  "html": "<p style=\"text-align:center\">centered</p><p style=\"text-align:center\">two</p>",
+  "excerpt": "centered two"
+ },
+ {
+  "source": "[highlight]hi[/highlight][hr]",
+  "html": "<p><mark>hi</mark></p><hr>",
+  "excerpt": "hi"
+ },
+ {
+  "source": "\\[b\\] escaped",
+  "html": "<p>[b] escaped</p>",
+  "excerpt": "[b] escaped"
+ },
+ {
+  "source": "[unknown]x[/unknown] [b]a[i]b[/b]c[/i]",
+  "html": "<p>[unknown]x[/unknown] <strong>a<em>b</em>c</strong></p>",
+  "excerpt": "[unknown]x[/unknown] abc"
+ },
+ {
+  "source": "a & b < c > d \" e ' f",
+  "html": "<p>a &amp; b &lt; c &gt; d &quot; e &#39; f</p>",
+  "excerpt": "a & b < c > d \" e ' f"
+ },
+ {
+  "source": "[B]upper[/B]",
+  "html": "<p><strong>upper</strong></p>",
+  "excerpt": "upper"
+ },
+ {
+  "source": "[list]\n[*]x\n[*]y\n[/list]",
+  "html": "<ul><li><p>x</p></li><li><p>y</p></li></ul>",
+  "excerpt": "x y"
+ },
+ {
+  "source": "a[/b]c",
+  "html": "<p>a[/b]c</p>",
+  "excerpt": "a[/b]c"
+ },
+ {
+  "source": "[b]x[/i]y",
+  "html": "<p><strong></strong>x[/i]y</p>",
+  "excerpt": "x[/i]y"
+ },
+ {
+  "source": "[url=\"https://a.b/q\"]t[/url]",
+  "html": "<p><a href=\"https://a.b/q\" target=\"_blank\" rel=\"nofollow noopener noreferrer\">t</a></p>",
+  "excerpt": "t"
+ },
+ {
+  "source": "[sticker=intl:1]x[/sticker]",
+  "html": "<p><community-sticker token=\"intl:1\" locale=\"en\" label=\"x\"></community-sticker></p>",
+  "excerpt": "x"
+ },
+ {
+  "source": "[code]a[/code] mid [code]b",
+  "html": "<pre><code>a</code></pre><p> mid [code]b</p>",
+  "excerpt": "a mid [code]b"
+ },
+ {
+  "source": "x [b ]y[/b]",
+  "html": "<p>x [b ]y[/b]</p>",
+  "excerpt": "x [b ]y[/b]"
+ },
+ {
+  "source": "[url=https://a.b x=1]t[/url]",
+  "html": "<p>t</p>",
+  "excerpt": "t"
+ },
+ {
+  "source": "\\\\ back \\x",
+  "html": "<p>\\ back \\x</p>",
+  "excerpt": "\\ back \\x"
+ },
+ {
+  "source": "[i][b]x[/b]",
+  "html": "<p><em></em><strong>x</strong></p>",
+  "excerpt": "x"
+ },
+ {
+  "source": "[quote][b]a[/quote]b[/b]",
+  "html": "<blockquote><p><strong>a</strong>b</p></blockquote>",
+  "excerpt": "ab"
+ },
+ {
+  "source": "[spoiler=Title]in[/spoiler]",
+  "html": "<details data-spoiler><summary>Spoiler</summary><div><p>in</p></div></details>",
+  "excerpt": "in"
+ },
+ {
+  "source": "[list][li]one[/li][li]two[/li][/list]",
+  "html": "<ul><li><p>one</p></li><li><p>two</p></li></ul>",
+  "excerpt": "onetwo"
+ },
+ {
+  "source": "[ b]x",
+  "html": "<p>[ b]x</p>",
+  "excerpt": "[ b]x"
+ },
+ {
+  "source": "[b]\n\nx\n\n[/b]",
+  "html": "<p><strong></p><p>x</p><p></strong></p>",
+  "excerpt": "x"
+ }
+]
