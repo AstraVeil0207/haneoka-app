@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../about/about_screen.dart';
+import '../help/help_screen.dart';
 import '../tools/song_progress.dart';
 import '../catalog/browse.dart';
 import '../catalog/missions.dart';
@@ -85,6 +86,7 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/account') return const AccountsScreen();
   if (route == '/about') return const AboutScreen();
   if (route == '/song-progress') return const SongProgressScreen();
+  if (route == '/catalog/help') return const HelpScreen();
   if (route.startsWith('/catalog/stories/')) {
     final mode = route.substring('/catalog/stories/'.length);
     if (storyModes.contains(mode)) {
