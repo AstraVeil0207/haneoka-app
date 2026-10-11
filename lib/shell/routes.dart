@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../catalog/missions.dart';
+import '../catalog/tgw_card.dart';
 import '../catalog/catalog_screen.dart';
 import '../catalog/detail_screen.dart';
 import '../catalog/hub_screen.dart';
@@ -69,6 +70,7 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/catalog/song-meta') return const SongMetaScreen();
   if (route == '/catalog/skills') return const SkillsScreen();
   if (route == '/catalog/missions') return const MissionsScreen();
+  if (route == '/catalog/tgw-card') return const TgwCardScreen();
   if (route == '/catalog/studio') return const StudioScreen();
   if (route == '/catalog/events/tracker') return const EventTrackerScreen();
   if (route == '/player-profile') return const PlayerProfileScreen();

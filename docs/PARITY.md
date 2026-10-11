@@ -38,7 +38,7 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 - [x] Members · [x] member and snapshot detail (level, training, awakening, rank and skill sliders, stats, upgrade costs, skill text per level)
 - [x] Snapshots
 - [x] Skills (catalogue, detail, upgrade materials)
-- [~] Comics · [x] gacha (featured, rates, simulator with image export) · [x] login campaigns · [~] missions · [x] passes · [~] T.G.W card
+- [x] Comics · [x] gacha (featured, rates, simulator with image export) · [x] login campaigns · [x] missions (group overview, group lists) · [x] passes · [x] T.G.W card (rank picker, card art, benefits, grants)
 - [x] Studio
 - [x] Shop (storefront prices with conversion) · [x] exchange · [x] stamps · [x] stickers (unlock conditions, artwork card) · [x] backgrounds · [x] items (acquisition and uses) · [x] band items (effects and costs by level) · [x] real lives
 

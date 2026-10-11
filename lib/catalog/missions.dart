@@ -92,8 +92,8 @@ String _window(SiteText t, _Group group) {
 }
 
 /// One reward as the website's `.mission-chip`: emblem, name, quantity.
-class _RewardChip extends StatelessWidget {
-  const _RewardChip(this.reward, {this.color});
+class RewardChip extends StatelessWidget {
+  const RewardChip(this.reward, {super.key, this.color});
   final Map reward;
   final Color? color;
 
@@ -426,7 +426,7 @@ class _GroupCard extends StatelessWidget {
                     crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       for (final reward in totals.take(4))
-                        _RewardChip(reward, color: scheme.surfaceContainerHigh),
+                        RewardChip(reward, color: scheme.surfaceContainerHigh),
                       if (totals.length > 4)
                         Text(
                           '+${totals.length - 4}',
@@ -527,7 +527,7 @@ class _GroupScreen extends StatelessWidget {
                                 for (final reward
                                     in (mission['rewards'] as List? ?? const [])
                                         .whereType<Map>())
-                                  _RewardChip(reward),
+                                  RewardChip(reward),
                               ],
                             ),
                           ],
