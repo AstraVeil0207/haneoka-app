@@ -1,27 +1,36 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
+import 'core/app_state.dart';
 import 'l10n/app_localizations.dart';
-import 'ui/import_screen.dart';
+import 'shell/shell.dart';
 import 'ui/theme.dart';
 
-void main() => runApp(const HaneokaApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final state = await AppState.load(WidgetsBinding.instance.platformDispatcher.locale);
+  runApp(AppScope(state: state, child: const HaneokaApp()));
+}
 
 class HaneokaApp extends StatelessWidget {
   const HaneokaApp({super.key});
 
   @override
-  Widget build(BuildContext context) => MaterialApp(
-        onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
-        theme: haneokaTheme(Brightness.light),
-        darkTheme: haneokaTheme(Brightness.dark),
-        localizationsDelegates: const [
-          AppLocalizations.delegate,
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: const ImportScreen(),
-      );
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    return MaterialApp(
+      title: 'Haneoka',
+      locale: state.locale,
+      theme: haneokaTheme(Brightness.light),
+      darkTheme: haneokaTheme(Brightness.dark),
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: const Shell(),
+    );
+  }
 }
