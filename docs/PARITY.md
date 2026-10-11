@@ -78,6 +78,6 @@ app-bar buttons) and from the website source, never inferred.
 
 - [x] Collection tiles: image field order, locale image variants, fit and framing, accent ground, event artwork, Ended/Retired marks, column counts
 - [ ] Detail galleries: entries, order and locale variants per kind (`detailMediaItems`, `CHARACTER_ART`)
-- [ ] App bar: view switch (grid/list/table) shown as buttons rather than in the overflow menu; entity Back, previous/next; identity marks
+- [x] App bar: 40 dp actions fitted as the website does, entity Back and previous/next, Menu in the overflow beside Back, identity marks kept beside the title, song ranking / play / Sonolus
 - [ ] Cross-server catalogue: collections merge JP and international entries with the server mark, as the website's union catalogue does
 - [ ] Rails, home modules, stories and tools re-checked the same way

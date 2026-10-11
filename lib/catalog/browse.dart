@@ -3,6 +3,7 @@ import 'package:material_symbols_icons/symbols.dart';
 import 'package:intl/intl.dart';
 
 import '../core/app_state.dart';
+import '../core/i18n.dart';
 import '../shell/page.dart';
 import '../ui/app_image.dart';
 import '../ui/theme.dart';
@@ -239,6 +240,20 @@ class _BrowseScreenState extends State<BrowseScreen> {
     final visible = items == null ? const <Entry>[] : _results(items);
     final number = NumberFormat.decimalPattern(t.locale);
     final theme = Theme.of(context);
+    return BrowseSiblings(
+      items: visible,
+      child: _page(context, t, items, visible, number, theme),
+    );
+  }
+
+  Widget _page(
+    BuildContext context,
+    SiteText t,
+    List<Entry>? items,
+    List<Entry> visible,
+    NumberFormat number,
+    ThemeData theme,
+  ) {
     return ShellPage(
       title: widget.title,
       marks: _appliedCount == 0 ? null : _crumbs(context),
@@ -897,4 +912,17 @@ class _FacetState extends State<_Facet> {
       ],
     );
   }
+}
+
+/// The results a collection shows, in their order, so an entity opened from
+/// it can step to its neighbours (the website's previous/next links).
+class BrowseSiblings extends InheritedWidget {
+  const BrowseSiblings({super.key, required this.items, required super.child});
+  final List<Entry> items;
+
+  static List<Entry>? of(BuildContext context) =>
+      context.getInheritedWidgetOfExactType<BrowseSiblings>()?.items;
+
+  @override
+  bool updateShouldNotify(BrowseSiblings old) => !identical(old.items, items);
 }

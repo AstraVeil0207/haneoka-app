@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../catalog/browse.dart';
 import '../catalog/missions.dart';
 import '../catalog/tgw_card.dart';
 import '../catalog/catalog_screen.dart';
@@ -48,16 +49,21 @@ const catalogRoutes = {
 void openEntity(
   BuildContext context,
   CatalogProfile profile,
-  Map<String, Object?> item,
-) => Navigator.of(context).push(
-  MaterialPageRoute<void>(
-    builder: (_) => DetailScreen(
-      profile: profile,
-      id: '${firstOf(item, profile.id) ?? item['_key']}',
-      summary: item,
+  Map<String, Object?> item, {
+  List<Map<String, Object?>>? siblings,
+}) {
+  final list = siblings ?? BrowseSiblings.of(context);
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => DetailScreen(
+        profile: profile,
+        id: '${firstOf(item, profile.id) ?? item['_key']}',
+        summary: item,
+        siblings: list,
+      ),
     ),
-  ),
-);
+  );
+}
 
 /// The native screen for a website route, or null while it is being built.
 Widget? screenFor(String route, {required ValueChanged<String> navigate}) {

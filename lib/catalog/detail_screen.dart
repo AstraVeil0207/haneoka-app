@@ -9,6 +9,8 @@ import '../core/page_data.dart';
 import '../core/relative_time.dart';
 import '../l10n/app_localizations.dart';
 import '../shell/page.dart';
+import '../shell/links.dart';
+import '../records/records.dart';
 import '../ui/app_image.dart';
 import '../ui/detail.dart';
 import 'card_growth.dart';
@@ -35,10 +37,14 @@ class DetailScreen extends StatefulWidget {
     required this.profile,
     required this.id,
     required this.summary,
+    this.siblings,
   });
   final CatalogProfile profile;
   final String id;
   final Entry summary;
+
+  /// The collection this was opened from, for previous and next.
+  final List<Entry>? siblings;
 
   @override
   State<DetailScreen> createState() => _DetailScreenState();
@@ -78,6 +84,46 @@ class _DetailScreenState extends State<DetailScreen> {
     );
   }
 
+  /// Previous and next in the collection (`data-entity-navigation`):
+  /// they replace this page, so Back still returns to the collection.
+  List<BarAction> _neighbours(CatalogKit kit) {
+    final list = widget.siblings;
+    if (list == null) return const [];
+    final index = list.indexWhere((e) => kit.id(e) == widget.id);
+    if (index < 0) return const [];
+    BarAction step(int offset, IconData icon, String key, String fallback) {
+      final entry = list[index + offset];
+      return BarAction(
+        icon: icon,
+        label: '${kit.t(key, fallback)}: ${kit.title(entry)}',
+        overflowFirst: true,
+        onPressed: () => Navigator.of(context).pushReplacement(
+          PageRouteBuilder<void>(
+            pageBuilder: (_, _, _) => DetailScreen(
+              profile: widget.profile,
+              id: kit.id(entry),
+              summary: entry,
+              siblings: list,
+            ),
+            transitionDuration: Duration.zero,
+          ),
+        ),
+      );
+    }
+
+    return [
+      if (index > 0)
+        step(
+          -1,
+          Symbols.chevron_left_rounded,
+          'common.actions.previous',
+          'Previous',
+        ),
+      if (index + 1 < list.length)
+        step(1, Symbols.chevron_right_rounded, 'common.actions.next', 'Next'),
+    ];
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
@@ -99,7 +145,8 @@ class _DetailScreenState extends State<DetailScreen> {
         return ShellPage(
           title: kit.title(record),
           marks: view.marks(),
-          actions: view.actions(),
+          marksExtent: view.marksExtent(),
+          actions: [..._neighbours(kit), ...view.actions()],
           body: widget.profile.presentation == Presentation.character
               ? CharacterDetail(record: record, page: page, visuals: visuals)
               : DetailLayout(media: view.media(), sections: view.sections()),
@@ -165,28 +212,87 @@ class _Page {
         : Row(mainAxisSize: MainAxisSize.min, children: children);
   }
 
-  List<BarAction> actions() {
-    if (kind != Presentation.song || record['musicUrl'] is! String) {
-      return const [];
+  double marksExtent() {
+    final visuals = kit.visuals;
+    if (visuals == null) return 0;
+    if (kind == Presentation.song) {
+      return 46.0 * (record['bandIds'] as List? ?? const []).length + 30;
     }
-    final track = Track(
-      id: kit.id(record),
-      url: kit.api.asset(record['musicUrl'] as String).toString(),
-      title: kit.title(record),
-      artwork: kit.images(record).firstOrNull,
-    );
-    final playing = audio.isPlaying(track.id);
-    return [
+    if (kind == Presentation.member || kind == Presentation.support) {
+      return 30.0 *
+          (kit.characterIds(record).take(3).length + kit.marks(record).length);
+    }
+    return 0;
+  }
+
+  /// The song's own actions (`renderDetailActions`): ranking, play,
+  /// Sonolus.
+  List<BarAction> actions() {
+    if (kind != Presentation.song) return const [];
+    final state = AppScope.of(context);
+    final actions = <BarAction>[
       BarAction(
-        icon: playing ? Symbols.pause_rounded : Symbols.play_arrow_rounded,
-        label: t(playing ? 'common.actions.pause' : 'common.actions.play'),
-        tonal: true,
-        onPressed: () async {
-          await audio.toggle(track);
-          host.refresh(() {});
-        },
+        icon: Symbols.bar_chart_rounded,
+        label: t('catalog.rankings.songs.title', 'Song ranking'),
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => SongRankingScreen(
+              songId: '${record['musicId'] ?? kit.id(record)}',
+              title: kit.title(record),
+            ),
+          ),
+        ),
       ),
     ];
+    if (record['musicUrl'] is String) {
+      final track = Track(
+        id: kit.id(record),
+        url: kit.api.asset(record['musicUrl'] as String).toString(),
+        title: kit.title(record),
+        artwork: kit.images(record).firstOrNull,
+      );
+      final playing = audio.isPlaying(track.id);
+      actions.add(
+        BarAction(
+          icon: playing ? Symbols.pause_rounded : Symbols.play_arrow_rounded,
+          label: t(playing ? 'common.actions.pause' : 'common.actions.play'),
+          onPressed: () async {
+            await audio.toggle(track);
+            host.refresh(() {});
+          },
+        ),
+      );
+    }
+    final charts = _charts;
+    final chosen =
+        host._difficulty ??
+        (charts.any((c) => c['difficulty'] == 3)
+            ? 3
+            : charts.lastOrNull?['difficulty'] as int?);
+    final chart = charts.where((c) => c['difficulty'] == chosen).firstOrNull;
+    final musicId = '${record['musicId'] ?? ''}'.trim();
+    if (chart?['file'] != null && RegExp(r'^\d{1,16}$').hasMatch(musicId)) {
+      const names = ['easy', 'normal', 'hard', 'expert', 'master'];
+      final raw = '${chart!['difficultyName'] ?? ''}'.toLowerCase();
+      final difficulty =
+          names.contains(raw) || raw == 'special' || raw == 'append'
+          ? raw
+          : names.elementAtOrNull(
+                  (chart['difficulty'] as num?)?.toInt() ?? 4,
+                ) ??
+                'master';
+      actions.add(
+        BarAction(
+          icon: Symbols.sports_esports_rounded,
+          label: 'Sonolus',
+          onPressed: () => openLink(
+            context,
+            'https://open.sonolus.com/haneoka.org/levels/haneoka-${state.server}-$musicId-$difficulty',
+          ),
+        ),
+      );
+    }
+    return actions;
   }
 
   Widget? media() {

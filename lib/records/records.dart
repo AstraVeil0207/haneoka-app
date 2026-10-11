@@ -10,6 +10,7 @@ import '../core/i18n.dart';
 import '../shell/page.dart';
 import '../ui/app_image.dart';
 import '../ui/theme.dart';
+import 'player.dart';
 
 /// The game servers whose records the website reads (`GAME_RECORDS_REGIONS`).
 const recordRegions = [
@@ -571,6 +572,61 @@ class _Card extends StatelessWidget {
                   ],
                 ),
         ),
+      ),
+    );
+  }
+}
+
+/// One song's score ranking (`song-ranking`): the region in the bar, the
+/// ranking below.
+class SongRankingScreen extends StatefulWidget {
+  const SongRankingScreen({
+    super.key,
+    required this.songId,
+    required this.title,
+  });
+  final String songId;
+  final String title;
+
+  @override
+  State<SongRankingScreen> createState() => _SongRankingScreenState();
+}
+
+class _SongRankingScreenState extends State<SongRankingScreen> {
+  final _list = GlobalKey<RankingListState>();
+  String? _region;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final t = state.text;
+    final region = _region ?? defaultRecordRegion(state.server, t.locale);
+    return ShellPage(
+      title: widget.title,
+      actions: [
+        regionChoice(t, region, (value) => setState(() => _region = value)),
+        BarAction(
+          icon: Symbols.refresh_rounded,
+          label: rankingLabel(t, 'refresh', 'Refresh ranking'),
+          onPressed: () => _list.currentState?.refresh(),
+        ),
+      ],
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: 32),
+        children: [
+          RankingList(
+            key: _list,
+            region: region,
+            endpoint:
+                '/api/v1/game/records/$region/songs/${Uri.encodeComponent(widget.songId)}/ranking',
+            onPlayer: (id) => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) =>
+                    PlayerProfileScreen(region: region, profileId: id),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -35,6 +35,7 @@ class BarAction {
     this.selected,
     this.badge = 0,
     this.tonal = false,
+    this.overflowFirst = false,
   }) : options = const [];
 
   /// A segmented choice (view switch): one checkable menu entry per option.
@@ -43,7 +44,8 @@ class BarAction {
       onPressed = null,
       selected = null,
       badge = 0,
-      tonal = false;
+      tonal = false,
+      overflowFirst = false;
   final IconData icon;
   final String label;
   final VoidCallback? onPressed;
@@ -53,6 +55,9 @@ class BarAction {
   final int badge;
   final bool tonal;
   final List<BarChoice> options;
+
+  /// Entity arrows: the first to move into the overflow menu.
+  final bool overflowFirst;
 
   int get slots => options.isEmpty ? 1 : options.length;
 }
@@ -86,6 +91,7 @@ class ShellPage extends StatefulWidget {
     required this.body,
     this.titleLanguage,
     this.marks,
+    this.marksExtent = 0,
     this.status,
     this.actions = const [],
     this.search,
@@ -98,6 +104,9 @@ class ShellPage extends StatefulWidget {
 
   /// A live count or state before the actions; never overflows.
   final Widget? status;
+
+  /// The marks' width, kept beside the title before actions overflow.
+  final double marksExtent;
   final List<BarAction> actions;
   final ShellSearch? search;
   final Widget body;
@@ -209,8 +218,12 @@ class _ShellPageState extends State<ShellPage> {
           textDirection: Directionality.of(context),
           maxLines: 1,
         )..layout()).width;
-        final budget = (constraints.maxWidth - lead - title.clamp(0, 160))
-            .clamp(48.0, constraints.maxWidth);
+        final budget =
+            (constraints.maxWidth -
+                    lead -
+                    title.clamp(0, 160) -
+                    (widget.marks == null ? 0 : widget.marksExtent + 8))
+                .clamp(48.0, constraints.maxWidth);
         return Row(
           children: [
             ?leading,
@@ -251,7 +264,7 @@ class _ShellPageState extends State<ShellPage> {
     var room = width;
     if (compact && AppScope.maybeOf(context)?.audio.current != null) {
       children.add(const NowPlaying());
-      room -= 48;
+      room -= 42;
     }
     if (search != null) {
       if (compact) {
@@ -262,7 +275,7 @@ class _ShellPageState extends State<ShellPage> {
             icon: const Icon(Symbols.search_rounded),
           ),
         );
-        room -= 48;
+        room -= 42;
       } else {
         final pill = (room * 0.5).clamp(160.0, 360.0);
         children.add(
@@ -276,21 +289,47 @@ class _ShellPageState extends State<ShellPage> {
     }
     if (widget.status != null) {
       children.add(widget.status!);
-      room -= 56;
+      room -= 44;
     }
+    // As `fitAppBarActions`: 40 dp buttons 2 dp apart; entity arrows leave
+    // first, then page actions from the end; on compact windows a page with
+    // Back keeps the navigation menu in the overflow.
     final actions = widget.actions;
-    var shown = actions.length;
-    int slots(int n) => actions.take(n).fold(0, (sum, a) => sum + a.slots);
-    while (shown > 0 &&
-        slots(shown) * 48 > room - (shown < actions.length ? 48 : 0)) {
-      shown--;
+    final shell = ShellScope.of(context);
+    final canPop = ModalRoute.of(context)?.canPop ?? false;
+    final menu = compact && canPop && shell != null
+        ? BarAction(
+            icon: Symbols.menu_rounded,
+            label:
+                AppScope.maybeOf(context)?.text('navigation.menu', 'Menu') ??
+                'Menu',
+            onPressed: shell.openNavigation,
+          )
+        : null;
+    final hidden = <BarAction>{};
+    double used() =>
+        actions
+            .where((a) => !hidden.contains(a))
+            .fold<double>(0, (sum, a) => sum + a.slots * 42) +
+        (hidden.isNotEmpty || menu != null ? 42 : 0);
+    final order = [
+      ...actions.where((a) => a.overflowFirst),
+      ...actions.reversed.where((a) => !a.overflowFirst),
+    ];
+    for (final action in order) {
+      if (used() <= room) break;
+      hidden.add(action);
     }
-    if (slots(shown) * 48 > room) shown = 0;
-    for (final action in actions.take(shown)) {
-      children.addAll(_buttons(action));
+    for (final action in actions) {
+      if (!hidden.contains(action)) children.addAll(_buttons(action));
     }
-    if (shown < actions.length) {
-      children.add(_overflow(context, actions.skip(shown).toList()));
+    final overflowed = [
+      for (final action in actions)
+        if (hidden.contains(action)) action,
+      ?menu,
+    ];
+    if (overflowed.isNotEmpty) {
+      children.add(_overflow(context, overflowed));
     }
     return Row(mainAxisSize: MainAxisSize.min, children: children);
   }
