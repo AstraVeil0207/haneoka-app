@@ -363,14 +363,34 @@ class DifficultyChips extends StatelessWidget {
 
 /// The detail's artwork (`image-gallery`): an outlined card, one image at a
 /// time with a zoom button, a pager and a strip of thumbnails.
+/// One gallery entry: its address, its caption, and whether the reading
+/// locale's own variant is tried first.
+class GalleryImage {
+  const GalleryImage(this.url, this.label, {this.localized = true});
+  final String url;
+  final String label;
+  final bool localized;
+}
+
 class ImageGallery extends StatefulWidget {
   const ImageGallery({
     super.key,
     required this.images,
     this.aspectRatio = 1,
     this.framed = true,
+    this.entries,
+    this.initial = 0,
+    this.natural = false,
   });
+
+  /// Event and recruitment art: full bleed at the image's own shape
+  /// (`image-gallery natural`).
+  final bool natural;
   final List<String> images;
+
+  /// Captioned entries (`image-gallery` items); [images] when null.
+  final List<GalleryImage>? entries;
+  final int initial;
   final double aspectRatio;
 
   /// False where the gallery sits on its own ground (a character's profile).
@@ -380,8 +400,33 @@ class ImageGallery extends StatefulWidget {
 }
 
 class _ImageGalleryState extends State<ImageGallery> {
-  int _index = 0;
-  final _pages = PageController();
+  late int _index = widget.initial;
+  late final _pages = PageController(initialPage: widget.initial);
+  final _ratios = <String, double>{};
+
+  /// The image's own shape, read once it has decoded.
+  double _ratio(String url) {
+    final known = _ratios[url];
+    if (known != null) return known;
+    final stream = CachedNetworkImageProvider(
+      url,
+      cacheManager: artworkCache,
+    ).resolve(ImageConfiguration.empty);
+    late final ImageStreamListener listener;
+    listener = ImageStreamListener((info, _) {
+      stream.removeListener(listener);
+      final ratio = info.image.width / info.image.height;
+      if (mounted && ratio.isFinite && ratio > 0) {
+        setState(() => _ratios[url] = ratio);
+      }
+    }, onError: (_, _) => stream.removeListener(listener));
+    stream.addListener(listener);
+    return widget.aspectRatio;
+  }
+
+  List<GalleryImage> get _entries =>
+      widget.entries ??
+      [for (final url in widget.images) GalleryImage(url, '')];
 
   @override
   void dispose() {
@@ -400,7 +445,7 @@ class _ImageGalleryState extends State<ImageGallery> {
       opaque: false,
       barrierColor: Colors.black,
       pageBuilder: (context, _, _) =>
-          _ZoomView(images: widget.images, initial: _index),
+          _ZoomView(images: [for (final e in _entries) e.url], initial: _index),
       transitionsBuilder: (context, animation, _, child) =>
           FadeTransition(opacity: animation, child: child),
     ),
@@ -410,7 +455,8 @@ class _ImageGalleryState extends State<ImageGallery> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final images = widget.images;
+    final entries = _entries;
+    final images = [for (final e in entries) e.url];
     return DecoratedBox(
       decoration: BoxDecoration(
         border: widget.framed ? Border.all(color: scheme.outlineVariant) : null,
@@ -418,34 +464,56 @@ class _ImageGalleryState extends State<ImageGallery> {
       ),
       child: Column(
         children: [
-          AspectRatio(
-            aspectRatio: widget.aspectRatio,
-            child: Stack(
-              children: [
-                PageView(
-                  controller: _pages,
-                  onPageChanged: (index) => setState(() => _index = index),
-                  children: [
-                    for (final image in images)
-                      GestureDetector(
-                        onTap: () => _zoom(context),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: AppImage(candidates: [image]),
+          AnimatedSize(
+            duration: Durations.short4,
+            child: AspectRatio(
+              aspectRatio: widget.natural
+                  ? _ratio(images[_index])
+                  : widget.aspectRatio,
+              child: Stack(
+                children: [
+                  PageView(
+                    controller: _pages,
+                    onPageChanged: (index) => setState(() => _index = index),
+                    children: [
+                      for (final entry in entries)
+                        GestureDetector(
+                          onTap: () => _zoom(context),
+                          child: Padding(
+                            padding: widget.natural
+                                ? EdgeInsets.zero
+                                : const EdgeInsets.all(16),
+                            child: ClipRRect(
+                              borderRadius: widget.natural
+                                  ? const BorderRadius.vertical(
+                                      top: Radius.circular(
+                                        Corner.extraLarge - 1,
+                                      ),
+                                    )
+                                  : BorderRadius.zero,
+                              child: AppImage(
+                                candidates: [entry.url],
+                                localized: entry.localized,
+                                fit: widget.natural
+                                    ? BoxFit.cover
+                                    : BoxFit.contain,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
-                  ],
-                ),
-                Positioned(
-                  right: 12,
-                  bottom: 12,
-                  child: IconButton.filledTonal(
-                    tooltip: MaterialLocalizations.of(context).expandedHint,
-                    onPressed: () => _zoom(context),
-                    icon: const Icon(Symbols.zoom_in_rounded),
+                    ],
                   ),
-                ),
-              ],
+                  Positioned(
+                    right: 12,
+                    bottom: 12,
+                    child: IconButton.filledTonal(
+                      tooltip: MaterialLocalizations.of(context).expandedHint,
+                      onPressed: () => _zoom(context),
+                      icon: const Icon(Symbols.zoom_in_rounded),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           if (images.length > 1) ...[
@@ -457,10 +525,26 @@ class _ImageGalleryState extends State<ImageGallery> {
                   icon: const Icon(Symbols.chevron_left_rounded),
                 ),
                 Expanded(
-                  child: Text(
-                    '${_index + 1} / ${images.length}',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.labelLarge,
+                  child: Column(
+                    children: [
+                      if (entries[_index].label.isNotEmpty)
+                        Text(
+                          entries[_index].label,
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall,
+                        ),
+                      Text(
+                        '${_index + 1} / ${images.length}',
+                        textAlign: TextAlign.center,
+                        style: entries[_index].label.isEmpty
+                            ? theme.textTheme.labelLarge
+                            : theme.textTheme.bodySmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                      ),
+                    ],
                   ),
                 ),
                 IconButton(
@@ -494,7 +578,10 @@ class _ImageGalleryState extends State<ImageGallery> {
                       ),
                     ),
                     clipBehavior: Clip.antiAlias,
-                    child: AppImage(candidates: [images[index]]),
+                    child: AppImage(
+                      candidates: [entries[index].url],
+                      localized: entries[index].localized,
+                    ),
                   ),
                 ),
               ),

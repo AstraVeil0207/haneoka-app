@@ -510,10 +510,7 @@ class _SystemDetailState extends State<SystemDetail> {
         : end > 0 && end < now
         ? 'ended'
         : 'ongoing';
-    String instant(num value) =>
-        DateFormat.yMMMd(t.locale)
-            .add_Hms()
-            .format(DateTime.fromMillisecondsSinceEpoch(value.toInt()));
+    String instant(num value) => gameDateTime(t.locale, value);
     const rankingFields = [
       ('rankingDisabled', 'eventScoreRanking', 'Score ranking'),
       ('musicRankingDisabled', 'eventSongRanking', 'Song ranking'),

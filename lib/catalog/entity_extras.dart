@@ -275,12 +275,7 @@ class ItemRelations extends StatelessWidget {
         ? '×${number(count)}'
         : t('common.states.unavailable', 'Unavailable');
     String instant(Object? value) {
-      final at = RelativeTime.timestamp(value);
-      return at == null || at <= 0
-          ? ''
-          : DateFormat.yMMMd(t.locale)
-                .add_Hms()
-                .format(DateTime.fromMillisecondsSinceEpoch(at.toInt()));
+      return gameDateTime(t.locale, RelativeTime.timestamp(value));
     }
 
     /// The conditions that distinguish one occurrence, as phrases.

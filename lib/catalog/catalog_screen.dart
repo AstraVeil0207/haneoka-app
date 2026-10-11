@@ -231,7 +231,22 @@ class CatalogKit {
     return value == null ? null : Color(0xFF000000 | value);
   }
 
-  List<String> images(Entry item) => [
+  List<String> images(Entry item) {
+    // A band item's artwork lives with its band (`image()` for band-items).
+    final band = (item['bandId'] as num?)?.toInt() ?? 0;
+    if (kind == Presentation.bandItem && band > 0) {
+      return [
+        api
+            .asset(
+              '/assets/${api.server}/Assets/AddressableResources/Band/$band/BandItem/${id(item)}/band_item.png',
+            )
+            .toString(),
+      ];
+    }
+    return _images(item);
+  }
+
+  List<String> _images(Entry item) => [
     for (final path in profile.image)
       if (readPath(item, path) case final String value when value.isNotEmpty)
         api.asset(value).toString(),

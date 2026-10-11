@@ -15,6 +15,7 @@ import '../ui/app_image.dart';
 import '../ui/detail.dart';
 import 'card_growth.dart';
 import 'character_detail.dart';
+import 'detail_media.dart';
 import 'entity_extras.dart';
 import 'catalog_screen.dart';
 import 'format.dart';
@@ -204,7 +205,8 @@ class _Page {
         for (final id in kit.characterIds(record).take(3))
           if (visuals.characters[id]?['faceImage'] case final String face)
             _emblem(kit.api.asset(face).toString()),
-        for (final mark in kit.marks(record)) _emblem(mark.image),
+        // Rarity, then attribute (`renderDetailLeading`).
+        for (final mark in kit.marks(record).reversed) _emblem(mark.image),
       ],
     ];
     return children.isEmpty
@@ -296,29 +298,22 @@ class _Page {
   }
 
   Widget? media() {
-    final images = switch (kind) {
-      Presentation.member => _paths([
-        'images.thumbnail',
-        'images.full',
-        'images.character',
-      ]),
-      Presentation.support => _paths(['images.thumbnail', 'images.full']),
-      Presentation.character => _paths([
-        'profileImage',
-        'thumbnailImage',
-        'spriteImage',
-        'faceImage',
-      ]),
-      // The page shows the full jacket; grids use the small one.
-      Presentation.song => _paths(['jacketUrl', 'jacketThumbUrl']),
-      _ => kit.images(record),
-    };
-    final all = images.isNotEmpty
-        ? images
-        : imagesIn(record).map((p) => kit.api.asset(p).toString()).toList();
-    if (all.isEmpty) return null;
+    final (entries, initial) = detailMedia(
+      t: t,
+      resource: kit.profile.resource,
+      kind: kind,
+      item: record,
+      asset: (path) => kit.api.asset(path).toString(),
+      tileImage: kit.images(record).firstOrNull,
+    );
+    if (entries.isEmpty) return null;
     return ImageGallery(
-      images: all.toSet().toList(),
+      key: ValueKey(entries.map((e) => e.url).join()),
+      images: const [],
+      entries: entries,
+      initial: initial,
+      natural:
+          kit.profile.resource == 'events' || kit.profile.resource == 'gacha',
       aspectRatio:
           kind == Presentation.support ||
               kind == Presentation.system ||
@@ -328,19 +323,8 @@ class _Page {
     );
   }
 
-  List<String> _paths(List<String> paths) => [
-    for (final path in paths)
-      if (readPath(record, path) case final String value when value.isNotEmpty)
-        kit.api.asset(value).toString(),
-  ];
-
   String _date(Object? value) {
-    final ms = RelativeTime.timestamp(value);
-    return ms == null
-        ? ''
-        : DateFormat.yMMMd(t.locale)
-              .add_Hm()
-              .format(DateTime.fromMillisecondsSinceEpoch(ms.toInt()));
+    return gameDateTime(t.locale, RelativeTime.timestamp(value));
   }
 
   List<Widget> sections() => [

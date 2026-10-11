@@ -68,3 +68,18 @@ extension RelativeTime on SiteText {
     return _time(days < 0 ? 'releasedAgo' : 'releasesIn', {'time': time});
   }
 }
+
+/// A game-side instant in the viewer's timezone (`gameDateTime`): the
+/// numeric date and a 24-hour time, as `Intl.DateTimeFormat` writes it.
+String gameDateTime(String locale, num? ms) {
+  if (ms == null || ms <= 0) return '';
+  final at = DateTime.fromMillisecondsSinceEpoch(ms.toInt());
+  String two(int n) => n.toString().padLeft(2, '0');
+  final date = (y: at.year, m: two(at.month), d: two(at.day));
+  final time = '${two(at.hour)}:${two(at.minute)}';
+  return switch (locale) {
+    'en' => '${date.m}/${date.d}/${date.y}, $time',
+    'ko' => '${date.y}. ${date.m}. ${date.d}. $time',
+    _ => '${date.y}/${date.m}/${date.d} $time',
+  };
+}
