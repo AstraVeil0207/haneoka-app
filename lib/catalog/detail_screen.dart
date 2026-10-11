@@ -1,17 +1,30 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
+import 'package:intl/intl.dart';
 
+import '../core/api.dart';
 import '../core/app_state.dart';
+import '../core/audio.dart';
 import '../core/i18n.dart';
+import '../core/relative_time.dart';
 import '../l10n/app_localizations.dart';
 import '../shell/page.dart';
-import '../ui/theme.dart';
+import '../ui/app_image.dart';
+import '../ui/detail.dart';
+import 'catalog_screen.dart';
 import 'format.dart';
+import 'labels.g.dart';
 import 'profiles.dart';
+import 'skill_text.dart';
+import 'visuals.dart';
 
-/// One entity, laid out as the website's detail: artwork on one side, the
-/// profile's facts and every other field in sections on the other.
-class DetailScreen extends StatelessWidget {
+const _difficultyNames = ['EASY', 'NORMAL', 'HARD', 'EXPERT', 'SPECIAL'];
+const _rankNames = ['', 'E', 'D', 'C', 'B', 'A', 'S', 'SS'];
+
+/// One entity as the website's entity page: artwork in the gallery beside
+/// the presentation's own sections, every remaining field folded under All
+/// fields.
+class DetailScreen extends StatefulWidget {
   const DetailScreen({
     super.key,
     required this.profile,
@@ -20,149 +33,581 @@ class DetailScreen extends StatelessWidget {
   });
   final CatalogProfile profile;
   final String id;
-  final Map<String, Object?> summary;
+  final Entry summary;
+
+  @override
+  State<DetailScreen> createState() => _DetailScreenState();
+}
+
+class _DetailScreenState extends State<DetailScreen> {
+  Future<(Entry, CatalogVisuals)>? _data;
+  int? _difficulty;
+
+  void refresh(VoidCallback change) => setState(change);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _data ??= _load();
+  }
+
+  Future<(Entry, CatalogVisuals)> _load() async {
+    final api = AppScope.of(context).api;
+    final (record, visuals) = await (
+      api
+          .catalog(widget.profile.resource, widget.id)
+          .then<Entry>(
+            (value) => {...widget.summary, if (value is Entry) ...value},
+            onError: (_) => widget.summary,
+          ),
+      CatalogVisuals.of(api),
+    ).wait;
+    return (record, visuals);
+  }
 
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final t = state.text;
-    final detail = state.api
-        .catalog(profile.resource, id)
-        .then<Map<String, Object?>>(
-          (value) => {...summary, if (value is Map<String, Object?>) ...value},
-          onError: (_) => summary,
+    return FutureBuilder(
+      future: _data,
+      builder: (context, snapshot) {
+        final record = snapshot.data?.$1 ?? widget.summary;
+        final visuals = snapshot.data?.$2;
+        final kit = CatalogKit(widget.profile, t, state.api, visuals);
+        final page = _Page(kit, record, this);
+        return ShellPage(
+          title: kit.title(record),
+          marks: page.marks(),
+          actions: page.actions(),
+          body: DetailLayout(media: page.media(), sections: page.sections()),
         );
-    final title = firstOf(summary, profile.title);
-    return ShellPage(
-      title: t.text(title),
-      body: FutureBuilder(
-        future: detail,
-        builder: (context, snapshot) {
-          final record = snapshot.data ?? summary;
-          final format = ValueFormat(t);
-          final images = imagesIn(record).toSet().toList();
-          final keys = [
-            ...profile.detail.where((key) => readPath(record, key) != null),
-            ...record.keys.where(
-              (key) => !key.startsWith('_') && !profile.detail.contains(key),
-            ),
-          ];
-          final scalars = [
-            for (final key in keys)
-              if (ValueFormat.isScalar(readPath(record, key)))
-                if (format.format(key, readPath(record, key)) case final value
-                    when value.isNotEmpty && !value.startsWith('/assets/'))
-                  (key, value),
-          ];
-          // Facts the website names; the rest stays reachable under All fields.
-          final facts = [
-            for (final (key, value) in scalars)
-              if (_named(t, key) != null) (_named(t, key)!, value),
-          ];
-          final other = [
-            for (final (key, value) in scalars)
-              if (_named(t, key) == null) (key, value),
-          ];
-          final groups = [
-            for (final key in keys)
-              if (!ValueFormat.isScalar(readPath(record, key)) &&
-                  readPath(record, key) != null &&
-                  imagesIn(readPath(record, key)).length !=
-                      _size(readPath(record, key)))
-                key,
-          ];
-          final media = images.isEmpty
-              ? null
-              : _Gallery(images: images, state: state);
-          final sections = Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _Section(
-                icon: Icons.info_outline,
-                title: t('common.actions.details', 'Details'),
-                child: _SpecList(facts: facts),
+      },
+    );
+  }
+}
+
+/// The sections of one entity, by presentation.
+class _Page {
+  _Page(this.kit, this.record, this.host);
+  final CatalogKit kit;
+  final Entry record;
+  final _DetailScreenState host;
+
+  SiteText get t => kit.t;
+  BuildContext get context => host.context;
+  Presentation get kind => kit.kind;
+  AudioService get audio => AppScope.of(context).audio;
+
+  Widget _emblem(String? url, {double size = 24}) => url == null
+      ? const SizedBox.shrink()
+      : Padding(
+          padding: const EdgeInsets.only(right: 6),
+          child: SizedBox(
+            height: size,
+            width: size,
+            child: AppImage(candidates: [url]),
+          ),
+        );
+
+  Widget? marks() {
+    final visuals = kit.visuals;
+    if (visuals == null) return null;
+    final children = <Widget>[
+      if (kind == Presentation.song) ...[
+        for (final id in (record['bandIds'] as List? ?? const []))
+          if (visuals.bandLogo(id) case final logo?)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: SizedBox(
+                height: 24,
+                width: 40,
+                child: AppImage(candidates: [logo]),
               ),
-              for (final key in groups)
-                _Section(
-                  icon: Icons.list_alt,
-                  title: _label(t, key),
-                  folded: true,
-                  child: _Nested(value: readPath(record, key), format: format),
-                ),
-              if (other.isNotEmpty)
-                _Section(
-                  icon: Icons.data_object,
-                  title: AppLocalizations.of(context).allFields,
-                  folded: true,
-                  child: _SpecList(facts: other),
-                ),
-            ],
-          );
-          return LayoutBuilder(
-            builder: (context, constraints) {
-              final wide = constraints.maxWidth >= 840;
-              final gutter = constraints.maxWidth < ShellMetrics.compact
-                  ? 16.0
-                  : 24.0;
-              final progress = snapshot.connectionState != ConnectionState.done
-                  ? const LinearProgressIndicator()
-                  : const SizedBox(height: 4);
-              if (wide && media != null) {
-                return Column(
-                  children: [
-                    progress,
-                    Expanded(
-                      child: SingleChildScrollView(
-                        padding: EdgeInsets.all(gutter),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            SizedBox(
-                              width: (constraints.maxWidth * 0.36).clamp(
-                                280,
-                                420,
-                              ),
-                              child: media,
-                            ),
-                            SizedBox(width: gutter),
-                            Expanded(child: sections),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                );
-              }
-              return Column(
-                children: [
-                  progress,
-                  Expanded(
-                    child: ListView(
-                      padding: EdgeInsets.all(gutter),
-                      children: [
-                        if (media != null) ...[media, SizedBox(height: gutter)],
-                        sections,
-                      ],
+            ),
+        _emblem(visuals.musicTypeMark(record['musicType'])),
+      ],
+      if (kind == Presentation.member || kind == Presentation.support) ...[
+        for (final id in kit.characterIds(record).take(3))
+          if (visuals.characters[id]?['faceImage'] case final String face)
+            _emblem(kit.api.asset(face).toString()),
+        for (final mark in kit.marks(record)) _emblem(mark.image),
+      ],
+    ];
+    return children.isEmpty
+        ? null
+        : Row(mainAxisSize: MainAxisSize.min, children: children);
+  }
+
+  List<BarAction> actions() {
+    if (kind != Presentation.song || record['musicUrl'] is! String) {
+      return const [];
+    }
+    final track = Track(
+      id: kit.id(record),
+      url: kit.api.asset(record['musicUrl'] as String).toString(),
+      title: kit.title(record),
+      artwork: kit.images(record).firstOrNull,
+    );
+    final playing = audio.isPlaying(track.id);
+    return [
+      BarAction(
+        icon: playing ? Symbols.pause_rounded : Symbols.play_arrow_rounded,
+        label: t(playing ? 'common.actions.pause' : 'common.actions.play'),
+        tonal: true,
+        onPressed: () async {
+          await audio.toggle(track);
+          host.refresh(() {});
+        },
+      ),
+    ];
+  }
+
+  Widget? media() {
+    final images = switch (kind) {
+      Presentation.member => _paths([
+        'images.thumbnail',
+        'images.full',
+        'images.character',
+      ]),
+      Presentation.support => _paths(['images.thumbnail', 'images.full']),
+      Presentation.character => _paths([
+        'profileImage',
+        'thumbnailImage',
+        'spriteImage',
+        'faceImage',
+      ]),
+      _ => kit.images(record),
+    };
+    final all = images.isNotEmpty
+        ? images
+        : imagesIn(record).map((p) => kit.api.asset(p).toString()).toList();
+    if (all.isEmpty) return null;
+    return ImageGallery(
+      images: all.toSet().toList(),
+      aspectRatio:
+          kind == Presentation.support ||
+              kind == Presentation.system ||
+              kind == Presentation.background
+          ? 16 / 9
+          : 1,
+    );
+  }
+
+  List<String> _paths(List<String> paths) => [
+    for (final path in paths)
+      if (readPath(record, path) case final String value when value.isNotEmpty)
+        kit.api.asset(value).toString(),
+  ];
+
+  String _date(Object? value) {
+    final ms = RelativeTime.timestamp(value);
+    return ms == null
+        ? ''
+        : DateFormat.yMMMd(t.locale)
+              .add_Hm()
+              .format(DateTime.fromMillisecondsSinceEpoch(ms.toInt()));
+  }
+
+  List<Widget> sections() => [
+    ...switch (kind) {
+      Presentation.song => _song(),
+      Presentation.member || Presentation.support => _card(),
+      _ => _generic(),
+    },
+    ..._rest(),
+  ];
+
+  // ---------- Songs ----------
+
+  List<Entry> get _charts => [
+    for (final row in (record['difficulty'] as List? ?? const []))
+      if (row is Entry) row,
+  ];
+
+  List<Widget> _song() {
+    final charts = _charts;
+    final chosen =
+        host._difficulty ??
+        (charts.any((c) => c['difficulty'] == 3)
+            ? 3
+            : charts.lastOrNull?['difficulty'] as int?);
+    final chart = charts.where((c) => c['difficulty'] == chosen).firstOrNull;
+    String list(Object? value) => switch (value) {
+      List() =>
+        value.whereType<String>().where((s) => s.isNotEmpty).take(1).join(),
+      _ => t.text(value),
+    };
+    final facts = [
+      if (chart != null) ...[
+        Fact(
+          t.label('level'),
+          '${chart['displayLevel'] ?? chart['playLevel'] ?? '—'}',
+        ),
+        Fact(
+          t.label('n'),
+          NumberFormat.decimalPattern(t.locale).format(chart['noteCount'] ?? 0),
+        ),
+      ],
+      for (final key in ['composer', 'lyricist', 'arranger'])
+        if (list(record[key]).isNotEmpty)
+          Fact(
+            t.label(
+              key == 'lyricist'
+                  ? 'lyrics'
+                  : key == 'arranger'
+                  ? 'arrangement'
+                  : key,
+            ),
+            list(record[key]),
+          ),
+      if (_date(record['publishedAt']).isNotEmpty)
+        Fact(t.label('release'), _date(record['publishedAt'])),
+    ];
+    return [
+      DetailSection(
+        icon: Symbols.info_rounded,
+        title: t('common.actions.details', 'Details'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            DifficultyChips(
+              selected: chosen,
+              onSelected: (index) =>
+                  host.refresh(() => host._difficulty = index),
+              levels: [
+                for (final c in charts)
+                  (
+                    (c['difficulty'] as num).toInt(),
+                    _difficultyNames[(c['difficulty'] as num).toInt().clamp(
+                      0,
+                      4,
+                    )],
+                    '${c['displayLevel'] ?? c['playLevel'] ?? ''}'.replaceAll(
+                      RegExp(r'\.0$'),
+                      '',
                     ),
                   ),
-                ],
-              );
-            },
-          );
-        },
+              ],
+            ),
+            const SizedBox(height: 16),
+            SpecList(facts: facts),
+          ],
+        ),
+      ),
+      ?_rewards(chart),
+    ];
+  }
+
+  Widget? _rewards(Entry? chart) {
+    final ranks = [
+      for (final r in (record['scoreRanks'] as List? ?? const []))
+        if (r is Entry && ((r['scoreRank'] as num?) ?? 0) >= 3) r,
+    ];
+    final scoreRewards = [
+      for (final r in (record['scoreRewards'] as List? ?? const []))
+        if (r is Entry) r,
+    ];
+    final name = '${chart?['difficultyName'] ?? ''}'.toLowerCase();
+    final combo = [
+      for (final r
+          in ((record['comboRewards'] as Map?)?[name] as List? ?? const []))
+        if (r is Entry) r,
+    ];
+    if (ranks.isEmpty && scoreRewards.isEmpty && combo.isEmpty) return null;
+    final theme = Theme.of(context);
+    final number = NumberFormat.decimalPattern(t.locale);
+    final server = kit.api.server;
+    Widget reward(Entry r) {
+      final resolved = (r['resolved'] as Map?) ?? const {};
+      final image = resolved['image'];
+      return Padding(
+        padding: const EdgeInsets.only(left: 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox.square(
+              dimension: 26,
+              child: image is String
+                  ? AppImage(candidates: [kit.api.asset(image).toString()])
+                  : const Icon(Symbols.redeem_rounded, size: 18),
+            ),
+            const SizedBox(width: 6),
+            Text(t.text(resolved['name']), style: theme.textTheme.bodyMedium),
+            Text(
+              ' ×${number.format(r['resourceCount'] ?? 0)}',
+              style: theme.textTheme.titleSmall,
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget row(
+      Widget? leading,
+      String value,
+      String caption,
+      List<Entry> rewards,
+    ) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          if (leading != null) ...[leading, const SizedBox(width: 12)],
+          SizedBox(
+            width: 104,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(value, style: theme.textTheme.titleSmall),
+                Text(
+                  caption,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Wrap(
+              runSpacing: 4,
+              children: [for (final r in rewards) reward(r)],
+            ),
+          ),
+        ],
+      ),
+    );
+    final rankIds = {
+      for (final r in ranks) (r['scoreRank'] as num).toInt(),
+      for (final r in scoreRewards) (r['liveScoreRank'] as num).toInt(),
+    }.toList()..sort();
+    final notes = (chart?['noteCount'] as num?) ?? 0;
+    const percentages = [25, 50, 75, 100];
+    return DetailSection(
+      icon: Symbols.emoji_events_rounded,
+      title: t.label('rewards', 'Rewards'),
+      count: ranks.length + scoreRewards.length + combo.length,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(t.label('score', 'Score'), style: theme.textTheme.titleSmall),
+          for (final id in rankIds)
+            row(
+              SizedBox.square(
+                dimension: 28,
+                child: AppImage(
+                  candidates: [
+                    kit.api
+                        .asset(
+                          '/assets/$server/Assets/AddressableResources/UI/Texture/BandRank/ImgScorerank_${_rankNames[id.clamp(0, 7)]}.png',
+                        )
+                        .toString(),
+                  ],
+                ),
+              ),
+              number.format(
+                ranks
+                        .where((r) => r['scoreRank'] == id)
+                        .firstOrNull?['requiredScore'] ??
+                    0,
+              ),
+              t.label('score', 'Score'),
+              [
+                for (final r in scoreRewards)
+                  if (r['liveScoreRank'] == id) r,
+              ],
+            ),
+          if (combo.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(t.label('combo', 'Combo'), style: theme.textTheme.titleSmall),
+            for (final r in combo)
+              Builder(
+                builder: (context) {
+                  final percent =
+                      percentages[((r['comboRateType'] as num?) ?? 0)
+                          .toInt()
+                          .clamp(0, 3)];
+                  return row(
+                    null,
+                    percent == 100 ? 'FULL COMBO' : '$percent%',
+                    '${number.format((notes * percent / 100).ceil())} ${t.label('notes', 'notes')}',
+                    [r],
+                  );
+                },
+              ),
+          ],
+        ],
       ),
     );
   }
 
-  static int _size(Object? value) => value is Map
-      ? value.length
-      : value is List
-      ? value.length
-      : 1;
+  // ---------- Member cards and snapshots ----------
+
+  List<Widget> _card() {
+    final visuals = kit.visuals;
+    final number = NumberFormat.decimalPattern(t.locale);
+    final marks = kit.marks(record);
+    final theme = Theme.of(context);
+    final ids = kit.characterIds(record);
+    final skills = (record['resolvedSkills'] as Map?) ?? const {};
+    return [
+      DetailSection(
+        icon: Symbols.info_rounded,
+        title: t('common.actions.details', 'Details'),
+        child: SpecList(
+          facts: [
+            for (final mark in marks.reversed)
+              Fact(
+                mark.at.name == 'end'
+                    ? t.label('rarity')
+                    : t.label('attribute'),
+                mark.label ?? '',
+                widget: SizedBox(
+                  height: 28,
+                  width: 28,
+                  child: AppImage(candidates: [mark.image!]),
+                ),
+              ),
+            if (_date(record['releasedAt']).isNotEmpty)
+              Fact(t.label('release'), _date(record['releasedAt'])),
+          ],
+        ),
+      ),
+      if (ids.isNotEmpty)
+        DetailSection(
+          icon: Symbols.group_rounded,
+          title: t.label('character'),
+          count: ids.length,
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final id in ids)
+                ActionChip(
+                  avatar: visuals?.characters[id]?['faceImage'] is String
+                      ? ClipOval(
+                          child: AppImage(
+                            candidates: [
+                              kit.api
+                                  .asset(
+                                    visuals!.characters[id]!['faceImage']
+                                        as String,
+                                  )
+                                  .toString(),
+                            ],
+                          ),
+                        )
+                      : null,
+                  label: Text(kit.characterName(id)),
+                  onPressed: () {},
+                ),
+            ],
+          ),
+        ),
+      DetailSection(
+        icon: Symbols.monitoring_rounded,
+        title: t.label('status', 'Status'),
+        child: SpecList(
+          facts: [
+            for (final stat in ['performance', 'technique', 'visual'])
+              Fact(
+                t.label(stat),
+                number.format(readPath(record, 'stat.$stat') ?? 0),
+              ),
+            Fact(t.label('total'), number.format(kit.total(record))),
+          ],
+        ),
+      ),
+      if (skills.isNotEmpty)
+        DetailSection(
+          icon: Symbols.bolt_rounded,
+          title: t.label('skills', 'Skills'),
+          child: Column(
+            children: [
+              for (final MapEntry(:key, :value) in skills.entries)
+                for (final skill
+                    in (value is List ? value : [value]).whereType<Map>())
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _SkillCard(
+                      group: t.label('${key}Skill', '$key'),
+                      skill: skill.cast<String, Object?>(),
+                      t: t,
+                      api: kit.api,
+                      theme: theme,
+                    ),
+                  ),
+            ],
+          ),
+        ),
+    ];
+  }
+
+  // ---------- Everything else ----------
+
+  List<Widget> _generic() {
+    final format = ValueFormat(t);
+    final facts = [
+      for (final key in kit.profile.detail)
+        if (readPath(record, key) case final value?)
+          if (format.format(key, value) case final text
+              when text.isNotEmpty && !text.startsWith('/assets/'))
+            Fact(_named(key) ?? key, text),
+      if (kind == Presentation.system) ...[
+        if (_date(record['startAt']).isNotEmpty)
+          Fact(t.label('start'), _date(record['startAt'])),
+        if (_date(record['endAt']).isNotEmpty)
+          Fact(t.label('end'), _date(record['endAt'])),
+      ],
+    ];
+    final description = kit.plain(record['description']);
+    return [
+      if (facts.isNotEmpty)
+        DetailSection(
+          icon: Symbols.info_rounded,
+          title: t('common.actions.details', 'Details'),
+          child: SpecList(facts: facts),
+        ),
+      if (description.isNotEmpty)
+        DetailSection(
+          icon: Symbols.notes_rounded,
+          title: t.label('content', 'Content'),
+          child: SelectableText(
+            description,
+            style: Theme.of(context).textTheme.bodyLarge,
+          ),
+        ),
+    ];
+  }
+
+  /// Every remaining scalar under All fields, as the website's fold.
+  List<Widget> _rest() {
+    final format = ValueFormat(t);
+    final shown = {...kit.profile.detail, 'description', 'raw', 'evidence'};
+    final facts = [
+      for (final MapEntry(:key, :value) in record.entries)
+        if (!key.startsWith('_') &&
+            !shown.contains(key) &&
+            ValueFormat.isScalar(value))
+          if (format.format(key, value) case final text
+              when text.isNotEmpty && !text.startsWith('/'))
+            Fact(_named(key) ?? key, text),
+    ];
+    if (facts.isEmpty) return const [];
+    return [
+      DetailSection(
+        icon: Symbols.data_object_rounded,
+        title: AppLocalizations.of(context).allFields,
+        folded: true,
+        child: SpecList(facts: facts),
+      ),
+    ];
+  }
 
   /// The website's label for a field, or null when it does not name it.
-  static String? _named(SiteText t, String key) {
+  String? _named(String key) {
     for (final path in [
+      ?catalogLabelPaths[key],
       'catalog.fields.$key',
       'catalog.songs.fields.$key',
       'catalog.cards.fields.$key',
@@ -174,229 +619,85 @@ class DetailScreen extends StatelessWidget {
     }
     return null;
   }
-
-  static String _label(SiteText t, String key) => _named(t, key) ?? key;
 }
 
-/// The detail's artwork in an outlined card, one image at a time.
-class _Gallery extends StatefulWidget {
-  const _Gallery({required this.images, required this.state});
-  final List<String> images;
-  final AppState state;
-  @override
-  State<_Gallery> createState() => _GalleryState();
-}
-
-class _GalleryState extends State<_Gallery> {
-  int _index = 0;
-  final _pages = PageController();
+/// A skill as the website's `.skill-row`: icon, group, name and the filled template.
+class _SkillCard extends StatelessWidget {
+  const _SkillCard({
+    required this.group,
+    required this.skill,
+    required this.t,
+    required this.api,
+    required this.theme,
+  });
+  final String group;
+  final Entry skill;
+  final SiteText t;
+  final HaneokaApi api;
+  final ThemeData theme;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final icon = skill['icon'];
+    final template = t.text(skill['description']);
+    final effects = [
+      for (final e in (skill['effects'] as List? ?? const []))
+        if (e is Map) e.cast<String, Object?>(),
+    ];
+    final description = template.isEmpty
+        ? ''
+        : skillDescription(
+            template,
+            skillLevelEffects(effects).effects,
+            t.text,
+          );
     return DecoratedBox(
       decoration: BoxDecoration(
-        border: Border.all(color: theme.colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(Corner.extraLarge),
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: Column(
-        children: [
-          AspectRatio(
-            aspectRatio: 1,
-            child: PageView(
-              controller: _pages,
-              onPageChanged: (index) => setState(() => _index = index),
-              children: [
-                for (final image in widget.images)
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: CachedNetworkImage(
-                      imageUrl: widget.state.api.asset(image).toString(),
-                      fit: BoxFit.contain,
-                      errorWidget: (_, _, _) => const SizedBox.shrink(),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (icon is String)
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: SizedBox.square(
+                  dimension: 40,
+                  child: AppImage(candidates: [api.asset(icon).toString()]),
+                ),
+              ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    group,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
                     ),
                   ),
-              ],
-            ),
-          ),
-          if (widget.images.length > 1) ...[
-            Divider(height: 1, color: theme.colorScheme.outlineVariant),
-            Row(
-              children: [
-                IconButton(
-                  onPressed: _index == 0
-                      ? null
-                      : () => _pages.previousPage(
-                          duration: Durations.medium2,
-                          curve: Easing.standard,
-                        ),
-                  icon: const Icon(Icons.chevron_left),
-                ),
-                Expanded(
-                  child: Text(
-                    '${_index + 1} / ${widget.images.length}',
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.labelLarge,
+                  Text(
+                    t.text(skill['skillName']),
+                    style: theme.textTheme.titleSmall,
                   ),
-                ),
-                IconButton(
-                  onPressed: _index == widget.images.length - 1
-                      ? null
-                      : () => _pages.nextPage(
-                          duration: Durations.medium2,
-                          curve: Easing.standard,
-                        ),
-                  icon: const Icon(Icons.chevron_right),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// A detail section: the website's heading (icon in a tonal circle, title)
-/// over its content; long groups fold.
-class _Section extends StatelessWidget {
-  const _Section({
-    required this.icon,
-    required this.title,
-    required this.child,
-    this.folded = false,
-  });
-  final IconData icon;
-  final String title;
-  final Widget child;
-  final bool folded;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final heading = Row(
-      children: [
-        CircleAvatar(
-          radius: 18,
-          backgroundColor: theme.colorScheme.secondaryContainer,
-          child: Icon(
-            icon,
-            size: 20,
-            color: theme.colorScheme.onSecondaryContainer,
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            title,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
-    );
-    if (folded) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: ExpansionTile(
-          tilePadding: EdgeInsets.zero,
-          shape: const Border(),
-          collapsedShape: const Border(),
-          title: heading,
-          children: [child],
-        ),
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [heading, const SizedBox(height: 16), child],
-      ),
-    );
-  }
-}
-
-/// Facts as the website's spec list: label above value, two columns when wide.
-class _SpecList extends StatelessWidget {
-  const _SpecList({required this.facts});
-  final List<(String, String)> facts;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 520 ? 2 : 1;
-        final width = (constraints.maxWidth - (columns - 1) * 24) / columns;
-        return Wrap(
-          spacing: 24,
-          runSpacing: 16,
-          children: [
-            for (final (label, value) in facts)
-              SizedBox(
-                width: width,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: theme.textTheme.labelMedium?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant,
+                  if (description.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        description,
+                        style: theme.textTheme.bodyMedium,
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    SelectableText(value, style: theme.textTheme.bodyLarge),
-                  ],
-                ),
+                ],
               ),
+            ),
           ],
-        );
-      },
+        ),
+      ),
     );
-  }
-}
-
-class _Nested extends StatelessWidget {
-  const _Nested({required this.value, required this.format});
-  final Object? value;
-  final ValueFormat format;
-
-  @override
-  Widget build(BuildContext context) {
-    final value = this.value;
-    if (value is Map) {
-      return Column(
-        children: [
-          for (final entry in value.entries)
-            if (ValueFormat.isScalar(entry.value))
-              ListTile(
-                dense: true,
-                title: Text('${entry.key}'),
-                trailing: Text(format.format('${entry.key}', entry.value)),
-              )
-            else if (entry.value != null)
-              ExpansionTile(
-                title: Text('${entry.key}'),
-                children: [_Nested(value: entry.value, format: format)],
-              ),
-        ],
-      );
-    }
-    if (value is List) {
-      return Column(
-        children: [
-          for (final (index, item) in value.take(200).indexed)
-            ValueFormat.isScalar(item)
-                ? ListTile(dense: true, title: Text(format.format('', item)))
-                : ExpansionTile(
-                    title: Text('${index + 1}'),
-                    children: [_Nested(value: item, format: format)],
-                  ),
-        ],
-      );
-    }
-    return ListTile(dense: true, title: Text(format.format('', value)));
   }
 }

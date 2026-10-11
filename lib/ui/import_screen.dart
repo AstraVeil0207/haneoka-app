@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../l10n/app_localizations.dart';
 import '../save/game_save.dart';
@@ -169,7 +170,7 @@ class _ImportScreenState extends State<ImportScreen> {
     final methods = <Widget>[
       if (Platform.isAndroid) ...[
         ListTile(
-          leading: const Icon(Icons.adb),
+          leading: const Icon(Symbols.adb_rounded),
           title: Text(t.sourceShizuku),
           subtitle: switch (_shizuku) {
             ShizukuStatus.notRunning => Text(t.shizukuNotRunning),
@@ -186,36 +187,36 @@ class _ImportScreenState extends State<ImportScreen> {
         ),
         if (_canGrant)
           ListTile(
-            leading: const Icon(Icons.folder_special_outlined),
+            leading: const Icon(Symbols.folder_special_rounded),
             title: Text(t.sourceGrantFolder),
             trailing: IconButton(
               tooltip: t.refresh,
               onPressed: _busy ? null : _readGranted,
-              icon: const Icon(Icons.refresh),
+              icon: const Icon(Symbols.refresh_rounded),
             ),
             onTap: _busy ? null : _grantFolder,
           ),
       ],
       if (_desktop) ...[
         ListTile(
-          leading: const Icon(Icons.phone_android),
+          leading: const Icon(Symbols.phone_android_rounded),
           title: Text(t.sourceAdb),
           onTap: _busy ? null : () => showAdbSheet(context, onRead: _run),
         ),
         ListTile(
-          leading: const Icon(Icons.phone_iphone),
+          leading: const Icon(Symbols.phone_iphone_rounded),
           title: Text(t.sourceIosBackup),
           onTap: _busy ? null : () => showBackupSheet(context, onRead: _run),
         ),
       ],
       ListTile(
-        leading: const Icon(Icons.file_open_outlined),
+        leading: const Icon(Symbols.file_open_rounded),
         title: Text(t.sourceFiles),
         trailing: _hasPaths
             ? IconButton(
                 tooltip: t.sourceFiles,
                 onPressed: _busy ? null : () => _pickFiles(folder: true),
-                icon: const Icon(Icons.folder_open),
+                icon: const Icon(Symbols.folder_open_rounded),
               )
             : null,
         onTap: _busy ? null : _pickFiles,
@@ -241,7 +242,7 @@ class _ImportScreenState extends State<ImportScreen> {
             ),
             for (final save in _saves)
               ListTile(
-                leading: const Icon(Icons.person_outline),
+                leading: const Icon(Symbols.person_rounded),
                 title: Text(save.name ?? save.profileId),
                 subtitle: Text(
                   [
@@ -249,7 +250,7 @@ class _ImportScreenState extends State<ImportScreen> {
                     save.profileId,
                   ].whereType<String>().join(' · '),
                 ),
-                trailing: const Icon(Icons.chevron_right),
+                trailing: const Icon(Symbols.chevron_right_rounded),
                 onTap: () => _open(save),
               ),
           ],

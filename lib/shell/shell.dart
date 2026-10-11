@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../catalog/catalog_screen.dart';
 import '../catalog/detail_screen.dart';
 import '../catalog/profiles.dart';
 import '../catalog/songs.dart';
 import '../core/app_state.dart';
+import '../home/home_screen.dart';
 import '../l10n/app_localizations.dart';
 import '../ui/import_screen.dart';
 import '../ui/theme.dart';
@@ -31,42 +33,53 @@ class NavDestination {
 List<NavDestination> _destinations(
   String Function(String, [String]) t,
   String importLabel,
+  ValueChanged<String> select,
 ) => [
+  NavDestination('home', t('navigation.home', 'Home'), Symbols.home_rounded, [
+    NavEntry(
+      'home',
+      t('navigation.home', 'Home'),
+      Symbols.home_rounded,
+      (_) => HomeScreen(onBrowse: select),
+    ),
+  ]),
   NavDestination(
     'catalog',
-    t('navigation.catalog', 'Catalog'),
-    Icons.category_outlined,
+    t('navigation.library', 'Library'),
+    Symbols.category_rounded,
     [
       for (final profile in catalogProfiles)
         NavEntry(
           'catalog/${profile.resource}',
           t(profile.label, profile.resource),
           profile.icon,
-          (_) => profile.resource == 'songs'
-              ? SongsScreen(
-                  onOpen: (context, song) => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => DetailScreen(
-                        profile: profile,
-                        id: '${song['musicId']}',
-                        summary: song,
-                      ),
+          (_) {
+            void open(BuildContext context, Map<String, Object?> item) =>
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => DetailScreen(
+                      profile: profile,
+                      id: '${firstOf(item, profile.id) ?? item['_key']}',
+                      summary: item,
                     ),
                   ),
-                )
-              : CatalogScreen(profile: profile),
+                );
+            return profile.presentation == Presentation.song
+                ? SongsScreen(onOpen: open)
+                : CatalogScreen(profile: profile, onOpen: open);
+          },
         ),
     ],
   ),
   NavDestination(
     'tools',
     t('navigation.tools', 'Tools'),
-    Icons.build_outlined,
+    Symbols.build_rounded,
     [
       NavEntry(
         'tools/save',
         importLabel,
-        Icons.save_alt,
+        Symbols.download_rounded,
         (_) => const ImportScreen(),
       ),
     ],
@@ -83,7 +96,7 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   final _scaffold = GlobalKey<ScaffoldState>();
-  String _selected = 'catalog/songs';
+  String _selected = 'home';
   bool _settings = false;
 
   void _select(String id) {
@@ -101,6 +114,7 @@ class _AppShellState extends State<AppShell> {
     final destinations = _destinations(
       (path, [fallback = '']) => t(path, fallback),
       AppLocalizations.of(context).importTitle,
+      _select,
     );
     final entries = {
       for (final d in destinations)
@@ -157,14 +171,14 @@ class _AppShellState extends State<AppShell> {
                       const SizedBox(height: 8),
                       IconButton(
                         onPressed: () => _scaffold.currentState?.openDrawer(),
-                        icon: const Icon(Icons.menu),
+                        icon: const Icon(Symbols.menu_rounded),
                       ),
                     ],
                   ),
                   trailing: IconButton(
                     tooltip: t('navigation.settings', 'Settings'),
                     onPressed: () => setState(() => _settings = true),
-                    icon: const Icon(Icons.settings_outlined),
+                    icon: const Icon(Symbols.settings_rounded),
                   ),
                   onDestinationSelected: (index) =>
                       _select(destinations[index].entries.first.id),
@@ -172,6 +186,7 @@ class _AppShellState extends State<AppShell> {
                     for (final d in destinations)
                       NavigationRailDestination(
                         icon: Icon(d.icon),
+                        selectedIcon: Icon(d.icon, fill: 1),
                         label: Text(d.label),
                       ),
                   ],
@@ -236,6 +251,7 @@ class _NavTree extends StatelessWidget {
                 const SizedBox(width: 16),
                 Icon(
                   icon,
+                  fill: active ? 1 : 0,
                   size: indent > 0 ? 20 : 24,
                   color: active
                       ? theme.colorScheme.onSecondaryContainer
@@ -307,7 +323,7 @@ class _NavTree extends StatelessWidget {
             ),
             item(
               settingsLabel,
-              Icons.settings_outlined,
+              Symbols.settings_rounded,
               selected == 'settings',
               onSettings,
             ),

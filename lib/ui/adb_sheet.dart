@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../l10n/app_localizations.dart';
@@ -148,20 +149,20 @@ class _AdbSheetState extends State<_AdbSheet> {
                   IconButton(
                     tooltip: t.pairWireless,
                     onPressed: _pair,
-                    icon: const Icon(Icons.wifi),
+                    icon: const Icon(Symbols.wifi_rounded),
                   ),
                 if (_adb != null)
                   IconButton(
                     tooltip: t.refresh,
                     onPressed: _refresh,
-                    icon: const Icon(Icons.refresh),
+                    icon: const Icon(Symbols.refresh_rounded),
                   ),
               ],
             ),
           ),
           if (_missing) ...[
             ListTile(
-              leading: const Icon(Icons.error_outline),
+              leading: const Icon(Symbols.error_rounded),
               title: Text(t.adbMissing),
             ),
             OverflowBar(
@@ -185,14 +186,16 @@ class _AdbSheetState extends State<_AdbSheet> {
             )
           else if (devices.isEmpty)
             ListTile(
-              leading: const Icon(Icons.usb_off),
+              leading: const Icon(Symbols.usb_off_rounded),
               title: Text(t.noDevices),
             )
           else
             for (final device in devices)
               ListTile(
                 leading: Icon(
-                  device.ready ? Icons.smartphone : Icons.lock_outline,
+                  device.ready
+                      ? Symbols.smartphone_rounded
+                      : Symbols.lock_rounded,
                 ),
                 title: Text(
                   device.model?.replaceAll('_', ' ') ?? device.serial,

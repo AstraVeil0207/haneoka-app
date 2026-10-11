@@ -1,4 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
+
+/// The website's catalogue presentations (`Presentation` in catalog-screen):
+/// each decides a tile's subhead, emblems, marks and filters.
+enum Presentation {
+  song,
+  member,
+  support,
+  character,
+  comic,
+  stamp,
+  item,
+  bandItem,
+  background,
+  system,
+  skill,
+}
 
 /// How a catalogue resource is shown: the same profiles the website uses.
 class CatalogProfile {
@@ -6,13 +23,18 @@ class CatalogProfile {
     required this.resource,
     required this.label,
     required this.icon,
+    required this.presentation,
     this.id = const ['id'],
     this.title = const ['title', 'name'],
     this.image = const ['image', 'thumbnail'],
     this.detail = const [],
     this.document,
-    this.layout = TileLayout.square,
-    this.newestFirst = true,
+    this.minWidth = 260,
+    this.aspectRatio = 1,
+    this.small = false,
+    this.fit = BoxFit.contain,
+    this.defaultSort = 'id',
+    this.descending = true,
   });
 
   /// The API resource name.
@@ -21,44 +43,57 @@ class CatalogProfile {
   /// The website's message path for its name.
   final String label;
   final IconData icon;
+  final Presentation presentation;
   final List<String> id, title, image, detail;
 
   /// The key holding the collection inside the document, when not top level.
   final String? document;
-  final TileLayout layout;
-  final bool newestFirst;
-}
 
-enum TileLayout { square, portrait, wide }
+  /// `--tile-min` and `--tile-ratio` of the website's collection.
+  final double minWidth;
+  final double aspectRatio;
+
+  /// Small symbols take three columns on phones from 390 dp.
+  final bool small;
+  final BoxFit fit;
+  final String defaultSort;
+  final bool descending;
+}
 
 /// The catalogue, in the website's drawer order.
 const catalogProfiles = <CatalogProfile>[
   CatalogProfile(
     resource: 'songs',
     label: 'navigation.songs',
-    icon: Icons.library_music,
+    icon: Symbols.library_music_rounded,
+    presentation: Presentation.song,
     id: ['musicId', 'id'],
     title: ['musicTitle', 'title'],
-    image: ['jacketThumbUrl', 'jacketUrl', 'image'],
+    image: ['jacketUrl', 'jacketThumbUrl', 'image'],
     detail: ['bandName', 'composer', 'lyricist', 'arranger', 'publishedAt'],
+    minWidth: 160,
+    defaultSort: 'release',
   ),
   CatalogProfile(
     resource: 'events',
     label: 'navigation.events',
-    icon: Icons.event,
+    icon: Symbols.event_rounded,
+    presentation: Presentation.system,
     document: 'entries',
     detail: ['kind', 'startAt', 'endAt'],
-    layout: TileLayout.wide,
+    aspectRatio: 16 / 9,
+    fit: BoxFit.cover,
+    defaultSort: 'start',
   ),
   CatalogProfile(
     resource: 'characters',
     label: 'navigation.characters',
-    icon: Icons.group,
+    icon: Symbols.group_rounded,
+    presentation: Presentation.character,
     id: ['characterId', 'id'],
     title: ['characterName', 'name'],
-    image: ['faceImage', 'thumbnailImage', 'image'],
+    image: ['thumbnailImage', 'profileImage', 'faceImage', 'image'],
     detail: [
-      'bandPart',
       'birthday',
       'height',
       'school',
@@ -67,135 +102,185 @@ const catalogProfiles = <CatalogProfile>[
       'favoriteFood',
       'hobby',
     ],
-    newestFirst: false,
+    minWidth: 148,
+    aspectRatio: 3 / 4,
+    fit: BoxFit.cover,
+    defaultSort: 'order',
+    descending: false,
   ),
   CatalogProfile(
     resource: 'cards',
     label: 'navigation.memberCards',
-    icon: Icons.style,
+    icon: Symbols.style_rounded,
+    presentation: Presentation.member,
     id: ['cardId', 'id'],
     title: ['prefix', 'cardName', 'name'],
     image: ['images.thumbnail', 'thumbnail', 'image'],
     detail: ['rarity', 'cardType', 'releasedAt'],
+    minWidth: 172,
+    aspectRatio: 3 / 4,
+    defaultSort: 'release',
   ),
   CatalogProfile(
     resource: 'support-cards',
     label: 'navigation.supportCards',
-    icon: Icons.collections,
+    icon: Symbols.collections_rounded,
+    presentation: Presentation.support,
     id: ['supportCardId', 'id'],
     title: ['prefix', 'cardName', 'name'],
     image: ['images.thumbnail', 'thumbnail', 'image'],
     detail: ['rarity', 'cardType', 'releasedAt'],
-    layout: TileLayout.wide,
+    minWidth: 172,
+    aspectRatio: 16 / 9,
+    defaultSort: 'release',
   ),
   CatalogProfile(
     resource: 'skills',
     label: 'catalog.cards.fields.skills',
-    icon: Icons.bolt,
-    title: ['name', 'skillName', 'title'],
+    icon: Symbols.bolt_rounded,
+    presentation: Presentation.skill,
+    title: ['skillName', 'name', 'title'],
+    image: ['icon', 'image'],
+    minWidth: 132,
+    small: true,
+    descending: false,
   ),
   CatalogProfile(
     resource: 'comics',
     label: 'navigation.comics',
-    icon: Icons.menu_book,
+    icon: Symbols.menu_book_rounded,
+    presentation: Presentation.comic,
     id: ['comicId', 'id'],
-    detail: ['subTitle', 'publicStartAt'],
+    image: ['thumbnail', 'image'],
+    detail: ['publicStartAt'],
+    minWidth: 240,
+    defaultSort: 'release',
   ),
   CatalogProfile(
     resource: 'gacha',
     label: 'navigation.gacha',
-    icon: Icons.redeem,
+    icon: Symbols.redeem_rounded,
+    presentation: Presentation.system,
     document: 'entries',
     detail: ['category', 'startAt', 'endAt'],
-    layout: TileLayout.wide,
+    aspectRatio: 16 / 9,
+    defaultSort: 'start',
   ),
   CatalogProfile(
     resource: 'login-campaigns',
     label: 'navigation.loginCampaigns',
-    icon: Icons.event_available,
+    icon: Symbols.event_available_rounded,
+    presentation: Presentation.system,
     document: 'entries',
-    layout: TileLayout.wide,
+    aspectRatio: 16 / 9,
+    defaultSort: 'start',
   ),
   CatalogProfile(
     resource: 'missions',
     label: 'navigation.systemNavMissions',
-    icon: Icons.fact_check,
+    icon: Symbols.fact_check_rounded,
+    presentation: Presentation.system,
     document: 'entries',
-    layout: TileLayout.wide,
+    aspectRatio: 16 / 9,
   ),
   CatalogProfile(
     resource: 'passes',
     label: 'navigation.systemNavPasses',
-    icon: Icons.workspace_premium,
+    icon: Symbols.workspace_premium_rounded,
+    presentation: Presentation.system,
     document: 'entries',
-    layout: TileLayout.wide,
+    aspectRatio: 16 / 9,
   ),
   CatalogProfile(
     resource: 'tgw-card',
     label: 'catalog.tgwCard.card',
-    icon: Icons.credit_card,
+    icon: Symbols.credit_card_rounded,
+    presentation: Presentation.system,
     document: 'entries',
-    layout: TileLayout.wide,
+    aspectRatio: 16 / 9,
+    descending: false,
   ),
   CatalogProfile(
     resource: 'shop',
     label: 'navigation.shop',
-    icon: Icons.storefront,
+    icon: Symbols.storefront_rounded,
+    presentation: Presentation.system,
     document: 'entries',
-    layout: TileLayout.wide,
+    aspectRatio: 16 / 9,
   ),
   CatalogProfile(
     resource: 'exchange',
     label: 'navigation.exchange',
-    icon: Icons.swap_horiz,
+    icon: Symbols.swap_horiz_rounded,
+    presentation: Presentation.system,
     document: 'entries',
-    layout: TileLayout.wide,
+    aspectRatio: 16 / 9,
+    defaultSort: 'start',
   ),
   CatalogProfile(
     resource: 'stamps',
     label: 'navigation.stamps',
-    icon: Icons.emoji_emotions,
+    icon: Symbols.emoji_emotions_rounded,
+    presentation: Presentation.stamp,
     id: ['stampId', 'id'],
     detail: ['releasedAt'],
+    minWidth: 132,
+    small: true,
   ),
   CatalogProfile(
     resource: 'stickers',
     label: 'navigation.stickers',
-    icon: Icons.sticky_note_2,
+    icon: Symbols.sticky_note_2_rounded,
+    presentation: Presentation.stamp,
     id: ['stickerId', 'id'],
     document: 'entries',
     detail: ['description'],
+    minWidth: 132,
+    small: true,
   ),
   CatalogProfile(
     resource: 'backgrounds',
     label: 'navigation.backgrounds',
-    icon: Icons.wallpaper,
+    icon: Symbols.wallpaper_rounded,
+    presentation: Presentation.background,
     id: ['backgroundId', 'id'],
     document: 'entries',
-    layout: TileLayout.wide,
+    image: ['thumbnail', 'image'],
+    aspectRatio: 16 / 9,
+    fit: BoxFit.cover,
   ),
   CatalogProfile(
     resource: 'items',
     label: 'navigation.items',
-    icon: Icons.inventory_2,
+    icon: Symbols.inventory_2_rounded,
+    presentation: Presentation.item,
     id: ['itemId', 'id'],
     document: 'items',
-    newestFirst: false,
+    minWidth: 132,
+    small: true,
+    defaultSort: 'order',
+    descending: false,
   ),
   CatalogProfile(
     resource: 'band-items',
     label: 'navigation.bandItems',
-    icon: Icons.piano,
+    icon: Symbols.piano_rounded,
+    presentation: Presentation.bandItem,
     id: ['bandItemId', 'itemId', 'id'],
     document: 'items',
-    newestFirst: false,
+    minWidth: 132,
+    small: true,
+    defaultSort: 'order',
+    descending: false,
   ),
   CatalogProfile(
     resource: 'real-lives',
     label: 'navigation.realLives',
-    icon: Icons.festival,
+    icon: Symbols.festival_rounded,
+    presentation: Presentation.system,
     document: 'entries',
-    layout: TileLayout.wide,
+    aspectRatio: 16 / 9,
+    defaultSort: 'start',
   ),
 ];
 

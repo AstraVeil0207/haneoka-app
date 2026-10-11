@@ -1,230 +1,518 @@
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../core/api.dart';
 import '../core/app_state.dart';
-import '../shell/page.dart';
-import '../ui/theme.dart';
-import 'detail_screen.dart';
-import 'format.dart';
+import '../core/i18n.dart';
+import '../core/relative_time.dart';
+import '../ui/app_image.dart';
+import '../ui/tile.dart';
+import 'browse.dart';
 import 'profiles.dart';
+import 'visuals.dart';
 
-/// A catalogue resource as the website browses it: search in the bar, the
-/// count and order beside it, tiles in the pane.
+const _rarities = {2: 'R', 3: 'SR', 4: 'SSR', 10: 'EX', 20: 'BD'};
+const _attributes = ['', 'red', 'blue', 'green', 'yellow', 'purple'];
+
+/// A catalogue resource as the website browses it (`catalog-screen`): the
+/// profile's presentation decides each tile's subhead, emblems and marks,
+/// and the filters it offers.
 class CatalogScreen extends StatefulWidget {
-  const CatalogScreen({super.key, required this.profile});
+  const CatalogScreen({super.key, required this.profile, this.onOpen});
   final CatalogProfile profile;
+  final void Function(BuildContext context, Entry item)? onOpen;
+
   @override
   State<CatalogScreen> createState() => _CatalogScreenState();
 }
 
 class _CatalogScreenState extends State<CatalogScreen> {
-  Future<List<Map<String, Object?>>>? _items;
-  String _query = '';
-  late bool _newestFirst = widget.profile.newestFirst;
+  Future<(List<Entry>, CatalogVisuals)>? _data;
+  String? _band;
+  List<Entry>? _railSource;
+  String? _railBand;
+  List<Entry> _railItems = const [];
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _items ??= _load();
+    _data ??= _load();
   }
 
-  Future<List<Map<String, Object?>>> _load() async {
-    final document = await AppScope.of(context).api
-        .catalog(widget.profile.resource);
-    final source = widget.profile.document == null
+  Future<(List<Entry>, CatalogVisuals)> _load() async {
+    final api = AppScope.of(context).api;
+    final profile = widget.profile;
+    final (document, visuals) = await (
+      api.catalog(profile.resource),
+      CatalogVisuals.of(api),
+    ).wait;
+    final source = profile.document == null
         ? document
-        : readPath(document, widget.profile.document!);
-    return switch (source) {
-      List() => source.whereType<Map<String, Object?>>().toList(),
+        : readPath(document, profile.document!);
+    final items = switch (source) {
+      List() => source.whereType<Entry>().toList(),
       Map() => [
-        for (final entry in source.entries)
-          if (entry.value is Map<String, Object?>)
-            {'_key': entry.key, ...entry.value as Map<String, Object?>},
+        for (final MapEntry(:key, :value) in source.entries)
+          if (value is Entry) {'_key': key, ...value},
       ],
-      _ => <Map<String, Object?>>[],
+      _ => <Entry>[],
     };
+    return (items, visuals);
   }
-
-  String _id(Map<String, Object?> item) =>
-      '${firstOf(item, widget.profile.id) ?? item['_key']}';
 
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final t = state.text;
     final profile = widget.profile;
-    final theme = Theme.of(context);
     return FutureBuilder(
-      future: _items,
+      future: _data,
       builder: (context, snapshot) {
-        final all = snapshot.data ?? const <Map<String, Object?>>[];
-        final query = _query.toLowerCase();
-        final items =
-            all
-                .where(
-                  (item) =>
-                      query.isEmpty ||
-                      t
-                          .text(firstOf(item, profile.title))
-                          .toLowerCase()
-                          .contains(query) ||
-                      _id(item).contains(query),
-                )
-                .toList()
-              ..sort((a, b) {
-                final x = num.tryParse(_id(a)) ?? 0,
-                    y = num.tryParse(_id(b)) ?? 0;
-                return _newestFirst ? y.compareTo(x) : x.compareTo(y);
-              });
-        final number = NumberFormat.decimalPattern(t.locale);
-        return ShellPage(
+        final visuals = snapshot.data?.$2;
+        final kit = CatalogKit(profile, t, state.api, visuals);
+        var items = snapshot.data?.$1;
+        BrowseRail? rail;
+        Widget? heading;
+        if (profile.presentation == Presentation.character &&
+            items != null &&
+            visuals != null) {
+          final bands = {
+            for (final item in items)
+              if (item['bandId'] case final num id) id.toInt(),
+          }.toList()..sort();
+          final band = _band ?? '${bands.firstOrNull ?? ''}';
+          if (!identical(items, _railSource) || band != _railBand) {
+            _railSource = items;
+            _railBand = band;
+            _railItems = [
+              for (final item in items)
+                if ('${item['bandId']}' == band) item,
+            ];
+          }
+          items = _railItems;
+          rail = BrowseRail(
+            value: band,
+            onSelect: (value) => setState(() => _band = value),
+            items: [
+              for (final id in bands)
+                RailItem(
+                  '$id',
+                  t.text(visuals.bands[id]?['bandName']),
+                  image: visuals.bandLogo(id),
+                ),
+            ],
+          );
+          heading = _BandHeading(
+            band: visuals.bands[int.tryParse(band)],
+            t: t,
+            api: state.api,
+          );
+        }
+        return BrowseScreen(
+          key: ValueKey(profile.resource),
           title: t(profile.label, profile.resource),
-          search: ShellSearch(
-            label: t('common.actions.search', 'Search'),
-            onChanged: (value) => setState(() => _query = value),
+          items: items,
+          error: snapshot.error,
+          onRetry: () => setState(() => _data = _load()),
+          rail: rail,
+          heading: heading,
+          searchText: kit.searchText,
+          grid: GridSpec(
+            minWidth: profile.minWidth,
+            aspectRatio: profile.aspectRatio,
+            small: profile.small,
           ),
-          status: snapshot.hasData
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: Text(
-                      number.format(items.length),
-                      style: theme.textTheme.titleSmall,
-                    ),
-                  ),
-                )
-              : null,
-          actions: [
-            BarAction(
-              icon: _newestFirst ? Icons.arrow_downward : Icons.arrow_upward,
-              label: t('common.actions.sort', 'Sort'),
-              onPressed: () => setState(() => _newestFirst = !_newestFirst),
-            ),
-          ],
-          body: snapshot.hasError
-              ? Center(
-                  child: FilledButton.tonalIcon(
-                    icon: const Icon(Icons.refresh),
-                    label: Text(t('common.actions.retry', 'Retry')),
-                    onPressed: () => setState(() => _items = _load()),
-                  ),
-                )
-              : !snapshot.hasData
-              ? const Center(child: CircularProgressIndicator())
-              : _grid(context, items),
+          tile: (context, item) => Tile(
+            title: kit.title(item),
+            subtitle: kit.subtitle(item),
+            adornments: kit.adornments(item),
+            images: kit.images(item),
+            aspectRatio: profile.aspectRatio,
+            fit: profile.fit,
+            marks: kit.marks(item),
+            placeholder: profile.icon,
+            onTap: () => widget.onOpen?.call(context, item),
+          ),
+          listRow: (context, item) => _Row(
+            kit: kit,
+            item: item,
+            onOpen: () => widget.onOpen?.call(context, item),
+          ),
+          columns: kit.columns,
+          facets: visuals == null ? const [] : kit.facets,
+          sorts: kit.sorts,
+          defaultSort: profile.defaultSort,
+          descending: profile.descending,
         );
       },
     );
   }
+}
 
-  Widget _grid(BuildContext context, List<Map<String, Object?>> items) {
-    final state = AppScope.of(context);
-    final t = state.text;
-    final profile = widget.profile;
-    final format = ValueFormat(t);
-    final theme = Theme.of(context);
-    final (extent, ratio) = switch (profile.layout) {
-      TileLayout.wide => (360.0, 16 / 9),
-      TileLayout.portrait => (200.0, 3 / 4),
-      TileLayout.square => (184.0, 1.0),
-    };
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final gutter = constraints.maxWidth < ShellMetrics.compact
-            ? 12.0
-            : 24.0;
-        return GridView.builder(
-          padding: EdgeInsets.all(gutter),
-          gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: extent,
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            // Artwork box plus the two-line identity below it.
-            mainAxisExtent: extent / ratio * 0.92 + 72,
-          ),
-          itemCount: items.length,
-          itemBuilder: (context, index) {
-            final item = items[index];
-            final image = firstOf(item, profile.image);
-            final subtitle = profile.detail
-                .map((key) => format.format(key, readPath(item, key)))
-                .firstWhere((s) => s.isNotEmpty, orElse: () => '');
-            return Card(
-              clipBehavior: Clip.antiAlias,
-              child: InkWell(
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => DetailScreen(
-                      profile: profile,
-                      id: _id(item),
-                      summary: item,
-                    ),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Expanded(
-                      child: image is String
-                          ? CachedNetworkImage(
-                              imageUrl: state.api.asset(image).toString(),
-                              fit: profile.layout == TileLayout.wide
-                                  ? BoxFit.cover
-                                  : BoxFit.contain,
-                              fadeInDuration: const Duration(milliseconds: 150),
-                              placeholder: (_, _) => ColoredBox(
-                                color:
-                                    theme.colorScheme.surfaceContainerHighest,
-                              ),
-                              errorWidget: (_, _, _) => Icon(
-                                profile.icon,
-                                color: theme.colorScheme.outline,
-                              ),
-                            )
-                          : ColoredBox(
-                              color: theme.colorScheme.surfaceContainerHighest,
-                              child: Icon(
-                                profile.icon,
-                                color: theme.colorScheme.outline,
-                              ),
-                            ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            t.text(firstOf(item, profile.title)),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          if (subtitle.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text(
-                                subtitle,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
+/// What a catalogue entry shows, by presentation; the website's
+/// `tileDescription`, `tileAdornment`, `cardTileOptions` and facet groups.
+class CatalogKit {
+  CatalogKit(this.profile, this.t, this.api, this.visuals);
+  final CatalogProfile profile;
+  final SiteText t;
+  final HaneokaApi api;
+  final CatalogVisuals? visuals;
+
+  Presentation get kind => profile.presentation;
+
+  static final _markup = RegExp(r'<[^>]+>');
+  String plain(Object? value) => t.text(value).replaceAll(_markup, '').trim();
+
+  String id(Entry item) => '${firstOf(item, profile.id) ?? item['_key']}';
+
+  String title(Entry item) {
+    final value = plain(firstOf(item, profile.title));
+    return value.isEmpty ? '—' : value;
+  }
+
+  List<String> images(Entry item) => [
+    for (final path in profile.image)
+      if (readPath(item, path) case final String value when value.isNotEmpty)
+        api.asset(value).toString(),
+  ];
+
+  List<int> characterIds(Entry item) => [
+    for (final value in [
+      ...?(item['characterIds'] as List?),
+      ...?(item['characters'] as List?),
+      if (item['characterIds'] == null && item['characters'] == null)
+        item['characterId'],
+    ])
+      if (value is num && value > 0) value.toInt(),
+  ];
+
+  String characterName(int id) =>
+      t.text(visuals?.characters[id]?['characterName']);
+
+  String bandName(Object? id) =>
+      t.text(visuals?.bands[(id as num?)?.toInt()]?['bandName']);
+
+  String names(List<int> ids) => ids.map(characterName).join(', ');
+
+  String subtitle(Entry item) => switch (kind) {
+    Presentation.member ||
+    Presentation.support ||
+    Presentation.comic => names(characterIds(item)),
+    Presentation.stamp =>
+      profile.resource == 'stickers' && plain(item['description']).isNotEmpty
+          ? plain(item['description'])
+          : names(characterIds(item)),
+    Presentation.character => bandName(item['bandId']),
+    Presentation.bandItem => bandName(item['bandId']),
+    Presentation.item =>
+      plain(item['description']).isNotEmpty
+          ? plain(item['description'])
+          : '${item['itemTypeName'] ?? ''}',
+    Presentation.background || Presentation.skill => plain(item['description']),
+    Presentation.system => t.window(
+      item['startAt'],
+      item['endAt'],
+      ongoing: t.label('ongoing', 'Ongoing'),
+    ),
+    Presentation.song => '',
+  };
+
+  List<String> adornments(Entry item) {
+    if (kind == Presentation.character || kind == Presentation.bandItem) {
+      return [?visuals?.bandIcon(item['bandId'])];
+    }
+    if (const {
+      Presentation.member,
+      Presentation.support,
+      Presentation.comic,
+      Presentation.stamp,
+    }.contains(kind)) {
+      return [
+        for (final id in characterIds(item).take(3))
+          if (visuals?.characters[id]?['faceImage'] case final String face)
+            api.asset(face).toString(),
+      ];
+    }
+    return const [];
+  }
+
+  String rarityName(Object? value) => _rarities[(value as num?)?.toInt()] ?? '';
+
+  String attributeName(Object? value) {
+    final id = (value as num?)?.toInt() ?? 0;
+    return id > 0 && id < _attributes.length ? t.label(_attributes[id]) : '';
+  }
+
+  List<TileMark> marks(Entry item) {
+    if (kind != Presentation.member && kind != Presentation.support) {
+      return const [];
+    }
+    final attribute = visuals?.cardTypeMark(item['cardType']);
+    final rarity = visuals?.mark(
+      'RarityIconCenter_${rarityName(item['rarity'])}.png',
+    );
+    return [
+      if (attribute != null)
+        TileMark.image(
+          MarkAt.start,
+          attribute,
+          label: attributeName(item['cardType']),
+        ),
+      if (rarity != null)
+        TileMark.image(MarkAt.end, rarity, label: rarityName(item['rarity'])),
+    ];
+  }
+
+  num? releasedAt(Entry item) => RelativeTime.timestamp(
+    item['releasedAt'] ?? item['publishedAt'] ?? item['publicStartAt'],
+  );
+
+  String date(num? ms) => ms == null
+      ? '—'
+      : DateFormat.yMMMd(t.locale)
+            .format(DateTime.fromMillisecondsSinceEpoch(ms.toInt()));
+
+  String searchText(Entry item) => [
+    id(item),
+    title(item),
+    subtitle(item),
+    ...?(firstOf(item, profile.title) as List?)?.whereType<String>(),
+  ].join(' ');
+
+  int total(Entry item) => ['performance', 'technique', 'visual'].fold(
+    0,
+    (sum, key) => sum + ((readPath(item, 'stat.$key') as num?)?.toInt() ?? 0),
+  );
+
+  List<TableColumn> get columns => [
+    TableColumn(t.label('title'), title),
+    TableColumn('', subtitle),
+    if (kind == Presentation.member || kind == Presentation.support) ...[
+      TableColumn(t.label('rarity'), (item) => rarityName(item['rarity'])),
+      TableColumn(
+        t.label('attribute'),
+        (item) => attributeName(item['cardType']),
+      ),
+      TableColumn(t.label('total'), (item) => '${total(item)}', numeric: true),
+    ],
+    if (kind == Presentation.system) ...[
+      TableColumn(
+        t.label('start'),
+        (item) => date(RelativeTime.timestamp(item['startAt'])),
+      ),
+      TableColumn(
+        t.label('end'),
+        (item) => date(RelativeTime.timestamp(item['endAt'])),
+      ),
+    ] else
+      TableColumn(t.label('release'), (item) => date(releasedAt(item))),
+    TableColumn(t.label('id'), id, numeric: true),
+  ];
+
+  List<SortSpec> get sorts => [
+    if (kind == Presentation.character ||
+        kind == Presentation.item ||
+        kind == Presentation.bandItem)
+      SortSpec(
+        'order',
+        t.label('order'),
+        (item) =>
+            (item['displayOrder'] ?? item['order'] ?? item['sortOrder'])
+                as num?,
+      ),
+    SortSpec('id', t.label('id'), (item) => num.tryParse(id(item)) ?? id(item)),
+    SortSpec('title', t.label('title'), title),
+    if (kind == Presentation.system)
+      SortSpec(
+        'start',
+        t.label('start'),
+        (item) => RelativeTime.timestamp(item['startAt']),
+      )
+    else if (kind != Presentation.character &&
+        kind != Presentation.item &&
+        kind != Presentation.bandItem &&
+        kind != Presentation.skill)
+      SortSpec('release', t.label('release'), releasedAt),
+    if (kind == Presentation.member || kind == Presentation.support) ...[
+      SortSpec('rarity', t.label('rarity'), (item) => item['rarity'] as num?),
+      SortSpec(
+        'cardType',
+        t.label('attribute'),
+        (item) => item['cardType'] as num?,
+      ),
+      for (final stat in ['performance', 'technique', 'visual'])
+        SortSpec(
+          stat,
+          t.label(stat),
+          (item) => readPath(item, 'stat.$stat') as num?,
+        ),
+      SortSpec('total', t.label('total'), total),
+    ],
+  ];
+
+  List<FacetSpec> get facets {
+    final visuals = this.visuals!;
+    final characters = FacetSpec(
+      key: 'character',
+      label: t.label('character'),
+      values: (item) => characterIds(item).map((id) => '$id'),
+      option: (value) {
+        final face = visuals.characters[int.parse(value)]?['faceImage'];
+        return FacetOption(
+          characterName(int.parse(value)),
+          image: face is String ? api.asset(face).toString() : null,
         );
       },
+    );
+    final bands = FacetSpec(
+      key: 'band',
+      label: t.label('band'),
+      values: (item) => {
+        for (final id in characterIds(item))
+          if (visuals.characters[id]?['bandId'] case final num band) '$band',
+        if (item['bandId'] case final num band) '$band',
+      },
+      option: (value) => FacetOption(
+        bandName(int.parse(value)),
+        image: visuals.bandIcon(int.parse(value)),
+      ),
+    );
+    const cardKinds = {Presentation.member, Presentation.support};
+    const characterKinds = {
+      Presentation.member,
+      Presentation.support,
+      Presentation.comic,
+      Presentation.stamp,
+    };
+    return [
+      if (characterKinds.contains(kind) || kind == Presentation.bandItem) bands,
+      if (characterKinds.contains(kind)) characters,
+      if (cardKinds.contains(kind)) ...[
+        FacetSpec(
+          key: 'rarity',
+          label: t.label('rarity'),
+          values: (item) => [if (item['rarity'] != null) '${item['rarity']}'],
+          option: (value) => FacetOption(
+            rarityName(int.parse(value)),
+            image: visuals.mark(
+              'RarityIconCenter_${rarityName(int.parse(value))}.png',
+            ),
+            imageOnly: true,
+          ),
+        ),
+        FacetSpec(
+          key: 'type',
+          label: t.label('attribute'),
+          values: (item) => [
+            if (item['cardType'] != null) '${item['cardType']}',
+          ],
+          option: (value) => FacetOption(
+            attributeName(int.parse(value)),
+            image: visuals.cardTypeMark(int.parse(value)),
+          ),
+        ),
+      ],
+      if (kind == Presentation.item)
+        FacetSpec(
+          key: 'type',
+          label: t.label('type'),
+          values: (item) => [
+            if (item['itemTypeName'] != null) '${item['itemTypeName']}',
+          ],
+          option: FacetOption.new,
+        ),
+      if (kind == Presentation.system)
+        FacetSpec(
+          key: 'kind',
+          label: t.label('category'),
+          values: (item) => [
+            if (plain(item['category']).isNotEmpty)
+              plain(item['category'])
+            else if (item['kind'] != null)
+              '${item['kind']}',
+          ],
+          option: (value) => FacetOption(t.label(value, value)),
+        ),
+    ];
+  }
+}
+
+/// The band the character rail has selected, named: icon, name and its own
+/// description (`BrowseHeading`).
+class _BandHeading extends StatelessWidget {
+  const _BandHeading({required this.band, required this.t, required this.api});
+  final Entry? band;
+  final SiteText t;
+  final HaneokaApi api;
+
+  @override
+  Widget build(BuildContext context) {
+    final band = this.band;
+    if (band == null) return const SizedBox.shrink();
+    final theme = Theme.of(context);
+    final icon = band['icon'];
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (icon is String)
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: SizedBox.square(
+              dimension: 40,
+              child: AppImage(candidates: [api.asset(icon).toString()]),
+            ),
+          ),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(t.text(band['bandName']), style: theme.textTheme.titleLarge),
+              const SizedBox(height: 4),
+              Text(
+                t.text(band['description']).replaceAll('\n', ''),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Row extends StatelessWidget {
+  const _Row({required this.kit, required this.item, this.onOpen});
+  final CatalogKit kit;
+  final Entry item;
+  final VoidCallback? onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final subtitle = kit.subtitle(item);
+    return ListTile(
+      onTap: onOpen,
+      leading: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: SizedBox(
+          width: kit.profile.aspectRatio > 1.2 ? 85 : 48,
+          height: 48,
+          child: ColoredBox(
+            color: scheme.surfaceContainerHighest,
+            child: AppImage(candidates: kit.images(item), fit: kit.profile.fit),
+          ),
+        ),
+      ),
+      title: Text(
+        kit.title(item),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: subtitle.isEmpty
+          ? null
+          : Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis),
     );
   }
 }

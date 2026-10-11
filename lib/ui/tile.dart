@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import 'app_image.dart';
 import 'theme.dart';
@@ -90,7 +91,7 @@ class Tile extends StatelessWidget {
                       fit: fit,
                       placeholder: Center(
                         child: Icon(
-                          placeholder ?? Icons.image_outlined,
+                          placeholder ?? Symbols.image_rounded,
                           size: 32,
                           color: scheme.onSurfaceVariant,
                         ),

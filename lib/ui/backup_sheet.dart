@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:intl/intl.dart';
 
 import '../l10n/app_localizations.dart';
@@ -124,7 +125,7 @@ class _BackupSheetState extends State<_BackupSheet> {
             trailing: IconButton(
               tooltip: t.chooseBackupFolder,
               onPressed: _choose,
-              icon: const Icon(Icons.folder_open),
+              icon: const Icon(Symbols.folder_open_rounded),
             ),
           ),
           if (backups == null)
@@ -134,14 +135,16 @@ class _BackupSheetState extends State<_BackupSheet> {
             )
           else if (backups.isEmpty)
             ListTile(
-              leading: const Icon(Icons.inbox_outlined),
+              leading: const Icon(Symbols.inbox_rounded),
               title: Text(t.noBackups),
             )
           else
             for (final backup in backups)
               ListTile(
                 leading: Icon(
-                  backup.encrypted ? Icons.lock_outline : Icons.phone_iphone,
+                  backup.encrypted
+                      ? Symbols.lock_rounded
+                      : Symbols.phone_iphone_rounded,
                 ),
                 title: Text(
                   backup.deviceName ?? backup.productType ?? backup.path,

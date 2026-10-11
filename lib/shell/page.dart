@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 
 import '../ui/theme.dart';
 
@@ -32,7 +33,7 @@ class BarAction {
 
   /// A segmented choice (view switch): one checkable menu entry per option.
   const BarAction.choice({required this.label, required this.options})
-    : icon = Icons.tune,
+    : icon = Symbols.tune_rounded,
       onPressed = null,
       selected = null,
       badge = 0,
@@ -179,7 +180,7 @@ class _ShellPageState extends State<ShellPage> {
         ? IconButton(
             tooltip: MaterialLocalizations.of(context).openAppDrawerTooltip,
             onPressed: shell.openNavigation,
-            icon: const Icon(Icons.menu),
+            icon: const Icon(Symbols.menu_rounded),
           )
         : null;
     // The title keeps up to 160 dp before actions start to overflow
@@ -238,7 +239,7 @@ class _ShellPageState extends State<ShellPage> {
           IconButton(
             tooltip: search.label,
             onPressed: () => setState(() => _searching = true),
-            icon: const Icon(Icons.search),
+            icon: const Icon(Symbols.search_rounded),
           ),
         );
         room -= 48;
@@ -315,7 +316,7 @@ class _ShellPageState extends State<ShellPage> {
             MenuItemButton(
               leadingIcon: Icon(action.icon),
               trailingIcon: action.selected == true
-                  ? const Icon(Icons.check, size: 20)
+                  ? const Icon(Symbols.check_rounded, size: 20)
                   : null,
               onPressed: action.onPressed,
               child: Text(action.label),
@@ -325,7 +326,7 @@ class _ShellPageState extends State<ShellPage> {
               MenuItemButton(
                 leadingIcon: Icon(option.icon),
                 trailingIcon: option.selected
-                    ? const Icon(Icons.check, size: 20)
+                    ? const Icon(Symbols.check_rounded, size: 20)
                     : null,
                 onPressed: option.onSelected,
                 child: Text(option.label),
@@ -335,7 +336,7 @@ class _ShellPageState extends State<ShellPage> {
         tooltip: MaterialLocalizations.of(context).showMenuTooltip,
         onPressed: () =>
             controller.isOpen ? controller.close() : controller.open(),
-        icon: const Icon(Icons.more_vert),
+        icon: const Icon(Symbols.more_vert_rounded),
       ),
     );
   }
@@ -344,7 +345,7 @@ class _ShellPageState extends State<ShellPage> {
     controller: _searchController,
     autoFocus: compact,
     hintText: search.label,
-    leading: const Icon(Icons.search),
+    leading: const Icon(Symbols.search_rounded),
     trailing: [
       if (compact || _searchController.text.isNotEmpty)
         IconButton(
@@ -354,7 +355,7 @@ class _ShellPageState extends State<ShellPage> {
             search.onChanged('');
             _searching = false;
           }),
-          icon: const Icon(Icons.close),
+          icon: const Icon(Symbols.close_rounded),
         ),
     ],
     onChanged: (value) {

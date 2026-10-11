@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
@@ -77,12 +78,12 @@ class SaveScreen extends StatelessWidget {
       title: save.name ?? save.profileId,
       actions: [
         BarAction(
-          icon: Icons.content_copy,
+          icon: Symbols.content_copy_rounded,
           label: t.exportTeam,
           onPressed: copyPackage,
         ),
         BarAction(
-          icon: Icons.save_alt,
+          icon: Symbols.download_rounded,
           label: t.exportSave,
           onPressed: saveFile,
         ),
@@ -127,18 +128,18 @@ class SaveScreen extends StatelessWidget {
           heading(t.allFields),
           ListTile(
             title: Text(t.settings),
-            trailing: const Icon(Icons.chevron_right),
+            trailing: const Icon(Symbols.chevron_right_rounded),
             onTap: () => _openJson(context, t.settings, view.settings),
           ),
           if (view.persist.isNotEmpty)
             ListTile(
               title: Text(t.latestLive),
-              trailing: const Icon(Icons.chevron_right),
+              trailing: const Icon(Symbols.chevron_right_rounded),
               onTap: () => _openJson(context, t.latestLive, view.persist),
             ),
           ListTile(
             title: Text(t.allFields),
-            trailing: const Icon(Icons.chevron_right),
+            trailing: const Icon(Symbols.chevron_right_rounded),
             onTap: () => _openJson(context, t.allFields, view.player),
           ),
         ],

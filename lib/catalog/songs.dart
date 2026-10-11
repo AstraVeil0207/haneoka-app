@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:intl/intl.dart';
 
 import '../core/api.dart';
@@ -178,7 +179,7 @@ class _SongsScreenState extends State<SongsScreen> {
           defaultSort: 'release',
           actions: (visible) => [
             BarAction(
-              icon: Icons.playlist_play,
+              icon: Symbols.playlist_play_rounded,
               label: t.label('playAll'),
               onPressed: visible.any((s) => s['musicUrl'] is String)
                   ? () => state.audio.playQueue([
@@ -289,7 +290,7 @@ class _SongTile extends StatelessWidget {
       subtitle: text.artist(song),
       adornments: text.emblems(song),
       images: text.jackets(song),
-      placeholder: Icons.album_outlined,
+      placeholder: Symbols.album_rounded,
       marks: [
         if (attribute != null)
           TileMark.image(MarkAt.start, attribute, label: text.attribute(song)),
@@ -310,7 +311,11 @@ class _SongTile extends StatelessWidget {
                     tooltip:
                         '${text.t(playing ? 'common.actions.pause' : 'common.actions.play')}: ${track.title}',
                     onPressed: () => audio.toggle(track),
-                    icon: Icon(playing ? Icons.pause : Icons.play_arrow),
+                    icon: Icon(
+                      playing
+                          ? Symbols.pause_rounded
+                          : Symbols.play_arrow_rounded,
+                    ),
                   ),
                 );
               },

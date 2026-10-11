@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:intl/intl.dart';
 
 import '../core/app_state.dart';
@@ -59,6 +60,28 @@ class GridSpec {
   final bool small;
 }
 
+/// One destination in the pane rail: a band, a chapter.
+class RailItem {
+  const RailItem(this.value, this.label, {this.image, this.meta});
+  final String value;
+  final String label;
+  final String? image;
+  final String? meta;
+}
+
+/// The pane rail (`BrowseRail`): the axis a collection is organised by, as
+/// artwork beside the results; across the top on narrow windows.
+class BrowseRail {
+  const BrowseRail({
+    required this.items,
+    required this.value,
+    required this.onSelect,
+  });
+  final List<RailItem> items;
+  final String value;
+  final ValueChanged<String> onSelect;
+}
+
 /// The browse screen (`renderBrowse`): search, count, view switch and the
 /// filter toggle in the title bar; applied filters as removable chips after
 /// the title; results in the pane; facets, sort and order in a modal side
@@ -80,8 +103,16 @@ class BrowseScreen extends StatefulWidget {
     this.actions = _noActions,
     this.error,
     this.onRetry,
+    this.rail,
+    this.heading,
   });
   final String title;
+
+  /// The collection's primary axis; the caller passes [items] already narrowed to it.
+  final BrowseRail? rail;
+
+  /// What the rail has selected, named (`BrowseHeading`).
+  final Widget? heading;
 
   /// Null while the collection loads.
   final List<Entry>? items;
@@ -213,7 +244,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
         ...widget.actions(visible),
         if (widget.facets.isNotEmpty || widget.sorts.isNotEmpty)
           BarAction(
-            icon: Icons.filter_alt_outlined,
+            icon: Symbols.filter_alt_rounded,
             label: t('common.actions.filter', 'Filter'),
             badge: _appliedCount,
             onPressed: () => _openFilters(context),
@@ -224,17 +255,17 @@ class _BrowseScreenState extends State<BrowseScreen> {
             for (final (view, icon, label) in [
               (
                 BrowseView.grid,
-                Icons.grid_view,
+                Symbols.grid_view_rounded,
                 t('common.layout.grid', 'Grid'),
               ),
               (
                 BrowseView.list,
-                Icons.view_agenda_outlined,
+                Symbols.view_agenda_rounded,
                 t('common.layout.list', 'List'),
               ),
               (
                 BrowseView.table,
-                Icons.table_rows_outlined,
+                Symbols.table_rows_rounded,
                 t('common.layout.table', 'Table'),
               ),
             ])
@@ -250,7 +281,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
       body: widget.error != null && items == null
           ? Center(
               child: FilledButton.tonalIcon(
-                icon: const Icon(Icons.refresh),
+                icon: const Icon(Symbols.refresh_rounded),
                 label: Text(t('common.actions.retry', 'Retry')),
                 onPressed: widget.onRetry,
               ),
@@ -267,7 +298,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
 
   Widget _crumbs(BuildContext context) {
     final chips = <Widget>[
-      const Icon(Icons.chevron_right, size: 20),
+      const Icon(Symbols.chevron_right_rounded, size: 20),
       for (final facet in widget.facets)
         for (final value in _selected[facet.key] ?? const <String>{})
           Padding(
@@ -313,23 +344,144 @@ class _BrowseScreenState extends State<BrowseScreen> {
   Widget _grid(BuildContext context, List<Entry> items) => LayoutBuilder(
     builder: (context, constraints) {
       final padding = pagePadding(context);
-      return Scrollbar(
-        child: GridView.builder(
-          padding: padding,
-          gridDelegate: collectionGrid(
-            context,
-            constraints.maxWidth - padding.horizontal,
-            minWidth: widget.grid.minWidth,
-            aspectRatio: widget.grid.aspectRatio,
-            small: widget.grid.small,
-          ),
-          itemCount: items.length,
-          itemBuilder: (context, index) =>
-              RepaintBoundary(child: widget.tile(context, items[index])),
+      final side = widget.rail != null && constraints.maxWidth >= 840;
+      final width =
+          constraints.maxWidth - padding.horizontal - (side ? 216 : 0);
+      final scroll = Scrollbar(
+        child: CustomScrollView(
+          slivers: [
+            ..._header(context, padding, side),
+            SliverPadding(
+              padding: padding.copyWith(
+                top: widget.heading == null && (widget.rail == null || side)
+                    ? padding.top
+                    : 0,
+              ),
+              sliver: SliverGrid.builder(
+                gridDelegate: collectionGrid(
+                  context,
+                  width,
+                  minWidth: widget.grid.minWidth,
+                  aspectRatio: widget.grid.aspectRatio,
+                  small: widget.grid.small,
+                ),
+                itemCount: items.length,
+                itemBuilder: (context, index) =>
+                    RepaintBoundary(child: widget.tile(context, items[index])),
+              ),
+            ),
+          ],
         ),
+      );
+      if (!side) return scroll;
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 200 + padding.left,
+            child: ListView(
+              padding: EdgeInsets.fromLTRB(
+                padding.left,
+                padding.top,
+                0,
+                padding.bottom,
+              ),
+              children: [
+                for (final item in widget.rail!.items)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: _railTile(context, item, width: 200),
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(child: scroll),
+        ],
       );
     },
   );
+
+  /// The rail across the top on narrow windows, then the heading.
+  List<Widget> _header(BuildContext context, EdgeInsets padding, bool side) => [
+    if (widget.rail != null && !side)
+      SliverToBoxAdapter(
+        child: SizedBox(
+          height: 112,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.fromLTRB(
+              padding.left,
+              padding.top,
+              padding.right,
+              0,
+            ),
+            itemCount: widget.rail!.items.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (context, index) =>
+                _railTile(context, widget.rail!.items[index], width: 104),
+          ),
+        ),
+      ),
+    if (widget.heading != null)
+      SliverPadding(
+        padding: EdgeInsets.fromLTRB(padding.left, 16, padding.right, 16),
+        sliver: SliverToBoxAdapter(child: widget.heading),
+      ),
+  ];
+
+  Widget _railTile(
+    BuildContext context,
+    RailItem item, {
+    required double width,
+  }) {
+    final rail = widget.rail!;
+    final selected = item.value == rail.value;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return SizedBox(
+      width: width,
+      child: Material(
+        color: selected
+            ? scheme.secondaryContainer
+            : scheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(Corner.medium),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => rail.onSelect(item.value),
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  height: 48,
+                  width: double.infinity,
+                  child: item.image == null
+                      ? const SizedBox()
+                      : AppImage(candidates: [item.image!]),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  item.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: selected
+                        ? scheme.onSecondaryContainer
+                        : scheme.onSurface,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 
   Widget _list(BuildContext context, List<Entry> items) => Scrollbar(
     child: ListView.builder(
@@ -513,7 +665,7 @@ class _FilterSheet extends StatelessWidget {
                 child: Row(
                   children: [
                     const SizedBox(width: 16),
-                    _SectionIcon(icon: Icons.filter_alt_outlined),
+                    _SectionIcon(icon: Symbols.filter_alt_rounded),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
@@ -530,7 +682,7 @@ class _FilterSheet extends StatelessWidget {
                       tooltip: MaterialLocalizations.of(context)
                           .closeButtonTooltip,
                       onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close),
+                      icon: const Icon(Symbols.close_rounded),
                     ),
                     const SizedBox(width: 8),
                   ],
@@ -578,8 +730,8 @@ class _FilterSheet extends StatelessWidget {
                             onPressed: onOrder,
                             icon: Icon(
                               descending
-                                  ? Icons.arrow_downward
-                                  : Icons.arrow_upward,
+                                  ? Symbols.arrow_downward_rounded
+                                  : Symbols.arrow_upward_rounded,
                             ),
                           ),
                         ],
@@ -664,7 +816,7 @@ class _FacetState extends State<_Facet> {
             child: TextField(
               decoration: InputDecoration(
                 isDense: true,
-                prefixIcon: const Icon(Icons.search),
+                prefixIcon: const Icon(Symbols.search_rounded),
                 hintText: t('common.actions.search', 'Search'),
                 border: const OutlineInputBorder(),
               ),
