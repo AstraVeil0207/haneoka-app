@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../about/about_screen.dart';
 import '../games/song_guess.dart';
+import '../games/song_puzzle.dart';
 import '../games/sonolus_screen.dart';
 import '../community/editor.dart';
 import '../community/feed_screen.dart';
@@ -115,6 +116,7 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/search') return const SearchScreen();
   if (route == '/song-guess') return const SongGuessScreen();
   if (route == '/sonolus') return const SonolusScreen();
+  if (route == '/song-puzzle') return const SongPuzzleScreen();
   if (route == '/catalog/stories') {
     return const StoriesScreen(key: ValueKey('band'), mode: 'band');
   }
