@@ -48,7 +48,7 @@ class HaneokaApi {
   Future<Object?> catalog(String resource, [String? id]) async {
     final path =
         '/api/v1/servers/$server/$resource${id == null ? '' : '/${Uri.encodeComponent(id)}'}'
-        '${id == null && (resource == 'songs' || resource == 'stories') ? '?projection=4' : ''}';
+        '${id == null && resource == 'songs' ? '?projection=4' : ''}';
     return json(path);
   }
 

@@ -13,6 +13,7 @@ import '../home/announcements.dart';
 import '../home/calendar.dart';
 import '../home/home_screen.dart';
 import '../records/player.dart';
+import '../stories/stories.dart';
 import '../records/tracker.dart';
 import '../home/join.dart';
 import '../ui/import_screen.dart';
@@ -70,6 +71,12 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/catalog/events/tracker') return const EventTrackerScreen();
   if (route == '/player-profile') return const PlayerProfileScreen();
   if (route == '/team-builder') return const ImportScreen();
+  if (route.startsWith('/catalog/stories/')) {
+    final mode = route.substring('/catalog/stories/'.length);
+    if (storyModes.contains(mode)) {
+      return StoriesScreen(key: ValueKey(mode), mode: mode);
+    }
+  }
   final resource = catalogRoutes[route];
   if (resource != null) {
     final profile = catalogProfiles.firstWhere((p) => p.resource == resource);

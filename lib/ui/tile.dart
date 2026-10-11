@@ -43,8 +43,12 @@ class Tile extends StatelessWidget {
     this.onTap,
     this.action,
     this.selected = false,
+    this.media,
   });
   final String title;
+
+  /// Drawn instead of [images]: a composed figure such as two faces.
+  final Widget? media;
 
   /// For a tile that chooses something (a challenge song, a band): the
   /// secondary container, as `.tile.is-selected`.
@@ -91,17 +95,19 @@ class Tile extends StatelessWidget {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    AppImage(
-                      candidates: images,
-                      fit: fit,
-                      placeholder: Center(
-                        child: Icon(
-                          placeholder ?? Symbols.image_rounded,
-                          size: 32,
-                          color: scheme.onSurfaceVariant,
+                    ?media,
+                    if (media == null)
+                      AppImage(
+                        candidates: images,
+                        fit: fit,
+                        placeholder: Center(
+                          child: Icon(
+                            placeholder ?? Symbols.image_rounded,
+                            size: 32,
+                            color: scheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
-                    ),
                     for (final mark in marks) _Mark(mark: mark),
                   ],
                 ),
