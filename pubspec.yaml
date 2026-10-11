@@ -1,0 +1,29 @@
+name: haneoka
+description: "Reads your Our Notes save on every platform and shows everything it holds."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  archive: ^4.5.0
+  file_picker: ^10.3.10
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+  intl: any
+  path: ^1.9.1
+  path_provider: ^2.1.6
+  pointycastle: ^4.0.0
+  sqlite3: ^3.7.0
+  url_launcher: ^6.3.3
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  generate: true
+  uses-material-design: true
