@@ -14,7 +14,14 @@ import 'plist.dart';
 /// A local iPhone or iPad backup made by Finder (macOS), Apple Devices or
 /// iTunes (Windows), or `idevicebackup2` (Linux).
 class IosBackup {
-  IosBackup._(this.path, this.deviceName, this.productType, this.date, this.encrypted, this._manifest);
+  IosBackup._(
+    this.path,
+    this.deviceName,
+    this.productType,
+    this.date,
+    this.encrypted,
+    this._manifest,
+  );
   final String path;
   final String? deviceName;
   final String? productType;
@@ -27,7 +34,15 @@ class IosBackup {
   static List<String> defaultFolders() {
     final env = Platform.environment;
     if (Platform.isMacOS) {
-      return [p.join(env['HOME'] ?? '', 'Library', 'Application Support', 'MobileSync', 'Backup')];
+      return [
+        p.join(
+          env['HOME'] ?? '',
+          'Library',
+          'Application Support',
+          'MobileSync',
+          'Backup',
+        ),
+      ];
     }
     if (Platform.isWindows) {
       return [
@@ -51,16 +66,24 @@ class IosBackup {
         if (backup != null) out.add(backup);
       }
     }
-    out.sort((a, b) => (b.date ?? DateTime(0)).compareTo(a.date ?? DateTime(0)));
+    out.sort(
+      (a, b) => (b.date ?? DateTime(0)).compareTo(a.date ?? DateTime(0)),
+    );
     return out;
   }
 
   static Future<IosBackup?> open(String path) async {
     final manifestPlist = File(p.join(path, 'Manifest.plist'));
-    if (!await manifestPlist.exists() || !await File(p.join(path, 'Manifest.db')).exists()) return null;
-    final manifest = parsePlist(await manifestPlist.readAsBytes()) as Map<String, Object?>;
+    if (!await manifestPlist.exists() ||
+        !await File(p.join(path, 'Manifest.db')).exists()) {
+      return null;
+    }
+    final manifest =
+        parsePlist(await manifestPlist.readAsBytes()) as Map<String, Object?>;
     final infoFile = File(p.join(path, 'Info.plist'));
-    final info = await infoFile.exists() ? parsePlist(await infoFile.readAsBytes()) as Map<String, Object?> : const {};
+    final info = await infoFile.exists()
+        ? parsePlist(await infoFile.readAsBytes()) as Map<String, Object?>
+        : const {};
     final lockdown = manifest['Lockdown'] as Map<String, Object?>? ?? const {};
     return IosBackup._(
       path,
@@ -76,11 +99,18 @@ class IosBackup {
   /// of the game's files the backup holds; zero means the game is not in it.
   /// [password] is the backup's own password, needed only when [encrypted].
   Future<int> scan(SaveCollector collector, {String? password}) async {
-    final keys = encrypted ? await Isolate.run(() => _BackupKeys.unlock(_manifest, password ?? '')) : null;
-    final database = keys == null ? File(p.join(path, 'Manifest.db')) : await _decryptedManifest(keys);
+    final keys = encrypted
+        ? await Isolate.run(() => _BackupKeys.unlock(_manifest, password ?? ''))
+        : null;
+    final database = keys == null
+        ? File(p.join(path, 'Manifest.db'))
+        : await _decryptedManifest(keys);
     final db = sqlite3.open(database.path, mode: OpenMode.readOnly);
     try {
-      final domains = {for (final release in GameRelease.values) 'AppDomain-${release.packageId}': release};
+      final domains = {
+        for (final release in GameRelease.values)
+          'AppDomain-${release.packageId}': release,
+      };
       final rows = db.select(
         'SELECT fileID, domain, relativePath, file FROM Files WHERE flags = 1 AND domain IN '
         '(${List.filled(domains.length, '?').join(',')})',
@@ -97,15 +127,22 @@ class IosBackup {
         var bytes = await stored.readAsBytes();
         if (keys != null) {
           if (meta.wrappedKey == null) continue;
-          bytes = keys.decryptFile(bytes, meta.protectionClass, meta.wrappedKey!, meta.size);
+          bytes = keys.decryptFile(
+            bytes,
+            meta.protectionClass,
+            meta.wrappedKey!,
+            meta.size,
+          );
         }
-        collector.offer(SaveCandidate(
-          bytes: bytes,
-          source: '${row['domain']}/$relative',
-          modifiedAt: meta.modified,
-          release: domains[row['domain']],
-          group: '${row['domain']}/${p.dirname(relative)}',
-        ));
+        collector.offer(
+          SaveCandidate(
+            bytes: bytes,
+            source: '${row['domain']}/$relative',
+            modifiedAt: meta.modified,
+            release: domains[row['domain']],
+            group: '${row['domain']}/${p.dirname(relative)}',
+          ),
+        );
       }
       return rows.length;
     } finally {
@@ -116,16 +153,33 @@ class IosBackup {
 
   Future<File> _decryptedManifest(_BackupKeys keys) async {
     final manifestKey = _manifest['ManifestKey'] as Uint8List;
-    final protectionClass = ByteData.sublistView(manifestKey, 0, 4).getUint32(0, Endian.little);
-    final key = keys.unwrapForClass(protectionClass, Uint8List.sublistView(manifestKey, 4));
-    final plain = _aesCbcDecrypt(key, await File(p.join(path, 'Manifest.db')).readAsBytes());
+    final protectionClass = ByteData.sublistView(
+      manifestKey,
+      0,
+      4,
+    ).getUint32(0, Endian.little);
+    final key = keys.unwrapForClass(
+      protectionClass,
+      Uint8List.sublistView(manifestKey, 4),
+    );
+    final plain = _aesCbcDecrypt(
+      key,
+      await File(p.join(path, 'Manifest.db')).readAsBytes(),
+    );
     final dir = await Directory.systemTemp.createTemp('haneoka-backup-');
     final file = File(p.join(dir.path, 'Manifest.db'));
     await file.writeAsBytes(plain, flush: true);
     return file;
   }
 
-  static const _skipped = {'Library', 'tmp', 'EncryptedBundles', 'Addressables', 'UnityCache', 'il2cpp'};
+  static const _skipped = {
+    'Library',
+    'tmp',
+    'EncryptedBundles',
+    'Addressables',
+    'UnityCache',
+    'il2cpp',
+  };
 }
 
 class BackupPasswordException implements Exception {}
@@ -143,10 +197,12 @@ class _FileMeta {
     final archive = parsePlist(blob) as Map<String, Object?>;
     final objects = archive['\$objects'] as List<Object?>;
     final top = archive['\$top'] as Map<String, Object?>;
-    final root = objects[(top['root'] as PlistUid).index] as Map<String, Object?>;
+    final root =
+        objects[(top['root'] as PlistUid).index] as Map<String, Object?>;
     Uint8List? key;
     if (root['EncryptionKey'] case PlistUid ref) {
-      final data = (objects[ref.index] as Map<String, Object?>)['NS.data'] as Uint8List;
+      final data =
+          (objects[ref.index] as Map<String, Object?>)['NS.data'] as Uint8List;
       key = Uint8List.sublistView(data, 4);
     }
     final modified = root['LastModified'];
@@ -154,7 +210,9 @@ class _FileMeta {
       (root['Size'] as int?) ?? 0,
       (root['ProtectionClass'] as int?) ?? 0,
       key,
-      modified is int ? DateTime.fromMillisecondsSinceEpoch(modified * 1000) : null,
+      modified is int
+          ? DateTime.fromMillisecondsSinceEpoch(modified * 1000)
+          : null,
     );
   }
 }
@@ -190,14 +248,29 @@ class _BackupKeys {
 
     var secret = Uint8List.fromList(utf8.encode(password));
     if (attrs['DPSL'] != null) {
-      secret = _pbkdf2(Digest('SHA-256'), secret, attrs['DPSL']!, number(attrs['DPIC']!));
+      secret = _pbkdf2(
+        Digest('SHA-256'),
+        secret,
+        attrs['DPSL']!,
+        number(attrs['DPIC']!),
+      );
     }
-    final key = _pbkdf2(Digest('SHA-1'), secret, attrs['SALT']!, number(attrs['ITER']!));
+    final key = _pbkdf2(
+      Digest('SHA-1'),
+      secret,
+      attrs['SALT']!,
+      number(attrs['ITER']!),
+    );
     final keys = <int, Uint8List>{};
     for (final entry in classes) {
       final wrapped = entry['WPKY'];
       final cls = entry['CLAS'];
-      if (wrapped == null || cls == null || entry['WRAP'] == null || number(entry['WRAP']!) & 2 == 0) continue;
+      if (wrapped == null ||
+          cls == null ||
+          entry['WRAP'] == null ||
+          number(entry['WRAP']!) & 2 == 0) {
+        continue;
+      }
       final unwrapped = _aesUnwrap(key, wrapped);
       if (unwrapped == null) throw BackupPasswordException();
       keys[number(cls)] = unwrapped;
@@ -213,12 +286,27 @@ class _BackupKeys {
     return key;
   }
 
-  Uint8List decryptFile(Uint8List data, int protectionClass, Uint8List wrapped, int size) {
-    final plain = _aesCbcDecrypt(unwrapForClass(protectionClass, wrapped), data);
-    return size > 0 && size <= plain.length ? Uint8List.sublistView(plain, 0, size) : plain;
+  Uint8List decryptFile(
+    Uint8List data,
+    int protectionClass,
+    Uint8List wrapped,
+    int size,
+  ) {
+    final plain = _aesCbcDecrypt(
+      unwrapForClass(protectionClass, wrapped),
+      data,
+    );
+    return size > 0 && size <= plain.length
+        ? Uint8List.sublistView(plain, 0, size)
+        : plain;
   }
 
-  static Uint8List _pbkdf2(Digest digest, Uint8List secret, Uint8List salt, int iterations) {
+  static Uint8List _pbkdf2(
+    Digest digest,
+    Uint8List secret,
+    Uint8List salt,
+    int iterations,
+  ) {
     final derivator = PBKDF2KeyDerivator(HMac(digest, 64))
       ..init(Pbkdf2Parameters(salt, iterations, 32));
     return derivator.process(secret);
@@ -230,7 +318,10 @@ Uint8List? _aesUnwrap(Uint8List kek, Uint8List wrapped) {
   final n = wrapped.length ~/ 8 - 1;
   final aes = AESEngine()..init(false, KeyParameter(kek));
   final a = Uint8List.fromList(wrapped.sublist(0, 8));
-  final r = [for (var i = 0; i < n; i++) Uint8List.fromList(wrapped.sublist(8 + i * 8, 16 + i * 8))];
+  final r = [
+    for (var i = 0; i < n; i++)
+      Uint8List.fromList(wrapped.sublist(8 + i * 8, 16 + i * 8)),
+  ];
   final block = Uint8List(16), out = Uint8List(16);
   for (var j = 5; j >= 0; j--) {
     for (var i = n; i >= 1; i--) {
@@ -250,13 +341,16 @@ Uint8List? _aesUnwrap(Uint8List kek, Uint8List wrapped) {
 
 /// AES-256-CBC with a zero IV, as backups use; trailing PKCS#7 padding removed.
 Uint8List _aesCbcDecrypt(Uint8List key, Uint8List data) {
-  final cipher = CBCBlockCipher(AESEngine())..init(false, ParametersWithIV(KeyParameter(key), Uint8List(16)));
+  final cipher = CBCBlockCipher(AESEngine())
+    ..init(false, ParametersWithIV(KeyParameter(key), Uint8List(16)));
   final out = Uint8List(data.length - data.length % 16);
   for (var offset = 0; offset < out.length; offset += 16) {
     cipher.processBlock(data, offset, out, offset);
   }
   final pad = out.isEmpty ? 0 : out.last;
-  if (pad >= 1 && pad <= 16 && out.sublist(out.length - pad).every((b) => b == pad)) {
+  if (pad >= 1 &&
+      pad <= 16 &&
+      out.sublist(out.length - pad).every((b) => b == pad)) {
     return Uint8List.sublistView(out, 0, out.length - pad);
   }
   return out;

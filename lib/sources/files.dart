@@ -10,7 +10,15 @@ import '../save/game_save.dart';
 /// The game's asset caches sit next to the account directories and hold
 /// gigabytes of bundles and no saves; a folder walk never enters them.
 const skippedDirectories = {
-  'EncryptedBundles', 'Addressables', 'Master', 'RemoteCatalog', 'il2cpp', 'Unity', 'UnityCache', 'cache', 'tmp',
+  'EncryptedBundles',
+  'Addressables',
+  'Master',
+  'RemoteCatalog',
+  'il2cpp',
+  'Unity',
+  'UnityCache',
+  'cache',
+  'tmp',
   'com.unity3d.player',
 };
 
@@ -37,7 +45,15 @@ class FileSaveSource {
     if (_isZip(bytes)) {
       _zip(bytes, name);
     } else {
-      collector.offer(SaveCandidate(bytes: bytes, source: name, modifiedAt: modifiedAt, release: release, group: p.dirname(name)));
+      collector.offer(
+        SaveCandidate(
+          bytes: bytes,
+          source: name,
+          modifiedAt: modifiedAt,
+          release: release,
+          group: p.dirname(name),
+        ),
+      );
     }
   }
 
@@ -60,31 +76,46 @@ class FileSaveSource {
     if (_isZip(bytes)) {
       _zip(bytes, file.path);
     } else {
-      collector.offer(SaveCandidate(
-        bytes: bytes,
-        source: file.path,
-        modifiedAt: stat.modified,
-        release: release,
-        group: p.dirname(file.path),
-      ));
+      collector.offer(
+        SaveCandidate(
+          bytes: bytes,
+          source: file.path,
+          modifiedAt: stat.modified,
+          release: release,
+          group: p.dirname(file.path),
+        ),
+      );
     }
   }
 
   void _zip(Uint8List bytes, String name) {
     final archive = ZipDecoder().decodeBytes(bytes);
     for (final entry in archive.files) {
-      if (!entry.isFile || entry.size == 0 || entry.size > SaveCodec.maxFileBytes) continue;
+      if (!entry.isFile ||
+          entry.size == 0 ||
+          entry.size > SaveCodec.maxFileBytes) {
+        continue;
+      }
       if (p.split(entry.name).any(skippedDirectories.contains)) continue;
-      final modified = DateTime.fromMillisecondsSinceEpoch(entry.lastModTime * 1000);
-      collector.offer(SaveCandidate(
-        bytes: entry.content,
-        source: '$name!${entry.name}',
-        modifiedAt: modified,
-        release: release,
-        group: '$name!${p.dirname(entry.name)}',
-      ));
+      final modified = DateTime.fromMillisecondsSinceEpoch(
+        entry.lastModTime * 1000,
+      );
+      collector.offer(
+        SaveCandidate(
+          bytes: entry.content,
+          source: '$name!${entry.name}',
+          modifiedAt: modified,
+          release: release,
+          group: '$name!${p.dirname(entry.name)}',
+        ),
+      );
     }
   }
 
-  static bool _isZip(Uint8List bytes) => bytes.length > 4 && bytes[0] == 0x50 && bytes[1] == 0x4b && bytes[2] == 3 && bytes[3] == 4;
+  static bool _isZip(Uint8List bytes) =>
+      bytes.length > 4 &&
+      bytes[0] == 0x50 &&
+      bytes[1] == 0x4b &&
+      bytes[2] == 3 &&
+      bytes[3] == 4;
 }

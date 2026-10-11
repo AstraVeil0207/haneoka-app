@@ -7,6 +7,7 @@ import '../l10n/app_localizations.dart';
 import '../save/game_save.dart';
 import '../sources/android.dart';
 import '../sources/files.dart';
+import '../shell/page.dart';
 import 'adb_sheet.dart';
 import 'backup_sheet.dart';
 import 'labels.dart';
@@ -63,35 +64,46 @@ class _ImportScreenState extends State<ImportScreen> {
     }
     setState(() {
       for (final save in collector.saves) {
-        _saves.removeWhere((s) => s.profileId == save.profileId && s.release == save.release);
+        _saves.removeWhere(
+          (s) => s.profileId == save.profileId && s.release == save.release,
+        );
         _saves.insert(0, save);
       }
     });
     if (collector.saves.length == 1) _open(collector.saves.single);
   }
 
-  void _open(GameSave save) =>
-      Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => SaveScreen(save: save)));
+  void _open(GameSave save) => Navigator.of(context)
+      .push(MaterialPageRoute<void>(builder: (_) => SaveScreen(save: save)));
 
   Future<GameRelease?> _pickRelease() => showModalBottomSheet<GameRelease>(
-        context: context,
-        showDragHandle: true,
-        builder: (context) => SafeArea(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            for (final release in GameRelease.values)
-              ListTile(title: Text(release.label(t)), onTap: () => Navigator.pop(context, release)),
-          ]),
-        ),
-      );
+    context: context,
+    showDragHandle: true,
+    builder: (context) => SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final release in GameRelease.values)
+            ListTile(
+              title: Text(release.label(t)),
+              onTap: () => Navigator.pop(context, release),
+            ),
+        ],
+      ),
+    ),
+  );
 
   Future<void> _readShizuku() async {
     var status = await AndroidSaveSource.shizukuStatus();
-    if (status == ShizukuStatus.needsPermission && await AndroidSaveSource.requestShizuku()) {
+    if (status == ShizukuStatus.needsPermission &&
+        await AndroidSaveSource.requestShizuku()) {
       status = ShizukuStatus.ready;
     }
     setState(() => _shizuku = status);
     if (status != ShizukuStatus.ready) {
-      if (status == ShizukuStatus.notRunning) await AndroidSaveSource.openShizuku();
+      if (status == ShizukuStatus.notRunning) {
+        await AndroidSaveSource.openShizuku();
+      }
       return;
     }
     await _run((collector) async {
@@ -106,14 +118,17 @@ class _ImportScreenState extends State<ImportScreen> {
     if (release == null) return;
     final uri = await AndroidSaveSource.grantGameFolder(release);
     if (uri == null) return;
-    await _run((collector) => AndroidSaveSource.readFolder(uri, collector, release: release));
+    await _run(
+      (collector) =>
+          AndroidSaveSource.readFolder(uri, collector, release: release),
+    );
   }
 
   Future<void> _readGranted() => _run((collector) async {
-        for (final uri in await AndroidSaveSource.grantedFolders()) {
-          await AndroidSaveSource.readFolder(uri, collector);
-        }
-      });
+    for (final uri in await AndroidSaveSource.grantedFolders()) {
+      await AndroidSaveSource.readFolder(uri, collector);
+    }
+  });
 
   Future<void> _pickFiles({bool folder = false}) async {
     final release = await _pickRelease();
@@ -121,10 +136,16 @@ class _ImportScreenState extends State<ImportScreen> {
     if (folder) {
       final path = await FilePicker.platform.getDirectoryPath();
       if (path == null) return;
-      await _run((collector) => FileSaveSource(collector, release: release).addPath(path));
+      await _run(
+        (collector) =>
+            FileSaveSource(collector, release: release).addPath(path),
+      );
       return;
     }
-    final picked = await FilePicker.platform.pickFiles(allowMultiple: true, withData: !_hasPaths);
+    final picked = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      withData: !_hasPaths,
+    );
     if (picked == null) return;
     await _run((collector) async {
       final source = FileSaveSource(collector, release: release);
@@ -139,7 +160,8 @@ class _ImportScreenState extends State<ImportScreen> {
   }
 
   static bool get _hasPaths => !Platform.isIOS;
-  static bool get _desktop => Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+  static bool get _desktop =>
+      Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 
   @override
   Widget build(BuildContext context) {
@@ -155,7 +177,10 @@ class _ImportScreenState extends State<ImportScreen> {
             _ => null,
           },
           trailing: _shizuku == ShizukuStatus.notRunning
-              ? TextButton(onPressed: AndroidSaveSource.openShizuku, child: Text(t.openShizuku))
+              ? TextButton(
+                  onPressed: AndroidSaveSource.openShizuku,
+                  child: Text(t.openShizuku),
+                )
               : null,
           onTap: _busy ? null : _readShizuku,
         ),
@@ -163,7 +188,11 @@ class _ImportScreenState extends State<ImportScreen> {
           ListTile(
             leading: const Icon(Icons.folder_special_outlined),
             title: Text(t.sourceGrantFolder),
-            trailing: IconButton(tooltip: t.refresh, onPressed: _busy ? null : _readGranted, icon: const Icon(Icons.refresh)),
+            trailing: IconButton(
+              tooltip: t.refresh,
+              onPressed: _busy ? null : _readGranted,
+              icon: const Icon(Icons.refresh),
+            ),
             onTap: _busy ? null : _grantFolder,
           ),
       ],
@@ -183,30 +212,43 @@ class _ImportScreenState extends State<ImportScreen> {
         leading: const Icon(Icons.file_open_outlined),
         title: Text(t.sourceFiles),
         trailing: _hasPaths
-            ? IconButton(tooltip: t.sourceFiles, onPressed: _busy ? null : () => _pickFiles(folder: true), icon: const Icon(Icons.folder_open))
+            ? IconButton(
+                tooltip: t.sourceFiles,
+                onPressed: _busy ? null : () => _pickFiles(folder: true),
+                icon: const Icon(Icons.folder_open),
+              )
             : null,
         onTap: _busy ? null : _pickFiles,
       ),
     ];
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(t.importTitle),
-        bottom: _busy ? const PreferredSize(preferredSize: Size.fromHeight(4), child: LinearProgressIndicator()) : null,
-      ),
+    return ShellPage(
+      title: t.importTitle,
       body: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 8),
         children: [
+          if (_busy) const LinearProgressIndicator(),
           ...methods,
           if (_saves.isNotEmpty) ...[
             const Divider(),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: Text(t.accounts, style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary)),
+              child: Text(
+                t.accounts,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                ),
+              ),
             ),
             for (final save in _saves)
               ListTile(
                 leading: const Icon(Icons.person_outline),
                 title: Text(save.name ?? save.profileId),
-                subtitle: Text([save.release?.label(t), save.profileId].whereType<String>().join(' · ')),
+                subtitle: Text(
+                  [
+                    save.release?.label(t),
+                    save.profileId,
+                  ].whereType<String>().join(' · '),
+                ),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () => _open(save),
               ),

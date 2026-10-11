@@ -75,7 +75,10 @@ class Rijndael256 {
 
   static void _invMixColumns(Uint8List s) {
     for (var c = 0; c < _nb; c++) {
-      final a0 = s[c * 4], a1 = s[c * 4 + 1], a2 = s[c * 4 + 2], a3 = s[c * 4 + 3];
+      final a0 = s[c * 4],
+          a1 = s[c * 4 + 1],
+          a2 = s[c * 4 + 2],
+          a3 = s[c * 4 + 3];
       s[c * 4] = _mul(a0, 14) ^ _mul(a1, 11) ^ _mul(a2, 13) ^ _mul(a3, 9);
       s[c * 4 + 1] = _mul(a0, 9) ^ _mul(a1, 14) ^ _mul(a2, 11) ^ _mul(a3, 13);
       s[c * 4 + 2] = _mul(a0, 13) ^ _mul(a1, 9) ^ _mul(a2, 14) ^ _mul(a3, 11);
@@ -142,7 +145,8 @@ class Rijndael256 {
       q ^= (q << 2) & 0xff;
       q ^= (q << 4) & 0xff;
       if (q & 0x80 != 0) q ^= 0x09;
-      box[p] = (q ^ _rot(q, 1) ^ _rot(q, 2) ^ _rot(q, 3) ^ _rot(q, 4) ^ 0x63) & 0xff;
+      box[p] =
+          (q ^ _rot(q, 1) ^ _rot(q, 2) ^ _rot(q, 3) ^ _rot(q, 4) ^ 0x63) & 0xff;
     } while (p != 1);
     box[0] = 0x63;
     return box;

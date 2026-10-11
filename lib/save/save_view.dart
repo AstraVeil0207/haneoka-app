@@ -55,52 +55,78 @@ class SaveView {
   Map<String, Object?> get player => save.player;
   Map<String, Object?> get settings {
     final cache = save.documents[SaveDocumentKind.cache]?.data ?? const {};
-    return {for (final entry in cache.entries) if (entry.key != '_player') entry.key: entry.value};
+    return {
+      for (final entry in cache.entries)
+        if (entry.key != '_player') entry.key: entry.value,
+    };
   }
 
-  Map<String, Object?> get persist => save.documents[SaveDocumentKind.persist]?.data ?? const {};
+  Map<String, Object?> get persist =>
+      save.documents[SaveDocumentKind.persist]?.data ?? const {};
 
   /// Sections the save actually holds, with their number of entries (1 for
   /// a single object such as `_vip`).
   Map<SaveSection, int> get present => {
-        for (final section in SaveSection.values)
-          if (_count(player[section.field]) case final count? when count > 0) section: count,
-      };
+    for (final section in SaveSection.values)
+      if (_count(player[section.field]) case final count? when count > 0)
+        section: count,
+  };
 
   static int? _count(Object? value) => switch (value) {
-        List() => value.length,
-        Map() => value.isEmpty ? null : (value.values.whereType<List>().firstOrNull?.length ?? 1),
-        null => null,
-        _ => 1,
-      };
+    List() => value.length,
+    Map() =>
+      value.isEmpty
+          ? null
+          : (value.values.whereType<List>().firstOrNull?.length ?? 1),
+    null => null,
+    _ => 1,
+  };
 
   List<Map<String, Object?>> rows(SaveSection section) {
     final value = player[section.field];
     if (value is List) return value.whereType<Map<String, Object?>>().toList();
     if (value is Map<String, Object?>) {
       final list = value.values.whereType<List>().firstOrNull;
-      return list == null ? [value] : list.whereType<Map<String, Object?>>().toList();
+      return list == null
+          ? [value]
+          : list.whereType<Map<String, Object?>>().toList();
     }
     return const [];
   }
 
   int? get exp => _int(player['_exp']);
   int? get vipRank => _int((player['_vip'] as Map<String, Object?>?)?['_rank']);
-  int? get favoriteMemberCardId => _int(player['_favoriteMemberCardId'] ?? player['_lastLiveDeckLeaderMemberCardId']);
+  int? get favoriteMemberCardId => _int(
+    player['_favoriteMemberCardId'] ??
+        player['_lastLiveDeckLeaderMemberCardId'],
+  );
 
   /// Sum of the best high-score ratings the game counts.
   int get highScoreRating =>
-      rows(SaveSection.ratings).fold(0, (sum, row) => sum + (_int(row['_highScoreRating']) ?? 0));
+      rows(SaveSection.ratings)
+          .fold(0, (sum, row) => sum + (_int(row['_highScoreRating']) ?? 0));
 
   /// Songs with a cleared chart on each difficulty (status above zero).
   Map<String, int> get clearsByDifficulty => {
-        for (final difficulty in const ['easy', 'normal', 'hard', 'expert'])
-          difficulty: rows(SaveSection.songs).where((row) => (_int(row['_${difficulty}ClearedStatus']) ?? 0) > 0).length,
-      };
+    for (final difficulty in const ['easy', 'normal', 'hard', 'expert'])
+      difficulty: rows(SaveSection.songs)
+          .where((row) => (_int(row['_${difficulty}ClearedStatus']) ?? 0) > 0)
+          .length,
+  };
 
   /// An item's amount, e.g. a currency.
   int amountOf(int itemId) =>
-      _int(rows(SaveSection.items).firstWhere((row) => _int(row['_masterItemId']) == itemId, orElse: () => const {})['_amount']) ?? 0;
+      _int(
+        rows(SaveSection.items).firstWhere(
+          (row) => _int(row['_masterItemId']) == itemId,
+          orElse: () => const {},
+        )['_amount'],
+      ) ??
+      0;
 
-  static int? _int(Object? value) => value is int ? value : value is String ? int.tryParse(value) : null;
+  static int? _int(Object? value) => value is int
+      ? value
+      : value is String
+      ? int.tryParse(value)
+      : null;
 }

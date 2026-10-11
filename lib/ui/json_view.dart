@@ -6,11 +6,19 @@ class JsonView extends StatelessWidget {
   final Object? value;
 
   @override
-  Widget build(BuildContext context) => ListView(children: _children(context, value));
+  Widget build(BuildContext context) =>
+      ListView(children: _children(context, value));
 
-  static List<Widget> _children(BuildContext context, Object? value) => switch (value) {
-        Map() => [for (final entry in value.entries) _node(context, '${entry.key}', entry.value)],
-        List() => [for (final (index, item) in value.indexed) _node(context, '$index', item)],
+  static List<Widget> _children(BuildContext context, Object? value) =>
+      switch (value) {
+        Map() => [
+          for (final entry in value.entries)
+            _node(context, '${entry.key}', entry.value),
+        ],
+        List() => [
+          for (final (index, item) in value.indexed)
+            _node(context, '$index', item),
+        ],
         _ => [ListTile(title: Text('$value'))],
       };
 
@@ -30,7 +38,11 @@ class JsonView extends StatelessWidget {
       title: Text(key),
       trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 240),
-        child: SelectableText('$value', textAlign: TextAlign.end, style: theme.textTheme.bodyMedium),
+        child: SelectableText(
+          '$value',
+          textAlign: TextAlign.end,
+          style: theme.textTheme.bodyMedium,
+        ),
       ),
     );
   }

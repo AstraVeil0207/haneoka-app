@@ -8,7 +8,9 @@ import 'ui/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  final state = await AppState.load(WidgetsBinding.instance.platformDispatcher.locale);
+  final state = await AppState.load(
+    WidgetsBinding.instance.platformDispatcher.locale,
+  );
   runApp(AppScope(state: state, child: const HaneokaApp()));
 }
 
@@ -30,7 +32,7 @@ class HaneokaApp extends StatelessWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: AppLocalizations.supportedLocales,
-      home: const Shell(),
+      home: const AppShell(),
     );
   }
 }

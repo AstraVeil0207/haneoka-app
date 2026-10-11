@@ -15,16 +15,24 @@ void main() {
     expect(collector.saves.single.release, GameRelease.jp);
   });
 
-  test('reads the game save from an encrypted backup with its password', () async {
-    final backup = (await IosBackup.find('test/fixtures/backup-encrypted')).single;
-    expect(backup.encrypted, isTrue);
-    final collector = SaveCollector();
-    expect(await backup.scan(collector, password: 'hunter2'), 1);
-    expect(collector.saves.single.profileId, '123456789012');
-  });
+  test(
+    'reads the game save from an encrypted backup with its password',
+    () async {
+      final backup = (await IosBackup.find('test/fixtures/backup-encrypted'))
+          .single;
+      expect(backup.encrypted, isTrue);
+      final collector = SaveCollector();
+      expect(await backup.scan(collector, password: 'hunter2'), 1);
+      expect(collector.saves.single.profileId, '123456789012');
+    },
+  );
 
   test('a wrong backup password is reported as such', () async {
-    final backup = (await IosBackup.find('test/fixtures/backup-encrypted')).single;
-    expect(backup.scan(SaveCollector(), password: 'wrong'), throwsA(isA<BackupPasswordException>()));
+    final backup = (await IosBackup.find('test/fixtures/backup-encrypted'))
+        .single;
+    expect(
+      backup.scan(SaveCollector(), password: 'wrong'),
+      throwsA(isA<BackupPasswordException>()),
+    );
   });
 }

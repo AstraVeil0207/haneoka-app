@@ -16,7 +16,11 @@ class SiteText {
   }
 
   /// A dotted message path, with `{name}` values filled in.
-  String call(String path, [String fallback = '', Map<String, Object?> values = const {}]) {
+  String call(
+    String path, [
+    String fallback = '',
+    Map<String, Object?> values = const {},
+  ]) {
     Object? node = _messages;
     for (final part in path.split('.')) {
       node = node is Map<String, Object?> ? node[part] : null;
@@ -45,9 +49,16 @@ class SiteText {
     if (value is List) {
       for (final code in order) {
         final i = tupleOrder.indexOf(code);
-        if (i < value.length && value[i] is String && (value[i] as String).trim().isNotEmpty) return value[i] as String;
+        if (i < value.length &&
+            value[i] is String &&
+            (value[i] as String).trim().isNotEmpty) {
+          return value[i] as String;
+        }
       }
-      return value.whereType<String>().firstWhere((s) => s.trim().isNotEmpty, orElse: () => '');
+      return value.whereType<String>().firstWhere(
+        (s) => s.trim().isNotEmpty,
+        orElse: () => '',
+      );
     }
     if (value is Map) {
       for (final code in order) {

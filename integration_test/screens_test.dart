@@ -12,45 +12,69 @@ void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   final out = Platform.environment['SHOTS'] ?? '/tmp';
 
+  Future<void> wait(WidgetTester tester, double seconds) async {
+    for (var i = 0; i < seconds * 4; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 250)),
+      );
+      await tester.pump();
+    }
+  }
+
   Future<void> shot(WidgetTester tester, String name) async {
-    await tester.pump(const Duration(milliseconds: 300));
-    final boundary = tester.renderObject<RenderRepaintBoundary>(find.byType(RepaintBoundary).first);
+    await wait(tester, 1.5);
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byType(RepaintBoundary).first,
+    );
     final image = await boundary.toImage(pixelRatio: 1);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     File('$out/$name.png').writeAsBytesSync(bytes!.buffer.asUint8List());
   }
 
-  Future<void> settle(WidgetTester tester, [int seconds = 6]) async {
-    for (var i = 0; i < seconds * 4; i++) {
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 250)));
-      await tester.pump();
+  Future<void> untilTiles(WidgetTester tester) async {
+    final tiles = find.descendant(
+      of: find.byType(Card),
+      matching: find.byType(InkWell),
+    );
+    for (var i = 0; i < 160 && tiles.evaluate().isEmpty; i++) {
+      await wait(tester, 0.25);
     }
   }
 
-  testWidgets('catalogue screens', (tester) async {
-    await app.main();
-    await settle(tester, 2);
-    await shot(tester, 'catalog-index');
-    for (final (label, name) in [('Songs', 'songs'), ('Characters', 'characters'), ('Members', 'cards'), ('Events', 'events')]) {
-      final entry = find.text(label);
-      if (entry.evaluate().isEmpty) continue;
-      await tester.tap(entry.first);
-      final tiles = find.descendant(of: find.byType(Card), matching: find.byType(InkWell));
-      for (var i = 0; i < 160 && tiles.evaluate().isEmpty; i++) {
-        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 250)));
-        await tester.pump();
+  for (final (name, size) in [
+    ('desktop', const Size(1280, 860)),
+    ('phone', const Size(400, 860)),
+  ]) {
+    testWidgets('screens at $name width', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1;
+      await app.main();
+      await untilTiles(tester);
+      await shot(tester, '$name-songs');
+      await tester.tap(
+        find
+            .descendant(of: find.byType(Card), matching: find.byType(InkWell))
+            .first,
+      );
+      await wait(tester, 6);
+      await shot(tester, '$name-song');
+      await tester.tap(find.byIcon(Icons.arrow_back).first);
+      await wait(tester, 1);
+      if (name == 'phone') {
+        await tester.tap(find.byIcon(Icons.menu).first);
+        await wait(tester, 1);
+        await shot(tester, '$name-drawer');
       }
-      await settle(tester, 3);
-      await shot(tester, 'list-$name');
-      if (tiles.evaluate().isNotEmpty) {
-        await tester.tap(tiles.first);
-        await settle(tester, 8);
-        await shot(tester, 'detail-$name');
-        await tester.tap(find.byType(BackButton).last);
-        await settle(tester, 1);
-      }
-      await tester.tap(find.byType(BackButton).last);
-      await settle(tester, 1);
-    }
-  });
+      await tester.tap(find.text('Characters').last);
+      await untilTiles(tester);
+      await shot(tester, '$name-characters');
+      await tester.tap(
+        find
+            .descendant(of: find.byType(Card), matching: find.byType(InkWell))
+            .first,
+      );
+      await wait(tester, 6);
+      await shot(tester, '$name-character');
+    });
+  }
 }

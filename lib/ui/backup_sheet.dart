@@ -6,12 +6,15 @@ import '../l10n/app_localizations.dart';
 import '../sources/ios_backup.dart';
 import 'adb_sheet.dart';
 
-Future<void> showBackupSheet(BuildContext context, {required SaveRead onRead}) => showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => _BackupSheet(onRead: onRead),
-    );
+Future<void> showBackupSheet(
+  BuildContext context, {
+  required SaveRead onRead,
+}) => showModalBottomSheet<void>(
+  context: context,
+  isScrollControlled: true,
+  showDragHandle: true,
+  builder: (_) => _BackupSheet(onRead: onRead),
+);
 
 /// Local iPhone and iPad backups: the system's backup folder, or one the user
 /// chooses (Linux, or a copied backup).
@@ -42,7 +45,14 @@ class _BackupSheetState extends State<_BackupSheet> {
         // A folder the app may not read (macOS without Full Disk Access) lists nothing.
       }
     }
-    if (mounted) setState(() => _backups = [...?_backups?.where((b) => !found.any((f) => f.path == b.path)), ...found]);
+    if (mounted) {
+      setState(
+        () => _backups = [
+          ...?_backups?.where((b) => !found.any((f) => f.path == b.path)),
+          ...found,
+        ],
+      );
+    }
   }
 
   Future<void> _choose() async {
@@ -76,10 +86,20 @@ class _BackupSheetState extends State<_BackupSheet> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(t.backupPassword),
-        content: TextField(controller: controller, obscureText: true, autofocus: true),
+        content: TextField(
+          controller: controller,
+          obscureText: true,
+          autofocus: true,
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text(MaterialLocalizations.of(context).cancelButtonLabel)),
-          FilledButton(onPressed: () => Navigator.pop(context, controller.text), child: Text(t.read)),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: Text(t.read),
+          ),
         ],
       ),
     );
@@ -88,30 +108,56 @@ class _BackupSheetState extends State<_BackupSheet> {
   @override
   Widget build(BuildContext context) {
     final backups = _backups;
-    final date = DateFormat.yMMMd(Localizations.localeOf(context).toLanguageTag()).add_Hm();
+    final date = DateFormat.yMMMd(
+      Localizations.localeOf(context).toLanguageTag(),
+    ).add_Hm();
     return SafeArea(
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        ListTile(
-          title: Text(t.sourceIosBackup, style: Theme.of(context).textTheme.titleMedium),
-          trailing: IconButton(tooltip: t.chooseBackupFolder, onPressed: _choose, icon: const Icon(Icons.folder_open)),
-        ),
-        if (backups == null)
-          const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
-        else if (backups.isEmpty)
-          ListTile(leading: const Icon(Icons.inbox_outlined), title: Text(t.noBackups))
-        else
-          for (final backup in backups)
-            ListTile(
-              leading: Icon(backup.encrypted ? Icons.lock_outline : Icons.phone_iphone),
-              title: Text(backup.deviceName ?? backup.productType ?? backup.path),
-              subtitle: Text([
-                if (backup.date != null) date.format(backup.date!.toLocal()),
-                if (backup.encrypted) t.encrypted,
-              ].join(' · ')),
-              onTap: () => _read(backup),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ListTile(
+            title: Text(
+              t.sourceIosBackup,
+              style: Theme.of(context).textTheme.titleMedium,
             ),
-        const SizedBox(height: 8),
-      ]),
+            trailing: IconButton(
+              tooltip: t.chooseBackupFolder,
+              onPressed: _choose,
+              icon: const Icon(Icons.folder_open),
+            ),
+          ),
+          if (backups == null)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (backups.isEmpty)
+            ListTile(
+              leading: const Icon(Icons.inbox_outlined),
+              title: Text(t.noBackups),
+            )
+          else
+            for (final backup in backups)
+              ListTile(
+                leading: Icon(
+                  backup.encrypted ? Icons.lock_outline : Icons.phone_iphone,
+                ),
+                title: Text(
+                  backup.deviceName ?? backup.productType ?? backup.path,
+                ),
+                subtitle: Text(
+                  [
+                    if (backup.date != null)
+                      date.format(backup.date!.toLocal()),
+                    if (backup.encrypted) t.encrypted,
+                  ].join(' · '),
+                ),
+                onTap: () => _read(backup),
+              ),
+          const SizedBox(height: 8),
+        ],
+      ),
     );
   }
 }

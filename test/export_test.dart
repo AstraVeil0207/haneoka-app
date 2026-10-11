@@ -10,14 +10,28 @@ import 'package:haneoka/ui/save_screen.dart';
 
 GameSave _fixture() {
   final collector = SaveCollector()
-    ..offer(SaveCandidate(bytes: File('test/fixtures/vec-cache.bin').readAsBytesSync(), source: 'a/1', group: 'a', release: GameRelease.jp))
-    ..offer(SaveCandidate(bytes: File('test/fixtures/vec-persist.bin').readAsBytesSync(), source: 'a/2', group: 'a'));
+    ..offer(
+      SaveCandidate(
+        bytes: File('test/fixtures/vec-cache.bin').readAsBytesSync(),
+        source: 'a/1',
+        group: 'a',
+        release: GameRelease.jp,
+      ),
+    )
+    ..offer(
+      SaveCandidate(
+        bytes: File('test/fixtures/vec-persist.bin').readAsBytesSync(),
+        source: 'a/2',
+        group: 'a',
+      ),
+    );
   return collector.saves.single;
 }
 
 void main() {
   test('the full export carries progress but no identity', () {
-    final document = jsonDecode(utf8.decode(exportSave(_fixture()))) as Map<String, Object?>;
+    final document =
+        jsonDecode(utf8.decode(exportSave(_fixture()))) as Map<String, Object?>;
     final player = document['player'] as Map<String, Object?>;
     expect(document['schema'], 'haneoka-game-save-v1');
     expect(document['server'], 'jp');
@@ -31,15 +45,20 @@ void main() {
   test('the team package is ONPKG1 text', () {
     final text = exportTeamPackage(_fixture());
     expect(text, startsWith('ONPKG1:'));
-    File('${Directory.systemTemp.path}/haneoka-onpkg.txt').writeAsStringSync(text);
+    File('${Directory.systemTemp.path}/haneoka-onpkg.txt')
+        .writeAsStringSync(text);
   });
 
-  testWidgets('the save screen lists the sections the save holds', (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: SaveScreen(save: _fixture()),
-    ));
+  testWidgets('the save screen lists the sections the save holds', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: SaveScreen(save: _fixture()),
+      ),
+    );
     expect(find.text('123456789012'), findsWidgets);
     expect(find.text('Members'), findsOneWidget);
     expect(find.text('Song results'), findsOneWidget);

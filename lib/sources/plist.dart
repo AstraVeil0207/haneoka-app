@@ -5,7 +5,8 @@ import 'dart:typed_data';
 /// maps, lists, strings, ints, doubles, bools, DateTimes, Uint8Lists and
 /// [PlistUid] references. Enough for an iOS backup's manifests.
 Object? parsePlist(Uint8List bytes) {
-  if (bytes.length > 8 && ascii.decode(bytes.sublist(0, 8), allowInvalid: true) == 'bplist00') {
+  if (bytes.length > 8 &&
+      ascii.decode(bytes.sublist(0, 8), allowInvalid: true) == 'bplist00') {
     return _BinaryPlist(bytes).root();
   }
   return _XmlPlist(utf8.decode(bytes, allowMalformed: true)).root();
@@ -42,7 +43,9 @@ class _BinaryPlist {
   }
 
   int _offsetOf(int ref) {
-    if (ref >= _count) throw const FormatException('plist reference out of range');
+    if (ref >= _count) {
+      throw const FormatException('plist reference out of range');
+    }
     return _uint(_tableOffset + ref * _offsetSize, _offsetSize);
   }
 
@@ -59,14 +62,20 @@ class _BinaryPlist {
 
     switch (type) {
       case 0x0:
-        return info == 0x8 ? false : info == 0x9 ? true : null;
+        return info == 0x8
+            ? false
+            : info == 0x9
+            ? true
+            : null;
       case 0x1:
         final size = 1 << info;
         return size == 8 ? view.getInt64(at + 1) : _uint(at + 1, size);
       case 0x2:
         return info == 2 ? view.getFloat32(at + 1) : view.getFloat64(at + 1);
       case 0x3:
-        return DateTime.utc(2001).add(Duration(microseconds: (view.getFloat64(at + 1) * 1e6).round()));
+        return DateTime.utc(
+          2001,
+        ).add(Duration(microseconds: (view.getFloat64(at + 1) * 1e6).round()));
       case 0x4:
         final (n, start) = length();
         return Uint8List.sublistView(data, start, start + n);
@@ -75,13 +84,18 @@ class _BinaryPlist {
         return latin1.decode(data.sublist(start, start + n));
       case 0x6:
         final (n, start) = length();
-        final units = [for (var i = 0; i < n; i++) view.getUint16(start + i * 2)];
+        final units = [
+          for (var i = 0; i < n; i++) view.getUint16(start + i * 2),
+        ];
         return String.fromCharCodes(units);
       case 0x8:
         return PlistUid(_uint(at + 1, info + 1));
       case 0xa:
         final (n, start) = length();
-        return [for (var i = 0; i < n; i++) _object(_uint(start + i * _refSize, _refSize), depth + 1)];
+        return [
+          for (var i = 0; i < n; i++)
+            _object(_uint(start + i * _refSize, _refSize), depth + 1),
+        ];
       case 0xd:
         final (n, start) = length();
         return {
@@ -90,7 +104,9 @@ class _BinaryPlist {
                 _object(_uint(start + (n + i) * _refSize, _refSize), depth + 1),
         };
     }
-    throw FormatException('unsupported plist object 0x${marker.toRadixString(16)}');
+    throw FormatException(
+      'unsupported plist object 0x${marker.toRadixString(16)}',
+    );
   }
 }
 
@@ -120,8 +136,12 @@ class _XmlPlist {
     return value;
   }
 
-  static String _unescape(String s) =>
-      s.replaceAll('&lt;', '<').replaceAll('&gt;', '>').replaceAll('&quot;', '"').replaceAll('&apos;', "'").replaceAll('&amp;', '&');
+  static String _unescape(String s) => s
+      .replaceAll('&lt;', '<')
+      .replaceAll('&gt;', '>')
+      .replaceAll('&quot;', '"')
+      .replaceAll('&apos;', "'")
+      .replaceAll('&amp;', '&');
 
   Object? _value() {
     final tag = _tag();

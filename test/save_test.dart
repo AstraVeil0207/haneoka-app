@@ -14,7 +14,10 @@ void main() {
     final data = SaveCodec.decode(cache)!;
     final player = data['_player'] as Map<String, Object?>;
     expect(player['_profileId'], '123456789012');
-    expect((player['_memberCards'] as List).single, containsPair('_exp', '123456789012'));
+    expect(
+      (player['_memberCards'] as List).single,
+      containsPair('_exp', '123456789012'),
+    );
   });
 
   test('rejects files that are not saves', () {
@@ -25,10 +28,20 @@ void main() {
   test('groups an account directory into one save', () {
     final collector = SaveCollector()
       ..offer(SaveCandidate(bytes: persist, source: 'a/2', group: 'a'))
-      ..offer(SaveCandidate(bytes: cache, source: 'a/1', group: 'a', release: GameRelease.jp));
+      ..offer(
+        SaveCandidate(
+          bytes: cache,
+          source: 'a/1',
+          group: 'a',
+          release: GameRelease.jp,
+        ),
+      );
     final save = collector.saves.single;
     expect(save.profileId, '123456789012');
     expect(save.release, GameRelease.jp);
-    expect(save.documents.keys, containsAll([SaveDocumentKind.cache, SaveDocumentKind.persist]));
+    expect(
+      save.documents.keys,
+      containsAll([SaveDocumentKind.cache, SaveDocumentKind.persist]),
+    );
   });
 }

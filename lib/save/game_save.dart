@@ -42,7 +42,12 @@ class SaveDocument {
 
 /// One account's documents as found on a device or in files.
 class GameSave {
-  GameSave({required this.profileId, required this.name, required this.release, required this.source});
+  GameSave({
+    required this.profileId,
+    required this.name,
+    required this.release,
+    required this.source,
+  });
 
   /// The in-game player ID (`_profileId`).
   final String profileId;
@@ -53,13 +58,22 @@ class GameSave {
   final String source;
   final Map<SaveDocumentKind, SaveDocument> documents = {};
 
-  Map<String, Object?> get player => (documents[SaveDocumentKind.cache]?.data['_player'] as Map<String, Object?>?) ?? {};
+  Map<String, Object?> get player =>
+      (documents[SaveDocumentKind.cache]?.data['_player']
+          as Map<String, Object?>?) ??
+      {};
   DateTime? get modifiedAt => documents[SaveDocumentKind.cache]?.modifiedAt;
 }
 
 /// A file offered to the collector.
 class SaveCandidate {
-  SaveCandidate({required this.bytes, required this.source, this.modifiedAt, this.release, this.group});
+  SaveCandidate({
+    required this.bytes,
+    required this.source,
+    this.modifiedAt,
+    this.release,
+    this.group,
+  });
   final Uint8List bytes;
   final String source;
   final DateTime? modifiedAt;
@@ -100,15 +114,19 @@ class SaveCollector {
       return true;
     }
     final player = data['_player'];
-    final id = player is Map<String, Object?> ? _profileId(player['_profileId']) : null;
+    final id = player is Map<String, Object?>
+        ? _profileId(player['_profileId'])
+        : null;
     if (id == null) {
       unreadable++;
       return false;
     }
     final existing = _byProfile[id];
-    final newer = existing == null ||
+    final newer =
+        existing == null ||
         (candidate.modifiedAt != null &&
-            (existing.modifiedAt == null || candidate.modifiedAt!.isAfter(existing.modifiedAt!)));
+            (existing.modifiedAt == null ||
+                candidate.modifiedAt!.isAfter(existing.modifiedAt!)));
     if (newer) {
       final name = (player as Map<String, Object?>)['_name'];
       _byProfile[id] = GameSave(
@@ -130,17 +148,22 @@ class SaveCollector {
   static void _place(GameSave save, SaveDocument document) {
     final current = save.documents[document.kind];
     if (current == null ||
-        (document.modifiedAt != null && (current.modifiedAt == null || document.modifiedAt!.isAfter(current.modifiedAt!)))) {
+        (document.modifiedAt != null &&
+            (current.modifiedAt == null ||
+                document.modifiedAt!.isAfter(current.modifiedAt!)))) {
       save.documents[document.kind] = document;
     }
   }
 
   static SaveDocumentKind? _kindOf(Map<String, Object?> data) {
     if (data.containsKey('_player')) return SaveDocumentKind.cache;
-    if (data.containsKey('_tutorialPhase') || data.containsKey('_latestLiveResult') || data.containsKey('_advResumePoints')) {
+    if (data.containsKey('_tutorialPhase') ||
+        data.containsKey('_latestLiveResult') ||
+        data.containsKey('_advResumePoints')) {
       return SaveDocumentKind.persist;
     }
-    if (data.containsKey('_isTutorialCompleted') || data.containsKey('_bulkDownloadLastCompletedAtTicks')) {
+    if (data.containsKey('_isTutorialCompleted') ||
+        data.containsKey('_bulkDownloadLastCompletedAtTicks')) {
       return SaveDocumentKind.permanent;
     }
     return null;
@@ -148,9 +171,15 @@ class SaveCollector {
 
   static final _decimal = RegExp(r'^[1-9][0-9]{0,18}$');
   static String? _profileId(Object? raw) {
-    final text = raw is int ? '$raw' : raw is String ? raw.trim() : null;
+    final text = raw is int
+        ? '$raw'
+        : raw is String
+        ? raw.trim()
+        : null;
     if (text == null || !_decimal.hasMatch(text)) return null;
-    if (text.length == 19 && text.compareTo('9223372036854775807') > 0) return null;
+    if (text.length == 19 && text.compareTo('9223372036854775807') > 0) {
+      return null;
+    }
     return text;
   }
 }

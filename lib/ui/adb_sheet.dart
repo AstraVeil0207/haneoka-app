@@ -6,9 +6,12 @@ import '../l10n/app_localizations.dart';
 import '../save/game_save.dart';
 import '../sources/adb.dart';
 
-typedef SaveRead = Future<void> Function(Future<void> Function(SaveCollector collector) read);
+typedef SaveRead = Future<void> Function(
+  Future<void> Function(SaveCollector collector) read,
+);
 
-Future<void> showAdbSheet(BuildContext context, {required SaveRead onRead}) => showModalBottomSheet<void>(
+Future<void> showAdbSheet(BuildContext context, {required SaveRead onRead}) =>
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -33,7 +36,9 @@ class _AdbSheetState extends State<_AdbSheet> {
   @override
   void initState() {
     super.initState();
-    AdbSaveSource.locate().then((path) => path == null ? setState(() => _missing = true) : _use(path));
+    AdbSaveSource.locate().then(
+      (path) => path == null ? setState(() => _missing = true) : _use(path),
+    );
   }
 
   Future<void> _use(String path) async {
@@ -56,27 +61,53 @@ class _AdbSheetState extends State<_AdbSheet> {
   }
 
   Future<void> _pair() async {
-    final address = TextEditingController(), code = TextEditingController(), connect = TextEditingController();
+    final address = TextEditingController(),
+        code = TextEditingController(),
+        connect = TextEditingController();
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(t.pairWireless),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: address, decoration: InputDecoration(labelText: t.pairAddress)),
-          TextField(controller: code, decoration: InputDecoration(labelText: t.pairCode), keyboardType: TextInputType.number),
-          TextField(controller: connect, decoration: InputDecoration(labelText: t.connectAddress)),
-        ]),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: address,
+              decoration: InputDecoration(labelText: t.pairAddress),
+            ),
+            TextField(
+              controller: code,
+              decoration: InputDecoration(labelText: t.pairCode),
+              keyboardType: TextInputType.number,
+            ),
+            TextField(
+              controller: connect,
+              decoration: InputDecoration(labelText: t.connectAddress),
+            ),
+          ],
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(MaterialLocalizations.of(context).cancelButtonLabel)),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: Text(t.pairWireless)),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(t.pairWireless),
+          ),
         ],
       ),
     );
     if (ok != true || !mounted) return;
     final paired = await _adb!.pair(address.text.trim(), code.text.trim());
-    if (paired && connect.text.trim().isNotEmpty) await _adb!.connect(connect.text.trim());
+    if (paired && connect.text.trim().isNotEmpty) {
+      await _adb!.connect(connect.text.trim());
+    }
     if (!mounted) return;
-    if (!paired) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t.pairFailed)));
+    if (!paired) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(t.pairFailed)));
+    }
     await _refresh();
   }
 
@@ -85,7 +116,8 @@ class _AdbSheetState extends State<_AdbSheet> {
     final installed = await adb.installed(device.serial);
     if (!mounted) return;
     if (installed.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(t.gameNotInstalled)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(t.gameNotInstalled)));
       return;
     }
     Navigator.pop(context);
@@ -100,39 +132,80 @@ class _AdbSheetState extends State<_AdbSheet> {
   Widget build(BuildContext context) {
     final devices = _devices;
     return SafeArea(
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        ListTile(
-          title: Text(t.devices, style: Theme.of(context).textTheme.titleMedium),
-          trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-            if (_adb != null) IconButton(tooltip: t.pairWireless, onPressed: _pair, icon: const Icon(Icons.wifi)),
-            if (_adb != null) IconButton(tooltip: t.refresh, onPressed: _refresh, icon: const Icon(Icons.refresh)),
-          ]),
-        ),
-        if (_missing) ...[
-          ListTile(leading: const Icon(Icons.error_outline), title: Text(t.adbMissing)),
-          OverflowBar(alignment: MainAxisAlignment.end, children: [
-            TextButton(
-              onPressed: () => launchUrl(Uri.parse('https://developer.android.com/tools/releases/platform-tools')),
-              child: Text(t.getPlatformTools),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ListTile(
+            title: Text(
+              t.devices,
+              style: Theme.of(context).textTheme.titleMedium,
             ),
-            TextButton(onPressed: _chooseAdb, child: Text(t.chooseAdb)),
-          ]),
-        ] else if (devices == null)
-          const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator()))
-        else if (devices.isEmpty)
-          ListTile(leading: const Icon(Icons.usb_off), title: Text(t.noDevices))
-        else
-          for (final device in devices)
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_adb != null)
+                  IconButton(
+                    tooltip: t.pairWireless,
+                    onPressed: _pair,
+                    icon: const Icon(Icons.wifi),
+                  ),
+                if (_adb != null)
+                  IconButton(
+                    tooltip: t.refresh,
+                    onPressed: _refresh,
+                    icon: const Icon(Icons.refresh),
+                  ),
+              ],
+            ),
+          ),
+          if (_missing) ...[
             ListTile(
-              leading: Icon(device.ready ? Icons.smartphone : Icons.lock_outline),
-              title: Text(device.model?.replaceAll('_', ' ') ?? device.serial),
-              subtitle: device.ready ? Text(device.serial) : Text(t.deviceUnauthorized),
-              enabled: device.ready,
-              onTap: () => _read(device),
+              leading: const Icon(Icons.error_outline),
+              title: Text(t.adbMissing),
             ),
-        const SizedBox(height: 8),
-      ]),
+            OverflowBar(
+              alignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => launchUrl(
+                    Uri.parse(
+                      'https://developer.android.com/tools/releases/platform-tools',
+                    ),
+                  ),
+                  child: Text(t.getPlatformTools),
+                ),
+                TextButton(onPressed: _chooseAdb, child: Text(t.chooseAdb)),
+              ],
+            ),
+          ] else if (devices == null)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (devices.isEmpty)
+            ListTile(
+              leading: const Icon(Icons.usb_off),
+              title: Text(t.noDevices),
+            )
+          else
+            for (final device in devices)
+              ListTile(
+                leading: Icon(
+                  device.ready ? Icons.smartphone : Icons.lock_outline,
+                ),
+                title: Text(
+                  device.model?.replaceAll('_', ' ') ?? device.serial,
+                ),
+                subtitle: device.ready
+                    ? Text(device.serial)
+                    : Text(t.deviceUnauthorized),
+                enabled: device.ready,
+                onTap: () => _read(device),
+              ),
+          const SizedBox(height: 8),
+        ],
+      ),
     );
   }
 }
-
