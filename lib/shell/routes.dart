@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../about/about_screen.dart';
+import '../games/song_guess.dart';
+import '../games/sonolus_screen.dart';
 import '../community/editor.dart';
 import '../community/feed_screen.dart';
 import '../community/post_screen.dart';
@@ -111,6 +113,11 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/song-progress') return const SongProgressScreen();
   if (route == '/catalog/help') return const HelpScreen();
   if (route == '/search') return const SearchScreen();
+  if (route == '/song-guess') return const SongGuessScreen();
+  if (route == '/sonolus') return const SonolusScreen();
+  if (route == '/catalog/stories') {
+    return const StoriesScreen(key: ValueKey('band'), mode: 'band');
+  }
   if (_communityFeeds[route] case final scope?) {
     return CommunityFeedScreen(key: ValueKey(scope), scope: scope);
   }
