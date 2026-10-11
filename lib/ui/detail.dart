@@ -127,10 +127,13 @@ class DetailSection extends StatelessWidget {
 
 /// One fact: a label above its value, which may be a widget (an emblem).
 class Fact {
-  const Fact(this.label, this.value, {this.widget});
+  const Fact(this.label, this.value, {this.widget, this.full = false});
   final String label;
   final String value;
   final Widget? widget;
+
+  /// Takes the whole row: a description rather than a figure.
+  final bool full;
 }
 
 /// Facts as the website's `.spec-list`: label above value, two columns.
@@ -151,7 +154,9 @@ class SpecList extends StatelessWidget {
           children: [
             for (final fact in facts)
               SizedBox(
-                width: fact.value.length > 40 ? constraints.maxWidth : width,
+                width: fact.full || fact.value.length > 40
+                    ? constraints.maxWidth
+                    : width,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

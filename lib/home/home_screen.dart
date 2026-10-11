@@ -391,7 +391,7 @@ class _Rail extends StatelessWidget {
   Widget build(BuildContext context) {
     final compact = MediaQuery.sizeOf(context).width < ShellMetrics.compact;
     final height =
-        width / aspectRatio + (compact ? 24 : 32) + 48 + (compact ? 4 : 8) + 20;
+        width / aspectRatio + (compact ? 16 + 40 + 4 + 18 : 32 + 48 + 8 + 20);
     return SizedBox(
       height: height,
       child: ListView.separated(

@@ -37,7 +37,7 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 - [x] Characters · [~] character detail (voices, related cards, archive)
 - [x] Members · [~] member detail (level/rank/skill sliders, costs)
 - [x] Snapshots
-- [ ] Skills workspace
+- [x] Skills (catalogue, detail, upgrade materials)
 - [~] Comics · [~] gacha · [~] login campaigns · [~] missions · [~] passes · [~] T.G.W card
 - [ ] Studio
 - [~] Shop · [~] exchange · [~] stamps · [~] stickers · [~] backgrounds · [~] items · [~] band items · [~] real lives

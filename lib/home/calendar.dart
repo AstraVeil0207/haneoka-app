@@ -1,12 +1,10 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../core/app_state.dart';
 import '../core/i18n.dart';
-import '../core/net.dart';
+import '../core/page_data.dart';
 import '../shell/links.dart';
 import '../shell/page.dart';
 import '../ui/app_image.dart';
@@ -213,17 +211,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
   /// The calendar the website publishes with its page (`loadCalendarData`).
   Future<(Json, Map<String, String>)> _load() async {
     final state = AppScope.of(context);
-    final response = await netClient.get(
-      Uri.parse(
-        'https://haneoka.org/${state.server}/${state.text.locale}/calendar/',
-      ),
+    final page = await pageData(
+      '/${state.server}/${state.text.locale}/calendar/',
+      'calendar-data-${state.server}',
     );
-    final html = utf8.decode(response.bodyBytes);
-    final match = RegExp(
-      '<script[^>]*id="calendar-data-${state.server}"[^>]*>([\\s\\S]*?)</script>',
-    ).firstMatch(html);
-    if (match == null) throw const FormatException('calendar');
-    final page = jsonDecode(match[1]!) as Json;
     return (
       page['calendar'] as Json,
       {

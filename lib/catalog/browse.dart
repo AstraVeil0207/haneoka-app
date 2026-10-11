@@ -60,6 +60,14 @@ class GridSpec {
   final bool small;
 }
 
+/// A switch at the end of the filter sheet ("include skills without cards").
+class BrowseSwitch {
+  const BrowseSwitch(this.label, this.value, this.onChanged);
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+}
+
 /// One destination in the pane rail: a band, a chapter.
 class RailItem {
   const RailItem(this.value, this.label, {this.image, this.meta});
@@ -105,8 +113,12 @@ class BrowseScreen extends StatefulWidget {
     this.onRetry,
     this.rail,
     this.heading,
+    this.switches = const [],
   });
   final String title;
+
+  /// Switches in the filter sheet; a switch that is on counts as a filter.
+  final List<BrowseSwitch> switches;
 
   /// The collection's primary axis; the caller passes [items] already narrowed to it.
   final BrowseRail? rail;
@@ -207,8 +219,12 @@ class _BrowseScreenState extends State<BrowseScreen> {
     return _visible = list;
   }
 
+  final Map<String, bool> _switchValues = {};
+  bool _switchValue(BrowseSwitch s) => _switchValues[s.label] ?? s.value;
+
   int get _appliedCount =>
-      _selected.values.fold(0, (sum, values) => sum + values.length);
+      _selected.values.fold(0, (sum, values) => sum + values.length) +
+      widget.switches.where((s) => s.value).length;
 
   void _toggle(String facet, String value) => setState(() {
     final values = _selected.putIfAbsent(facet, () => {});
@@ -561,6 +577,14 @@ class _BrowseScreenState extends State<BrowseScreen> {
         alignment: AlignmentDirectional.centerEnd,
         child: StatefulBuilder(
           builder: (context, setSheet) => _FilterSheet(
+            switches: [
+              for (final s in widget.switches)
+                BrowseSwitch(s.label, _switchValue(s), (value) {
+                  _switchValues[s.label] = value;
+                  s.onChanged(value);
+                  setSheet(() {});
+                }),
+            ],
             facets: widget.facets,
             sorts: widget.sorts,
             sort: _sort,
@@ -614,6 +638,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
 
 class _FilterSheet extends StatelessWidget {
   const _FilterSheet({
+    required this.switches,
     required this.facets,
     required this.sorts,
     required this.sort,
@@ -625,6 +650,7 @@ class _FilterSheet extends StatelessWidget {
     required this.onOrder,
     required this.onReset,
   });
+  final List<BrowseSwitch> switches;
   final List<FacetSpec> facets;
   final List<SortSpec> sorts;
   final String? sort;
@@ -698,6 +724,13 @@ class _FilterSheet extends StatelessWidget {
                         counts: counts(facet.key),
                         selected: selected[facet.key] ?? const {},
                         onToggle: (value) => onToggle(facet.key, value),
+                      ),
+                    for (final s in switches)
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(s.label),
+                        value: s.value,
+                        onChanged: s.onChanged,
                       ),
                     if (sorts.isNotEmpty) ...[
                       Padding(

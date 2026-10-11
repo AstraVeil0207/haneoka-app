@@ -4,6 +4,7 @@ import '../catalog/catalog_screen.dart';
 import '../catalog/detail_screen.dart';
 import '../catalog/hub_screen.dart';
 import '../catalog/profiles.dart';
+import '../catalog/skills.dart';
 import '../catalog/song_meta.dart';
 import '../catalog/songs.dart';
 import '../core/app_state.dart';
@@ -24,7 +25,6 @@ const catalogRoutes = {
   '/catalog/characters': 'characters',
   '/catalog/member-cards': 'cards',
   '/catalog/support-cards': 'support-cards',
-  '/catalog/skills': 'skills',
   '/catalog/comics': 'comics',
   '/catalog/gacha': 'gacha',
   '/catalog/login-campaigns': 'login-campaigns',
@@ -64,6 +64,7 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/calendar') return const CalendarScreen();
   if (route == '/join') return const JoinScreen();
   if (route == '/catalog/song-meta') return const SongMetaScreen();
+  if (route == '/catalog/skills') return const SkillsScreen();
   if (route == '/catalog/events/tracker') return const EventTrackerScreen();
   if (route == '/player-profile') return const PlayerProfileScreen();
   if (route == '/team-builder') return const ImportScreen();

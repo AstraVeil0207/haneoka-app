@@ -108,25 +108,27 @@ class Tile extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: EdgeInsets.all(compact ? 12 : 16),
+              padding: EdgeInsets.all(compact ? 8 : 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   SizedBox(
-                    height: 48,
+                    height: compact ? 40 : 48,
                     child: Text(
                       title,
                       locale: titleLanguage,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleMedium,
+                      style: compact
+                          ? theme.textTheme.titleSmall
+                          : theme.textTheme.titleMedium,
                     ),
                   ),
                   if (subtitle != null) ...[
                     SizedBox(height: compact ? 4 : 8),
                     SizedBox(
-                      height: 20,
+                      height: compact ? 18 : 20,
                       child: Row(
                         children: [
                           for (final emblem in adornments) ...[
@@ -144,9 +146,15 @@ class Tile extends StatelessWidget {
                               maxLines: 1,
                               softWrap: false,
                               overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.bodyMedium?.copyWith(
-                                color: scheme.onSurfaceVariant,
-                              ),
+                              style:
+                                  (compact
+                                          ? theme.textTheme.bodySmall?.copyWith(
+                                              height: 18 / 12,
+                                            )
+                                          : theme.textTheme.bodyMedium)
+                                      ?.copyWith(
+                                        color: scheme.onSurfaceVariant,
+                                      ),
                             ),
                           ),
                         ],
@@ -251,8 +259,9 @@ SliverGridDelegate collectionGrid(
     columns = ((width + gap) / (minWidth + gap)).floor().clamp(1, 99);
   }
   final tile = (width - gap * (columns - 1)) / columns;
-  final text =
-      (compact ? 24 : 32) + 48 + (subtitle ? (compact ? 4 : 8) + 20 : 0);
+  final text = compact
+      ? 16 + 40 + (subtitle ? 4 + 18 : 0)
+      : 32 + 48 + (subtitle ? 8 + 20 : 0);
   return SliverGridDelegateWithFixedCrossAxisCount(
     crossAxisCount: columns,
     mainAxisSpacing: gap,
