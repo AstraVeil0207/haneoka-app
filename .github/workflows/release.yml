@@ -39,9 +39,9 @@ jobs:
             echo "keyAlias=$KEY_ALIAS"
             echo "keyPassword=$KEY_PASSWORD"
           } > android/key.properties
-      - run: flutter build apk --release --split-per-abi
-      - run: flutter build apk --release
-      - run: flutter build appbundle --release
+      - run: flutter build apk --release --split-per-abi --dart-define=cronetHttpNoPlay=true
+      - run: flutter build apk --release --dart-define=cronetHttpNoPlay=true
+      - run: flutter build appbundle --release --dart-define=cronetHttpNoPlay=true
       - name: Collect
         run: |
           mkdir dist

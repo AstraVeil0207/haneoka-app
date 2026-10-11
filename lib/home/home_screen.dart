@@ -180,15 +180,41 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               children: [
                 if (banners.isNotEmpty)
-                  _Carousel(banners: banners, t: t, api: state.api),
-                for (final event in events.take(2))
-                  _EventCard(
-                    event: event,
-                    t: t,
-                    api: state.api,
-                    onOpen: () => _open(context, 'events', event),
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 820),
+                      child: _Carousel(banners: banners, t: t, api: state.api),
+                    ),
                   ),
-                _Birthdays(visuals: data.visuals, t: t, api: state.api),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final cards = [
+                      for (final event in events.take(2))
+                        _EventCard(
+                          event: event,
+                          t: t,
+                          api: state.api,
+                          onOpen: () => _open(context, 'events', event),
+                        ),
+                    ];
+                    final birthdays = _Birthdays(
+                      visuals: data.visuals,
+                      t: t,
+                      api: state.api,
+                    );
+                    if (constraints.maxWidth < 900) {
+                      return Column(children: [...cards, birthdays]);
+                    }
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: Column(children: cards)),
+                        const SizedBox(width: 12),
+                        Expanded(child: birthdays),
+                      ],
+                    );
+                  },
+                ),
                 _Module(
                   icon: Symbols.library_music_rounded,
                   title: t('home.dashboard.latestSongs', 'Latest songs'),

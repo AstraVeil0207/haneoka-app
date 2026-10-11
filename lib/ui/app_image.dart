@@ -1,6 +1,8 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 
+import '../core/net.dart';
+
 /// Network artwork decoded at the size it is shown, trying each candidate in
 /// turn (original first, thumbnail last), as the website's `nextImageCandidate`.
 class AppImage extends StatefulWidget {
@@ -45,6 +47,7 @@ class _AppImageState extends State<AppImage> {
         return CachedNetworkImage(
           key: ValueKey(widget.candidates[_index]),
           imageUrl: widget.candidates[_index],
+          cacheManager: artworkCache,
           fit: widget.fit,
           alignment: widget.alignment,
           width: double.infinity,

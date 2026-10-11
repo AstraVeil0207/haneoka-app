@@ -49,7 +49,7 @@ void main() {
         .writeAsStringSync(text);
   });
 
-  testWidgets('the save screen lists the sections the save holds', (
+  testWidgets('the save screen shows the player facts without a section list', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -60,10 +60,6 @@ void main() {
       ),
     );
     expect(find.text('123456789012'), findsWidgets);
-    expect(find.text('Members'), findsOneWidget);
-    expect(find.text('Song results'), findsOneWidget);
-    await tester.tap(find.text('Members'));
-    await tester.pumpAndSettle();
-    expect(find.text('1001'), findsOneWidget);
+    expect(find.text('Members'), findsNothing);
   });
 }

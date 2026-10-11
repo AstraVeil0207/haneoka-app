@@ -37,14 +37,14 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  static const servers = ['jp', 'intl'];
+  static const servers = ['intl', 'jp'];
 
   static Future<AppState> load(Locale systemLocale) async {
     final prefs = await SharedPreferences.getInstance();
     final locale = prefs.getString('locale') ?? _siteLocale(systemLocale);
     return AppState._(
       prefs,
-      prefs.getString('server') ?? 'jp',
+      prefs.getString('server') ?? 'intl',
       await SiteText.load(locale),
     );
   }

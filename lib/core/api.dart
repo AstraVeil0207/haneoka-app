@@ -6,16 +6,21 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
+import 'net.dart';
+
 /// Haneoka's public API, the same one the website reads. Responses are kept
 /// on disk per release, so a release's data is downloaded once and the app
 /// works offline with what it has seen.
 class HaneokaApi {
-  HaneokaApi({this.origin = 'https://haneoka.org', required this.server});
+  HaneokaApi({this.origin = 'https://haneoka.org', required this.server}) {
+    // The release pin is the first thing every page needs; ask at once.
+    release();
+  }
   final String origin;
 
   /// `jp` or `intl`.
   final String server;
-  final http.Client _client = http.Client();
+  http.Client get _client => netClient;
   String? _releaseId;
   final Map<String, Future<Object?>> _inFlight = {};
 
@@ -23,7 +28,11 @@ class HaneokaApi {
       path.startsWith('http') ? Uri.parse(path) : Uri.parse('$origin$path');
 
   /// The release identity; data is cached under it so a new release refetches.
-  Future<String> release() async {
+  Future<String>? _releaseFuture;
+
+  Future<String> release() => _releaseFuture ??= _release();
+
+  Future<String> _release() async {
     if (_releaseId != null) return _releaseId!;
     try {
       final body = await _get(

@@ -4,6 +4,7 @@ import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
+import '../core/net.dart';
 import 'app_image.dart';
 import 'theme.dart';
 
@@ -425,7 +426,10 @@ class _ZoomView extends StatelessWidget {
             itemCount: images.length,
             pageController: PageController(initialPage: initial),
             builder: (context, index) => PhotoViewGalleryPageOptions(
-              imageProvider: CachedNetworkImageProvider(images[index]),
+              imageProvider: CachedNetworkImageProvider(
+                images[index],
+                cacheManager: artworkCache,
+              ),
               minScale: PhotoViewComputedScale.contained,
               maxScale: PhotoViewComputedScale.covered * 4,
             ),
