@@ -318,7 +318,7 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
     final scheme = Theme.of(context).colorScheme;
     final bands = {
       for (final c in all) (c.song['bandId'] as num?)?.toInt(),
-    }.whereType<int>().toList()..sort();
+    }.whereType<int>().where(visuals.bands.containsKey).toList()..sort();
     final options = [
       ('theory', t.label('all', 'All'), null as String?),
       ('current', t.label('current', 'Current'), null),
