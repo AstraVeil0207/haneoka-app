@@ -1,6 +1,6 @@
 # The Our Notes save
 
-The game keeps a few small files per account in its data folder, under `files/<account hash>/` (Android `Android/data/<package>/files`, iOS the app's `Documents`). Each file is
+The game keeps a few small files per account in its data folder, in a folder named by the account hash: Android `Android/data/<package>/files/<hash>/`, iOS `Documents/<hash>/` in the app container. Both hold the same three file names and decode to the same profile; an iOS backup or an app-container export (iMazing's `.imazingapp`, whose `iTunesMetadata.plist` names the bundle) carries them. Each file is
 
     magic[32] ‖ iv[32] ‖ Rijndael-256-CBC(key, iv, PKCS#7(UTF-8 JSON))
 

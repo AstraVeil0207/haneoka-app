@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/services.dart';
 
+import '../catalog/labels.g.dart';
+
 /// The website's message catalogues, bundled so every label matches haneoka.org.
 class SiteText {
   SiteText._(this.locale, this._messages);
@@ -29,6 +31,10 @@ class SiteText {
     values.forEach((key, value) => text = text.replaceAll('{$key}', '$value'));
     return text;
   }
+
+  /// A catalogue field's label by its id, as the website's `label()`.
+  String label(String key, [String? fallback]) =>
+      call(catalogLabelPaths[key] ?? key, fallback ?? key);
 
   /// The site's tuple order for localized game text.
   static const tupleOrder = ['ja', 'en', 'zh-TW', 'zh-CN', 'ko'];

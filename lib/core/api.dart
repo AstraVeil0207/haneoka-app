@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
@@ -60,12 +61,12 @@ class HaneokaApi {
         '${base64Url.encode(utf8.encode(path)).replaceAll('=', '')}.json',
       ),
     );
-    if (await file.exists()) return jsonDecode(await file.readAsString());
+    if (await file.exists()) return _decodeFile(file.path);
     try {
-      final body = await _get(path);
+      final body = await _download(path);
       await file.parent.create(recursive: true);
-      await file.writeAsString(jsonEncode(body));
-      return body;
+      await file.writeAsBytes(body.$2);
+      return body.$1;
     } on Exception {
       final stale = await _latestStale(dir, path);
       if (stale != null) return stale;
@@ -90,7 +91,24 @@ class HaneokaApi {
         newest = file;
       }
     }
-    return newest == null ? null : jsonDecode(await newest.readAsString());
+    return newest == null ? null : _decodeFile(newest.path);
+  }
+
+  /// Large documents (the song list is half a megabyte) decode off the UI
+  /// thread; `Isolate.run` hands the result back without copying it.
+  static Future<Object?> _decodeFile(String path) =>
+      Isolate.run(() => jsonDecode(utf8.decode(File(path).readAsBytesSync())));
+
+  Future<(Object?, List<int>)> _download(String path) async {
+    final response = await _client.get(
+      Uri.parse('$origin$path'),
+      headers: {'accept': 'application/json'},
+    );
+    if (response.statusCode != 200) {
+      throw HttpException('HTTP ${response.statusCode}', uri: Uri.parse(path));
+    }
+    final bytes = response.bodyBytes;
+    return (await Isolate.run(() => jsonDecode(utf8.decode(bytes))), bytes);
   }
 
   Future<Object?> _get(String path) async {

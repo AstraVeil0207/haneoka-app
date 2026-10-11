@@ -277,6 +277,27 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get sec_arena => '竞技场';
+
+  @override
+  String get playerRank => '玩家等级';
+
+  @override
+  String get sec_songUnlocks => '乐曲解锁';
+
+  @override
+  String get sec_challengeUnlocks => '挑战歌曲解锁';
+
+  @override
+  String get sec_friendshipRewards => '羁绊奖励';
+
+  @override
+  String get sec_stampFavorites => '收藏贴纸';
+
+  @override
+  String get sec_exchange => '交换所';
+
+  @override
+  String get sec_shop => '商店';
 }
 
 /// The translations for Chinese, as used in Taiwan (`zh_TW`).
@@ -551,4 +572,25 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get sec_arena => '競技場';
+
+  @override
+  String get playerRank => '玩家等級';
+
+  @override
+  String get sec_songUnlocks => '樂曲解鎖';
+
+  @override
+  String get sec_challengeUnlocks => '挑戰歌曲解鎖';
+
+  @override
+  String get sec_friendshipRewards => '羈絆獎勵';
+
+  @override
+  String get sec_stampFavorites => '收藏貼圖';
+
+  @override
+  String get sec_exchange => '兌換所';
+
+  @override
+  String get sec_shop => '商店';
 }

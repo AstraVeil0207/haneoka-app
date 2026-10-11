@@ -1,0 +1,715 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+
+import '../core/app_state.dart';
+import '../shell/page.dart';
+import '../ui/app_image.dart';
+import '../ui/theme.dart';
+import '../ui/tile.dart';
+import 'visuals.dart';
+
+/// One value of a facet, as the filter sheet lists it.
+class FacetOption {
+  const FacetOption(this.label, {this.image, this.imageOnly = false});
+  final String label;
+  final String? image;
+  final bool imageOnly;
+}
+
+/// A filter axis (`filter-facet`): values an entry carries, OR within the
+/// facet, AND across facets.
+class FacetSpec {
+  const FacetSpec({
+    required this.key,
+    required this.label,
+    required this.values,
+    required this.option,
+  });
+  final String key;
+  final String label;
+  final Iterable<String> Function(Entry item) values;
+  final FacetOption Function(String value) option;
+}
+
+class SortSpec {
+  const SortSpec(this.key, this.label, this.value);
+  final String key;
+  final String label;
+  final Comparable<Object?>? Function(Entry item) value;
+}
+
+enum BrowseView { grid, list, table }
+
+class TableColumn {
+  const TableColumn(this.label, this.cell, {this.numeric = false});
+  final String label;
+  final String Function(Entry item) cell;
+  final bool numeric;
+}
+
+/// The grid's tile size: a resource's `--tile-min` and artwork ratio.
+class GridSpec {
+  const GridSpec({
+    required this.minWidth,
+    this.aspectRatio = 1,
+    this.small = false,
+  });
+  final double minWidth;
+  final double aspectRatio;
+  final bool small;
+}
+
+/// The browse screen (`renderBrowse`): search, count, view switch and the
+/// filter toggle in the title bar; applied filters as removable chips after
+/// the title; results in the pane; facets, sort and order in a modal side
+/// sheet at every size.
+class BrowseScreen extends StatefulWidget {
+  const BrowseScreen({
+    super.key,
+    required this.title,
+    required this.items,
+    required this.searchText,
+    required this.grid,
+    required this.tile,
+    required this.listRow,
+    required this.columns,
+    this.facets = const [],
+    this.sorts = const [],
+    this.defaultSort,
+    this.descending = true,
+    this.actions = _noActions,
+    this.error,
+    this.onRetry,
+  });
+  final String title;
+
+  /// Null while the collection loads.
+  final List<Entry>? items;
+  final String Function(Entry item) searchText;
+  final GridSpec grid;
+  final Widget Function(BuildContext context, Entry item) tile;
+  final Widget Function(BuildContext context, Entry item) listRow;
+  final List<TableColumn> columns;
+  final List<FacetSpec> facets;
+  final List<SortSpec> sorts;
+  final String? defaultSort;
+  final bool descending;
+
+  /// Page actions before the filter toggle (Play all).
+  final List<BarAction> Function(List<Entry> visible) actions;
+  final Object? error;
+  final VoidCallback? onRetry;
+
+  static List<BarAction> _noActions(List<Entry> _) => const [];
+
+  @override
+  State<BrowseScreen> createState() => _BrowseScreenState();
+}
+
+class _BrowseScreenState extends State<BrowseScreen> {
+  String _query = '';
+  BrowseView _view = BrowseView.grid;
+  final Map<String, Set<String>> _selected = {};
+  late String? _sort = widget.defaultSort ?? widget.sorts.firstOrNull?.key;
+  late bool _descending = widget.descending;
+
+  List<Entry>? _source;
+  final Map<String, Map<Entry, List<String>>> _facetValues = {};
+  final Map<Entry, String> _search = {};
+  List<Entry> _visible = const [];
+  Object? _visibleKey;
+
+  /// Facet values and search text are read once per entry, not per frame.
+  void _index(List<Entry> items) {
+    if (identical(items, _source)) return;
+    _source = items;
+    _facetValues.clear();
+    _search.clear();
+    for (final facet in widget.facets) {
+      _facetValues[facet.key] = {
+        for (final item in items) item: facet.values(item).toSet().toList(),
+      };
+    }
+    for (final item in items) {
+      _search[item] = widget.searchText(item).toLowerCase();
+    }
+    _visibleKey = null;
+  }
+
+  bool _matches(Entry item, [String? except]) {
+    if (_query.isNotEmpty && !(_search[item] ?? '').contains(_query)) {
+      return false;
+    }
+    for (final MapEntry(:key, :value) in _selected.entries) {
+      if (key == except || value.isEmpty) continue;
+      if (!(_facetValues[key]?[item] ?? const []).any(value.contains)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  List<Entry> _results(List<Entry> items) {
+    final key = (
+      items,
+      _query,
+      _sort,
+      _descending,
+      [for (final e in _selected.entries) '${e.key}=${e.value.join(',')}']
+          .join(';'),
+    );
+    if (key == _visibleKey) return _visible;
+    final sort = widget.sorts.where((s) => s.key == _sort).firstOrNull;
+    final list = items.where(_matches).toList();
+    if (sort != null) {
+      final values = {for (final item in list) item: sort.value(item)};
+      list.sort((a, b) {
+        final x = values[a], y = values[b];
+        if (x == null && y == null) return 0;
+        if (x == null) return 1;
+        if (y == null) return -1;
+        final order = x.compareTo(y);
+        return _descending ? -order : order;
+      });
+    }
+    _visibleKey = key;
+    return _visible = list;
+  }
+
+  int get _appliedCount =>
+      _selected.values.fold(0, (sum, values) => sum + values.length);
+
+  void _toggle(String facet, String value) => setState(() {
+    final values = _selected.putIfAbsent(facet, () => {});
+    if (!values.remove(value)) values.add(value);
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppScope.of(context).text;
+    final items = widget.items;
+    if (items != null) _index(items);
+    final visible = items == null ? const <Entry>[] : _results(items);
+    final number = NumberFormat.decimalPattern(t.locale);
+    final theme = Theme.of(context);
+    return ShellPage(
+      title: widget.title,
+      marks: _appliedCount == 0 ? null : _crumbs(context),
+      search: ShellSearch(
+        label: t('common.actions.search', 'Search'),
+        onChanged: (value) =>
+            setState(() => _query = value.trim().toLowerCase()),
+      ),
+      status: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text(
+            items == null ? '' : number.format(visible.length),
+            style: theme.textTheme.titleSmall,
+          ),
+        ),
+      ),
+      actions: [
+        ...widget.actions(visible),
+        if (widget.facets.isNotEmpty || widget.sorts.isNotEmpty)
+          BarAction(
+            icon: Icons.filter_alt_outlined,
+            label: t('common.actions.filter', 'Filter'),
+            badge: _appliedCount,
+            onPressed: () => _openFilters(context),
+          ),
+        BarAction.choice(
+          label: t('common.actions.view', 'View'),
+          options: [
+            for (final (view, icon, label) in [
+              (
+                BrowseView.grid,
+                Icons.grid_view,
+                t('common.layout.grid', 'Grid'),
+              ),
+              (
+                BrowseView.list,
+                Icons.view_agenda_outlined,
+                t('common.layout.list', 'List'),
+              ),
+              (
+                BrowseView.table,
+                Icons.table_rows_outlined,
+                t('common.layout.table', 'Table'),
+              ),
+            ])
+              BarChoice(
+                icon: icon,
+                label: label,
+                selected: _view == view,
+                onSelected: () => setState(() => _view = view),
+              ),
+          ],
+        ),
+      ],
+      body: widget.error != null && items == null
+          ? Center(
+              child: FilledButton.tonalIcon(
+                icon: const Icon(Icons.refresh),
+                label: Text(t('common.actions.retry', 'Retry')),
+                onPressed: widget.onRetry,
+              ),
+            )
+          : items == null
+          ? _skeleton(context)
+          : switch (_view) {
+              BrowseView.grid => _grid(context, visible),
+              BrowseView.list => _list(context, visible),
+              BrowseView.table => _table(context, visible),
+            },
+    );
+  }
+
+  Widget _crumbs(BuildContext context) {
+    final chips = <Widget>[
+      const Icon(Icons.chevron_right, size: 20),
+      for (final facet in widget.facets)
+        for (final value in _selected[facet.key] ?? const <String>{})
+          Padding(
+            padding: const EdgeInsets.only(left: 4),
+            child: InputChip(
+              label: Text(facet.option(value).label),
+              visualDensity: VisualDensity.compact,
+              onDeleted: () => _toggle(facet.key, value),
+            ),
+          ),
+    ];
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(children: chips),
+    );
+  }
+
+  Widget _skeleton(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final padding = pagePadding(context);
+      final scheme = Theme.of(context).colorScheme;
+      return GridView.builder(
+        physics: const NeverScrollableScrollPhysics(),
+        padding: padding,
+        gridDelegate: collectionGrid(
+          context,
+          constraints.maxWidth - padding.horizontal,
+          minWidth: widget.grid.minWidth,
+          aspectRatio: widget.grid.aspectRatio,
+          small: widget.grid.small,
+        ),
+        itemCount: 12,
+        itemBuilder: (_, _) => DecoratedBox(
+          decoration: BoxDecoration(
+            color: scheme.surfaceContainerLow,
+            borderRadius: BorderRadius.circular(Corner.medium),
+          ),
+        ),
+      );
+    },
+  );
+
+  Widget _grid(BuildContext context, List<Entry> items) => LayoutBuilder(
+    builder: (context, constraints) {
+      final padding = pagePadding(context);
+      return Scrollbar(
+        child: GridView.builder(
+          padding: padding,
+          gridDelegate: collectionGrid(
+            context,
+            constraints.maxWidth - padding.horizontal,
+            minWidth: widget.grid.minWidth,
+            aspectRatio: widget.grid.aspectRatio,
+            small: widget.grid.small,
+          ),
+          itemCount: items.length,
+          itemBuilder: (context, index) =>
+              RepaintBoundary(child: widget.tile(context, items[index])),
+        ),
+      );
+    },
+  );
+
+  Widget _list(BuildContext context, List<Entry> items) => Scrollbar(
+    child: ListView.builder(
+      padding: pagePadding(context),
+      itemExtent: 72,
+      itemCount: items.length,
+      itemBuilder: (context, index) => widget.listRow(context, items[index]),
+    ),
+  );
+
+  Widget _table(BuildContext context, List<Entry> items) {
+    final theme = Theme.of(context);
+    final columns = widget.columns;
+    Widget row(List<String> cells, {bool header = false}) => SizedBox(
+      height: header ? 48 : 52,
+      child: Row(
+        children: [
+          for (final (index, cell) in cells.indexed)
+            SizedBox(
+              width: index == 0 ? 240 : 140,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  cell,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: columns[index].numeric
+                      ? TextAlign.end
+                      : TextAlign.start,
+                  style: header
+                      ? theme.textTheme.labelLarge?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        )
+                      : theme.textTheme.bodyMedium,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+    final width = 240.0 + 140 * (columns.length - 1);
+    return Scrollbar(
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.symmetric(horizontal: pagePadding(context).left),
+        child: SizedBox(
+          width: width,
+          child: Column(
+            children: [
+              row([for (final c in columns) c.label], header: true),
+              const Divider(height: 1),
+              Expanded(
+                child: ListView.builder(
+                  itemExtent: 52,
+                  itemCount: items.length,
+                  itemBuilder: (context, index) => InkWell(
+                    onTap: () {},
+                    child: row([for (final c in columns) c.cell(items[index])]),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openFilters(BuildContext context) {
+    showGeneralDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+      barrierColor: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.32),
+      transitionDuration: const Duration(milliseconds: 300),
+      pageBuilder: (context, _, _) => Align(
+        alignment: AlignmentDirectional.centerEnd,
+        child: StatefulBuilder(
+          builder: (context, setSheet) => _FilterSheet(
+            facets: widget.facets,
+            sorts: widget.sorts,
+            sort: _sort,
+            descending: _descending,
+            selected: _selected,
+            counts: _counts,
+            onToggle: (facet, value) {
+              _toggle(facet, value);
+              setSheet(() {});
+            },
+            onSort: (sort) {
+              setState(() => _sort = sort);
+              setSheet(() {});
+            },
+            onOrder: () {
+              setState(() => _descending = !_descending);
+              setSheet(() {});
+            },
+            onReset: () {
+              setState(_selected.clear);
+              setSheet(() {});
+            },
+          ),
+        ),
+      ),
+      transitionBuilder: (context, animation, _, child) => SlideTransition(
+        position: Tween(begin: const Offset(1, 0), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          ),
+        ),
+        child: child,
+      ),
+    );
+  }
+
+  /// How many entries each value would leave, given every other facet.
+  Map<String, int> _counts(String facet) {
+    final counts = <String, int>{};
+    for (final item in _source ?? const <Entry>[]) {
+      if (!_matches(item, facet)) continue;
+      for (final value in _facetValues[facet]?[item] ?? const <String>[]) {
+        counts[value] = (counts[value] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }
+}
+
+class _FilterSheet extends StatelessWidget {
+  const _FilterSheet({
+    required this.facets,
+    required this.sorts,
+    required this.sort,
+    required this.descending,
+    required this.selected,
+    required this.counts,
+    required this.onToggle,
+    required this.onSort,
+    required this.onOrder,
+    required this.onReset,
+  });
+  final List<FacetSpec> facets;
+  final List<SortSpec> sorts;
+  final String? sort;
+  final bool descending;
+  final Map<String, Set<String>> selected;
+  final Map<String, int> Function(String facet) counts;
+  final void Function(String facet, String value) onToggle;
+  final ValueChanged<String> onSort;
+  final VoidCallback onOrder;
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppScope.of(context).text;
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final width = MediaQuery.sizeOf(context).width;
+    final applied = selected.values.any((v) => v.isNotEmpty);
+    return Material(
+      color: scheme.surfaceContainerLow,
+      elevation: 1,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadiusDirectional.horizontal(
+          start: Radius.circular(Corner.large),
+        ),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: SizedBox(
+        width: (width - 56).clamp(0, 400),
+        height: double.infinity,
+        child: SafeArea(
+          left: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                height: ShellMetrics.topBar,
+                child: Row(
+                  children: [
+                    const SizedBox(width: 16),
+                    _SectionIcon(icon: Icons.filter_alt_outlined),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        t('common.actions.filter', 'Filter'),
+                        style: theme.textTheme.titleLarge,
+                      ),
+                    ),
+                    if (applied)
+                      TextButton(
+                        onPressed: onReset,
+                        child: Text(t('common.actions.reset', 'Reset')),
+                      ),
+                    IconButton(
+                      tooltip: MaterialLocalizations.of(context)
+                          .closeButtonTooltip,
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                  children: [
+                    for (final facet in facets)
+                      _Facet(
+                        facet: facet,
+                        counts: counts(facet.key),
+                        selected: selected[facet.key] ?? const {},
+                        onToggle: (value) => onToggle(facet.key, value),
+                      ),
+                    if (sorts.isNotEmpty) ...[
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(0, 16, 0, 8),
+                        child: Text(
+                          t('catalog.common.sort', 'Sort'),
+                          style: theme.textTheme.titleSmall,
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: DropdownMenu<String>(
+                              expandedInsets: EdgeInsets.zero,
+                              initialSelection: sort,
+                              onSelected: (value) {
+                                if (value != null) onSort(value);
+                              },
+                              dropdownMenuEntries: [
+                                for (final s in sorts)
+                                  DropdownMenuEntry(
+                                    value: s.key,
+                                    label: s.label,
+                                  ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton.outlined(
+                            onPressed: onOrder,
+                            icon: Icon(
+                              descending
+                                  ? Icons.arrow_downward
+                                  : Icons.arrow_upward,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionIcon extends StatelessWidget {
+  const _SectionIcon({required this.icon});
+  final IconData icon;
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: 32,
+      height: 32,
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        shape: BoxShape.circle,
+      ),
+      child: Icon(icon, size: 20, color: scheme.onSecondaryContainer),
+    );
+  }
+}
+
+/// A titled group of checkable values with counts (`filter-facet`): open when
+/// short or in use, searchable when long.
+class _Facet extends StatefulWidget {
+  const _Facet({
+    required this.facet,
+    required this.counts,
+    required this.selected,
+    required this.onToggle,
+  });
+  final FacetSpec facet;
+  final Map<String, int> counts;
+  final Set<String> selected;
+  final ValueChanged<String> onToggle;
+  @override
+  State<_Facet> createState() => _FacetState();
+}
+
+class _FacetState extends State<_Facet> {
+  String _query = '';
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppScope.of(context).text;
+    final theme = Theme.of(context);
+    final values = {...widget.counts.keys, ...widget.selected}.toList()
+      ..sort((a, b) {
+        final x = int.tryParse(a), y = int.tryParse(b);
+        return x != null && y != null ? x.compareTo(y) : a.compareTo(b);
+      });
+    final options = [
+      for (final value in values) (value, widget.facet.option(value)),
+    ].where((o) => o.$2.label.toLowerCase().contains(_query)).toList();
+    final number = NumberFormat.decimalPattern(t.locale);
+    return ExpansionTile(
+      initiallyExpanded: widget.selected.isNotEmpty || values.length <= 8,
+      tilePadding: EdgeInsets.zero,
+      shape: const Border(),
+      collapsedShape: const Border(),
+      title: Text(widget.facet.label, style: theme.textTheme.titleSmall),
+      trailing: Text(
+        '${widget.selected.isNotEmpty ? widget.selected.length : values.length}',
+        style: theme.textTheme.labelMedium,
+      ),
+      children: [
+        if (values.length > 8)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: TextField(
+              decoration: InputDecoration(
+                isDense: true,
+                prefixIcon: const Icon(Icons.search),
+                hintText: t('common.actions.search', 'Search'),
+                border: const OutlineInputBorder(),
+              ),
+              onChanged: (value) =>
+                  setState(() => _query = value.trim().toLowerCase()),
+            ),
+          ),
+        for (final (value, option) in options)
+          CheckboxListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            controlAffinity: ListTileControlAffinity.leading,
+            value: widget.selected.contains(value),
+            onChanged:
+                (widget.counts[value] ?? 0) == 0 &&
+                    !widget.selected.contains(value)
+                ? null
+                : (_) => widget.onToggle(value),
+            title: Row(
+              children: [
+                if (option.image != null) ...[
+                  SizedBox.square(
+                    dimension: 24,
+                    child: AppImage(candidates: [option.image!]),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                if (!option.imageOnly)
+                  Expanded(
+                    child: Text(
+                      option.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  )
+                else
+                  const Spacer(),
+              ],
+            ),
+            secondary: Text(
+              number.format(widget.counts[value] ?? 0),
+              style: theme.textTheme.labelMedium,
+            ),
+          ),
+      ],
+    );
+  }
+}

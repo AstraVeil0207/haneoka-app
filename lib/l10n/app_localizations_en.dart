@@ -277,4 +277,25 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get sec_arena => 'Arena';
+
+  @override
+  String get playerRank => 'Player rank';
+
+  @override
+  String get sec_songUnlocks => 'Song unlocks';
+
+  @override
+  String get sec_challengeUnlocks => 'Challenge song unlocks';
+
+  @override
+  String get sec_friendshipRewards => 'Bond rewards';
+
+  @override
+  String get sec_stampFavorites => 'Favourite stamps';
+
+  @override
+  String get sec_exchange => 'Exchange';
+
+  @override
+  String get sec_shop => 'Shop';
 }

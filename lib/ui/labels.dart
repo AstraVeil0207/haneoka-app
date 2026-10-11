@@ -49,5 +49,11 @@ extension SectionLabel on SaveSection {
     SaveSection.vip => t.sec_vip,
     SaveSection.offlineBonus => t.sec_offlineBonus,
     SaveSection.arena => t.sec_arena,
+    SaveSection.songUnlocks => t.sec_songUnlocks,
+    SaveSection.challengeUnlocks => t.sec_challengeUnlocks,
+    SaveSection.friendshipRewards => t.sec_friendshipRewards,
+    SaveSection.stampFavorites => t.sec_stampFavorites,
+    SaveSection.exchange => t.sec_exchange,
+    SaveSection.shop => t.sec_shop,
   };
 }

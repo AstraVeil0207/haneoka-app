@@ -76,15 +76,15 @@ class SaveScreen extends StatelessWidget {
     return ShellPage(
       title: save.name ?? save.profileId,
       actions: [
-        IconButton(
-          tooltip: t.exportTeam,
+        BarAction(
+          icon: Icons.content_copy,
+          label: t.exportTeam,
           onPressed: copyPackage,
-          icon: const Icon(Icons.content_copy),
         ),
-        IconButton(
-          tooltip: t.exportSave,
+        BarAction(
+          icon: Icons.save_alt,
+          label: t.exportSave,
           onPressed: saveFile,
-          icon: const Icon(Icons.save_alt),
         ),
       ],
       body: ListView(
@@ -94,6 +94,7 @@ class SaveScreen extends StatelessWidget {
           if (save.release != null) fact(t.release, save.release!.label(t)),
           if (save.modifiedAt != null)
             fact(t.savedAt, date.format(save.modifiedAt!.toLocal())),
+          if (view.playerRank != null) fact(t.playerRank, '${view.playerRank}'),
           if (view.exp != null) fact(t.playerExp, number.format(view.exp)),
           if (view.vipRank != null) fact(t.vipRank, '${view.vipRank}'),
           if (present.containsKey(SaveSection.ratings))
@@ -183,14 +184,12 @@ class SectionScreen extends StatelessWidget {
     final t = AppLocalizations.of(context);
     return ShellPage(
       title: title,
-      actions: [
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Text(t.entries(rows.length)),
-          ),
+      status: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text(t.entries(rows.length)),
         ),
-      ],
+      ),
       body: ListView.builder(
         padding: const EdgeInsets.symmetric(vertical: 8),
         itemCount: rows.length,

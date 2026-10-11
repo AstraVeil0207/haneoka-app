@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:haneoka/main.dart' as app;
+import 'package:haneoka/ui/tile.dart';
 import 'package:integration_test/integration_test.dart';
 
 /// Walks the main screens against the live API and saves a picture of each.
@@ -33,7 +34,7 @@ void main() {
 
   Future<void> untilTiles(WidgetTester tester) async {
     final tiles = find.descendant(
-      of: find.byType(Card),
+      of: find.byWidgetPredicate((w) => w is Tile || w is Card),
       matching: find.byType(InkWell),
     );
     for (var i = 0; i < 160 && tiles.evaluate().isEmpty; i++) {
@@ -43,17 +44,18 @@ void main() {
 
   for (final (name, size) in [
     ('desktop', const Size(1280, 860)),
-    ('phone', const Size(400, 860)),
+    ('phone', const Size(412, 915)),
   ]) {
     testWidgets('screens at $name width', (tester) async {
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1;
       await app.main();
       await untilTiles(tester);
+      await wait(tester, 4);
       await shot(tester, '$name-songs');
       await tester.tap(
         find
-            .descendant(of: find.byType(Card), matching: find.byType(InkWell))
+            .descendant(of: find.byWidgetPredicate((w) => w is Tile || w is Card), matching: find.byType(InkWell))
             .first,
       );
       await wait(tester, 6);
@@ -70,7 +72,7 @@ void main() {
       await shot(tester, '$name-characters');
       await tester.tap(
         find
-            .descendant(of: find.byType(Card), matching: find.byType(InkWell))
+            .descendant(of: find.byWidgetPredicate((w) => w is Tile || w is Card), matching: find.byType(InkWell))
             .first,
       );
       await wait(tester, 6);

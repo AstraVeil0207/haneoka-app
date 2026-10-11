@@ -39,7 +39,13 @@ enum SaveSection {
   liveSkip('_liveSkip'),
   vip('_vip'),
   offlineBonus('_offlineBonus'),
-  arena('_arenaLeagues');
+  arena('_arenaLeagues'),
+  songUnlocks('_liveMusics'),
+  challengeUnlocks('_challengeMusics'),
+  friendshipRewards('_characterFriendshipRankRewards'),
+  stampFavorites('_stampFavorites'),
+  exchange('_exchange'),
+  shop('_shop');
 
   const SaveSection(this.field);
 
@@ -95,6 +101,9 @@ class SaveView {
   }
 
   int? get exp => _int(player['_exp']);
+  int? get playerRank => _int(
+    (player['_playerRankUpData'] as Map<String, Object?>?)?['_afterRank'],
+  );
   int? get vipRank => _int((player['_vip'] as Map<String, Object?>?)?['_rank']);
   int? get favoriteMemberCardId => _int(
     player['_favoriteMemberCardId'] ??

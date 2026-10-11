@@ -88,5 +88,12 @@
   "sec_liveSkip": "ライブスキップ",
   "sec_vip": "T.G.W CARD",
   "sec_offlineBonus": "オフラインボーナス",
-  "sec_arena": "アリーナ"
+  "sec_arena": "アリーナ",
+  "playerRank": "プレイヤーランク",
+  "sec_songUnlocks": "楽曲解放",
+  "sec_challengeUnlocks": "チャレンジ楽曲解放",
+  "sec_friendshipRewards": "絆報酬",
+  "sec_stampFavorites": "お気に入りスタンプ",
+  "sec_exchange": "交換所",
+  "sec_shop": "ショップ"
 }

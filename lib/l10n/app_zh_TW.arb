@@ -88,5 +88,12 @@
   "sec_liveSkip": "演出跳過",
   "sec_vip": "T.G.W CARD",
   "sec_offlineBonus": "離線獎勵",
-  "sec_arena": "競技場"
+  "sec_arena": "競技場",
+  "playerRank": "玩家等級",
+  "sec_songUnlocks": "樂曲解鎖",
+  "sec_challengeUnlocks": "挑戰歌曲解鎖",
+  "sec_friendshipRewards": "羈絆獎勵",
+  "sec_stampFavorites": "收藏貼圖",
+  "sec_exchange": "兌換所",
+  "sec_shop": "商店"
 }

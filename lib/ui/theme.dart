@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
 import 'schemes.g.dart';
@@ -22,12 +23,67 @@ abstract final class ShellMetrics {
   static const expanded = 1200.0;
 }
 
+/// The website's `--app-font`: Roboto, then the platform's Japanese face.
+const appFont = 'Roboto';
+const appFontFallback = [
+  'Noto Sans JP',
+  'Noto Sans CJK JP',
+  'Hiragino Kaku Gothic ProN',
+  'Hiragino Sans',
+  'Yu Gothic UI',
+  'Meiryo',
+  'sans-serif',
+];
+
+/// The website's type scale (`--md-sys-typescale-*`): M3 sizes, no tracking.
+TextTheme _typescale(Color color) {
+  TextStyle style(double size, double height, FontWeight weight) => TextStyle(
+    fontFamily: appFont,
+    fontFamilyFallback: appFontFallback,
+    fontSize: size,
+    height: height / size,
+    fontWeight: weight,
+    letterSpacing: 0,
+    color: color,
+  );
+  const regular = FontWeight.w400, medium = FontWeight.w500;
+  return TextTheme(
+    displayLarge: style(57, 64, regular),
+    displayMedium: style(45, 52, regular),
+    displaySmall: style(36, 44, regular),
+    headlineLarge: style(32, 40, regular),
+    headlineMedium: style(28, 36, regular),
+    headlineSmall: style(24, 32, regular),
+    titleLarge: style(22, 28, regular),
+    titleMedium: style(16, 24, medium),
+    titleSmall: style(14, 20, medium),
+    bodyLarge: style(16, 24, regular),
+    bodyMedium: style(14, 20, regular),
+    bodySmall: style(12, 16, regular),
+    labelLarge: style(14, 20, medium),
+    labelMedium: style(12, 16, medium),
+    labelSmall: style(11, 16, medium),
+  );
+}
+
 ThemeData haneokaTheme(Brightness brightness, {String seed = 'haneoka'}) {
   final (light, dark) = haneokaSchemes[seed] ?? haneokaSchemes['haneoka']!;
   final scheme = brightness == Brightness.dark ? dark : light;
   return ThemeData(
     colorScheme: scheme,
     useMaterial3: true,
+    fontFamily: appFont,
+    fontFamilyFallback: appFontFallback,
+    textTheme: _typescale(scheme.onSurface),
+    pageTransitionsTheme: const PageTransitionsTheme(
+      builders: {
+        TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),
+        TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+        TargetPlatform.macOS: FadeForwardsPageTransitionsBuilder(),
+        TargetPlatform.windows: FadeForwardsPageTransitionsBuilder(),
+        TargetPlatform.linux: FadeForwardsPageTransitionsBuilder(),
+      },
+    ),
     scaffoldBackgroundColor: scheme.surfaceContainer,
     appBarTheme: AppBarTheme(
       backgroundColor: scheme.surfaceContainer,

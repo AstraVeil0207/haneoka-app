@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../catalog/catalog_screen.dart';
+import '../catalog/detail_screen.dart';
 import '../catalog/profiles.dart';
+import '../catalog/songs.dart';
 import '../core/app_state.dart';
 import '../l10n/app_localizations.dart';
 import '../ui/import_screen.dart';
@@ -40,7 +42,19 @@ List<NavDestination> _destinations(
           'catalog/${profile.resource}',
           t(profile.label, profile.resource),
           profile.icon,
-          (_) => CatalogScreen(profile: profile),
+          (_) => profile.resource == 'songs'
+              ? SongsScreen(
+                  onOpen: (context, song) => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => DetailScreen(
+                        profile: profile,
+                        id: '${song['musicId']}',
+                        summary: song,
+                      ),
+                    ),
+                  ),
+                )
+              : CatalogScreen(profile: profile),
         ),
     ],
   ),

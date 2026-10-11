@@ -277,4 +277,25 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get sec_arena => '아레나';
+
+  @override
+  String get playerRank => '플레이어 랭크';
+
+  @override
+  String get sec_songUnlocks => '악곡 해금';
+
+  @override
+  String get sec_challengeUnlocks => '챌린지 악곡 해금';
+
+  @override
+  String get sec_friendshipRewards => '인연 보상';
+
+  @override
+  String get sec_stampFavorites => '즐겨찾기 스탬프';
+
+  @override
+  String get sec_exchange => '교환소';
+
+  @override
+  String get sec_shop => '상점';
 }

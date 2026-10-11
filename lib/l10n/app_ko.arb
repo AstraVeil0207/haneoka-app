@@ -88,5 +88,12 @@
   "sec_liveSkip": "라이브 스킵",
   "sec_vip": "T.G.W CARD",
   "sec_offlineBonus": "오프라인 보너스",
-  "sec_arena": "아레나"
+  "sec_arena": "아레나",
+  "playerRank": "플레이어 랭크",
+  "sec_songUnlocks": "악곡 해금",
+  "sec_challengeUnlocks": "챌린지 악곡 해금",
+  "sec_friendshipRewards": "인연 보상",
+  "sec_stampFavorites": "즐겨찾기 스탬프",
+  "sec_exchange": "교환소",
+  "sec_shop": "상점"
 }

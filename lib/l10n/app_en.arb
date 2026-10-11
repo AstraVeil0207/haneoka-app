@@ -95,5 +95,12 @@
   "sec_liveSkip": "Live skip",
   "sec_vip": "T.G.W CARD",
   "sec_offlineBonus": "Offline bonus",
-  "sec_arena": "Arena"
+  "sec_arena": "Arena",
+  "playerRank": "Player rank",
+  "sec_songUnlocks": "Song unlocks",
+  "sec_challengeUnlocks": "Challenge song unlocks",
+  "sec_friendshipRewards": "Bond rewards",
+  "sec_stampFavorites": "Favourite stamps",
+  "sec_exchange": "Exchange",
+  "sec_shop": "Shop"
 }

@@ -636,6 +636,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Arena'**
   String get sec_arena;
+
+  /// No description provided for @playerRank.
+  ///
+  /// In en, this message translates to:
+  /// **'Player rank'**
+  String get playerRank;
+
+  /// No description provided for @sec_songUnlocks.
+  ///
+  /// In en, this message translates to:
+  /// **'Song unlocks'**
+  String get sec_songUnlocks;
+
+  /// No description provided for @sec_challengeUnlocks.
+  ///
+  /// In en, this message translates to:
+  /// **'Challenge song unlocks'**
+  String get sec_challengeUnlocks;
+
+  /// No description provided for @sec_friendshipRewards.
+  ///
+  /// In en, this message translates to:
+  /// **'Bond rewards'**
+  String get sec_friendshipRewards;
+
+  /// No description provided for @sec_stampFavorites.
+  ///
+  /// In en, this message translates to:
+  /// **'Favourite stamps'**
+  String get sec_stampFavorites;
+
+  /// No description provided for @sec_exchange.
+  ///
+  /// In en, this message translates to:
+  /// **'Exchange'**
+  String get sec_exchange;
+
+  /// No description provided for @sec_shop.
+  ///
+  /// In en, this message translates to:
+  /// **'Shop'**
+  String get sec_shop;
 }
 
 class _AppLocalizationsDelegate

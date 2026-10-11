@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import 'audio.dart';
 import 'i18n.dart';
 
 /// The reader's choices and what follows from them: release server, language,
@@ -13,6 +14,7 @@ class AppState extends ChangeNotifier {
   String server;
   SiteText text;
   HaneokaApi api;
+  final AudioService audio = AudioService();
 
   static const servers = ['jp', 'intl'];
 

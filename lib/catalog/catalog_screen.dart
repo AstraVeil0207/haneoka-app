@@ -84,33 +84,21 @@ class _CatalogScreenState extends State<CatalogScreen> {
             label: t('common.actions.search', 'Search'),
             onChanged: (value) => setState(() => _query = value),
           ),
-          actions: [
-            if (snapshot.hasData)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: number.format(items.length),
-                        style: theme.textTheme.titleSmall,
-                      ),
-                      if (items.length != all.length)
-                        TextSpan(
-                          text: ' / ${number.format(all.length)}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                    ],
+          status: snapshot.hasData
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(
+                      number.format(items.length),
+                      style: theme.textTheme.titleSmall,
+                    ),
                   ),
-                ),
-              ),
-            IconButton(
-              tooltip: t('common.actions.sort', 'Sort'),
-              icon: Icon(
-                _newestFirst ? Icons.arrow_downward : Icons.arrow_upward,
-              ),
+                )
+              : null,
+          actions: [
+            BarAction(
+              icon: _newestFirst ? Icons.arrow_downward : Icons.arrow_upward,
+              label: t('common.actions.sort', 'Sort'),
               onPressed: () => setState(() => _newestFirst = !_newestFirst),
             ),
           ],

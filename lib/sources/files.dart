@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import '../save/codec.dart';
 import '../save/game_save.dart';
+import 'plist.dart';
 
 /// The game's asset caches sit next to the account directories and hold
 /// gigabytes of bundles and no saves; a folder walk never enters them.
@@ -90,6 +91,7 @@ class FileSaveSource {
 
   void _zip(Uint8List bytes, String name) {
     final archive = ZipDecoder().decodeBytes(bytes);
+    final release = this.release ?? _appRelease(archive);
     for (final entry in archive.files) {
       if (!entry.isFile ||
           entry.size == 0 ||
@@ -109,6 +111,21 @@ class FileSaveSource {
           group: '$name!${p.dirname(entry.name)}',
         ),
       );
+    }
+  }
+
+  /// An app-container export (iMazing's `.imazingapp`) names its app in
+  /// `iTunesMetadata.plist`.
+  static GameRelease? _appRelease(Archive archive) {
+    final metadata = archive.findFile('iTunesMetadata.plist');
+    if (metadata == null) return null;
+    try {
+      final plist = parsePlist(metadata.content);
+      return plist is Map
+          ? GameRelease.fromPackage('${plist['softwareVersionBundleId']}')
+          : null;
+    } on FormatException {
+      return null;
     }
   }
 

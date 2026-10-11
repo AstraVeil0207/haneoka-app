@@ -277,4 +277,25 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get sec_arena => 'アリーナ';
+
+  @override
+  String get playerRank => 'プレイヤーランク';
+
+  @override
+  String get sec_songUnlocks => '楽曲解放';
+
+  @override
+  String get sec_challengeUnlocks => 'チャレンジ楽曲解放';
+
+  @override
+  String get sec_friendshipRewards => '絆報酬';
+
+  @override
+  String get sec_stampFavorites => 'お気に入りスタンプ';
+
+  @override
+  String get sec_exchange => '交換所';
+
+  @override
+  String get sec_shop => 'ショップ';
 }
