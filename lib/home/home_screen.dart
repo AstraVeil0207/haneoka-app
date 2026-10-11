@@ -172,7 +172,12 @@ class _HomeScreenState extends State<HomeScreen> {
               await _data;
             },
             child: ListView(
-              padding: padding,
+              padding: padding.add(
+                EdgeInsets.symmetric(
+                  horizontal: ((MediaQuery.sizeOf(context).width - 1100) / 2)
+                      .clamp(0, double.infinity),
+                ),
+              ),
               children: [
                 if (banners.isNotEmpty)
                   _Carousel(banners: banners, t: t, api: state.api),

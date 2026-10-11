@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+import '../core/app_state.dart';
+import '../ui/player.dart';
 import '../ui/theme.dart';
 
 /// Lets a page open the shell's navigation on compact windows.
@@ -143,7 +145,10 @@ class _ShellPageState extends State<ShellPage> {
             ),
             child: Stack(
               children: [
-                _bar(context, compact),
+                ListenableBuilder(
+                  listenable: AppScope.of(context).audio,
+                  builder: (context, _) => _bar(context, compact),
+                ),
                 if (compact && _searching && widget.search != null)
                   Positioned.fill(child: _compactSearch(context)),
               ],
@@ -233,6 +238,10 @@ class _ShellPageState extends State<ShellPage> {
     final search = widget.search;
     final children = <Widget>[];
     var room = width;
+    if (compact && AppScope.of(context).audio.current != null) {
+      children.add(const NowPlaying());
+      room -= 48;
+    }
     if (search != null) {
       if (compact) {
         children.add(

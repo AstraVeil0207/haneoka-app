@@ -25,7 +25,13 @@ class AudioService extends ChangeNotifier {
   int _index = -1;
   bool _playing = false;
 
+  /// Position and length of the current track, for the progress ring and seek row.
+  final ValueNotifier<Duration> position = ValueNotifier(Duration.zero);
+  final ValueNotifier<Duration> duration = ValueNotifier(Duration.zero);
+
   AudioService() {
+    _player.onPositionChanged.listen((value) => position.value = value);
+    _player.onDurationChanged.listen((value) => duration.value = value);
     _player.onPlayerStateChanged.listen((state) {
       final playing = state == PlayerState.playing;
       if (playing != _playing) {
@@ -40,8 +46,14 @@ class AudioService extends ChangeNotifier {
       _index >= 0 && _index < _queue.length ? _queue[_index] : null;
   bool get playing => _playing;
   bool get hasNext => _index + 1 < _queue.length;
-  Stream<Duration> get position => _player.onPositionChanged;
-  Stream<Duration> get duration => _player.onDurationChanged;
+  bool get hasPrevious => _index > 0;
+
+  Future<void> previous() async {
+    if (!hasPrevious) return seek(Duration.zero);
+    _index--;
+    notifyListeners();
+    await _player.play(UrlSource(_queue[_index].url));
+  }
 
   bool isPlaying(String id) => _playing && current?.id == id;
 
@@ -80,6 +92,8 @@ class AudioService extends ChangeNotifier {
     await _player.stop();
     _queue = const [];
     _index = -1;
+    position.value = Duration.zero;
+    duration.value = Duration.zero;
     notifyListeners();
   }
 

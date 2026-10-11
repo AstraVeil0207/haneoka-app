@@ -66,7 +66,10 @@ void main() {
       await shot(tester, '$name-songs');
       await tester.tap(
         find
-            .descendant(of: find.byWidgetPredicate((w) => w is Tile || w is Card), matching: find.byType(InkWell))
+            .descendant(
+              of: find.byWidgetPredicate((w) => w is Tile || w is Card),
+              matching: find.byType(InkWell),
+            )
             .first,
       );
       await wait(tester, 6);
@@ -84,7 +87,10 @@ void main() {
       await shot(tester, '$name-characters');
       await tester.tap(
         find
-            .descendant(of: find.byWidgetPredicate((w) => w is Tile || w is Card), matching: find.byType(InkWell))
+            .descendant(
+              of: find.byWidgetPredicate((w) => w is Tile || w is Card),
+              matching: find.byType(InkWell),
+            )
             .first,
       );
       await wait(tester, 6);
@@ -101,11 +107,28 @@ void main() {
       await shot(tester, '$name-cards');
       await tester.tap(
         find
-            .descendant(of: find.byWidgetPredicate((w) => w is Tile || w is Card), matching: find.byType(InkWell))
+            .descendant(
+              of: find.byWidgetPredicate((w) => w is Tile || w is Card),
+              matching: find.byType(InkWell),
+            )
             .first,
       );
       await wait(tester, 6);
       await shot(tester, '$name-card');
+      await tester.tap(find.byType(BackButton).first);
+      await wait(tester, 1);
+      if (name == 'phone') {
+        await tester.tap(find.byIcon(Symbols.menu_rounded).first);
+        await wait(tester, 1);
+        await tester.tap(find.text('Library').first);
+        await wait(tester, 1);
+        await tester.tap(find.text('Tools').first);
+        await wait(tester, 1);
+        await shot(tester, '$name-drawer-tools');
+      }
+      await tester.tap(find.text('Settings').last);
+      await wait(tester, 3);
+      await shot(tester, '$name-settings');
     });
   }
 }

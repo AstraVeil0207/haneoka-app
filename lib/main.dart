@@ -23,8 +23,9 @@ class HaneokaApp extends StatelessWidget {
     return MaterialApp(
       title: 'Haneoka',
       locale: state.locale,
-      theme: haneokaTheme(Brightness.light),
-      darkTheme: haneokaTheme(Brightness.dark),
+      theme: haneokaTheme(Brightness.light, seed: state.seed),
+      darkTheme: haneokaTheme(Brightness.dark, seed: state.seed),
+      themeMode: state.themeMode,
       localizationsDelegates: const [
         AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
