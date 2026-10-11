@@ -161,7 +161,8 @@ class SaveScreen extends StatelessWidget {
     String title,
     SaveView view,
   ) {
-    final site = AppScope.of(context).text;
+    final site = AppScope.maybeOf(context)?.text;
+    if (site == null) return null;
     String label(String path, Object? value) =>
         value == null ? '' : '${site(path)} $value';
     final (resource, progress) = switch (section) {
