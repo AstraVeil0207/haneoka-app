@@ -1640,3 +1640,11 @@ const zhTwDayPeriods = <String>[
   "晚上",
   "晚上",
 ];
+
+const listSeparators = <String, List<String>>{
+  "en": [" and ", ", ", ", ", ", and "],
+  "ja": ["、", "、", "、", "、"],
+  "ko": [" 및 ", ", ", ", ", " 및 "],
+  "zh-CN": ["和", "、", "、", "和"],
+  "zh-TW": ["和", "、", "、", "和"],
+};

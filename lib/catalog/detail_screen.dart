@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:intl/intl.dart';
 
+import '../core/api.dart';
 import '../core/app_state.dart';
 import '../core/audio.dart';
 import '../core/i18n.dart';
@@ -40,7 +41,11 @@ class DetailScreen extends StatefulWidget {
     required this.id,
     required this.summary,
     this.siblings,
+    this.api,
   });
+
+  /// Another game's data (`origin`); the release's when null.
+  final HaneokaApi? api;
   final CatalogProfile profile;
   final String id;
   final Entry summary;
@@ -68,7 +73,7 @@ class _DetailScreenState extends State<DetailScreen> {
     final state = AppScope.of(context);
     // An entity only the other release has opens there (`displayServer`).
     final server = '${widget.summary[serverKey] ?? state.server}';
-    final api = state.apiFor(server);
+    final api = widget.api ?? state.apiFor(server);
     final resource = widget.profile.resource;
     final (record, visuals, page) = await (
       api
@@ -78,14 +83,47 @@ class _DetailScreenState extends State<DetailScreen> {
             onError: (_) => widget.summary,
           ),
       CatalogVisuals.of(api),
-      entityPage(api.server, state.text.locale, resource, widget.id),
+      // A provider has no built page; its songs join its own song-meta.
+      widget.api != null
+          ? (resource == 'songs'
+                ? api
+                      .catalog('song-meta')
+                      .then<Map<String, Object?>?>(
+                        (meta) => {'songMeta': meta},
+                        onError: (_) => null,
+                      )
+                : Future<Map<String, Object?>?>.value())
+          : entityPage(api.server, state.text.locale, resource, widget.id),
     ).wait;
     final item = page?['item'];
     return (
-      item is Map ? {...record, ...item.cast<String, Object?>()} : record,
+      item is Map
+          ? {...record, ...item.cast<String, Object?>()}
+          : _providerRecord(record),
       visuals,
       page,
     );
+  }
+
+  /// GBP names its difficulties; the song page reads them by index, the
+  /// name kept for labels (`easy` … `special`).
+  Entry _providerRecord(Entry record) {
+    if (widget.api == null) return record;
+    const names = ['easy', 'normal', 'hard', 'expert', 'special'];
+    return {
+      ...record,
+      'difficulty': [
+        for (final row in (record['difficulty'] as List? ?? const []))
+          if (row is Map)
+            {
+              ...row.cast<String, Object?>(),
+              if (row['difficulty'] is String) ...{
+                'difficulty': names.indexOf(row['difficulty'] as String),
+                'difficultyName': row['difficulty'],
+              },
+            },
+      ],
+    };
   }
 
   /// Previous and next in the collection (`data-entity-navigation`):
@@ -108,6 +146,7 @@ class _DetailScreenState extends State<DetailScreen> {
               id: kit.id(entry),
               summary: entry,
               siblings: list,
+              api: widget.api,
             ),
             transitionDuration: Duration.zero,
           ),
@@ -192,7 +231,7 @@ class _Page {
     if (visuals == null) return null;
     final children = <Widget>[
       if (kind == Presentation.song) ...[
-        for (final id in (record['bandIds'] as List? ?? const []))
+        for (final id in (record['bandIds'] as List? ?? [?record['bandId']]))
           if (visuals.bandLogo(id) case final logo?)
             Padding(
               padding: const EdgeInsets.only(right: 6),
@@ -221,7 +260,8 @@ class _Page {
     final visuals = kit.visuals;
     if (visuals == null) return 0;
     if (kind == Presentation.song) {
-      return 46.0 * (record['bandIds'] as List? ?? const []).length + 30;
+      return 46.0 * (record['bandIds'] as List? ?? [?record['bandId']]).length +
+          30;
     }
     if (kind == Presentation.member || kind == Presentation.support) {
       return 30.0 *
@@ -235,19 +275,22 @@ class _Page {
   List<BarAction> actions() {
     if (kind != Presentation.song) return const [];
     final state = AppScope.of(context);
+    // Rankings and Sonolus are this game's; another game's song only plays.
+    final native = host.widget.api == null;
     final actions = <BarAction>[
-      BarAction(
-        icon: Symbols.bar_chart_rounded,
-        label: t('catalog.rankings.songs.title', 'Song ranking'),
-        onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute<void>(
-            builder: (_) => SongRankingScreen(
-              songId: '${record['musicId'] ?? kit.id(record)}',
-              title: kit.title(record),
+      if (native)
+        BarAction(
+          icon: Symbols.bar_chart_rounded,
+          label: t('catalog.rankings.songs.title', 'Song ranking'),
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => SongRankingScreen(
+                songId: '${record['musicId'] ?? kit.id(record)}',
+                title: kit.title(record),
+              ),
             ),
           ),
         ),
-      ),
     ];
     if (record['musicUrl'] is String) {
       final track = Track(
@@ -276,7 +319,9 @@ class _Page {
             : charts.lastOrNull?['difficulty'] as int?);
     final chart = charts.where((c) => c['difficulty'] == chosen).firstOrNull;
     final musicId = '${record['musicId'] ?? ''}'.trim();
-    if (chart?['file'] != null && RegExp(r'^\d{1,16}$').hasMatch(musicId)) {
+    if (native &&
+        chart?['file'] != null &&
+        RegExp(r'^\d{1,16}$').hasMatch(musicId)) {
       const names = ['easy', 'normal', 'hard', 'expert', 'master'];
       final raw = '${chart!['difficultyName'] ?? ''}'.toLowerCase();
       final difficulty =

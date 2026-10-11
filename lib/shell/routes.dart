@@ -21,6 +21,7 @@ import '../catalog/skills.dart';
 import '../catalog/song_meta.dart';
 import '../catalog/songs.dart';
 import '../catalog/studio.dart';
+import '../core/api.dart';
 import '../core/app_state.dart';
 import '../home/announcements.dart';
 import '../home/calendar.dart';
@@ -61,6 +62,7 @@ void openEntity(
   CatalogProfile profile,
   Map<String, Object?> item, {
   List<Map<String, Object?>>? siblings,
+  HaneokaApi? api,
 }) {
   final list = siblings ?? BrowseSiblings.of(context);
   Navigator.of(context).push(
@@ -70,6 +72,7 @@ void openEntity(
         id: '${firstOf(item, profile.id) ?? item['_key']}',
         summary: item,
         siblings: list,
+        api: api,
       ),
     ),
   );
@@ -114,6 +117,31 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/community/posts/new') return const PostEditorScreen();
   if (route == '/community/tags') return const CommunityTagsScreen();
   if (route == '/community/playlists') return const PlaylistsScreen();
+  if (RegExp(r'^/community/(stories-bestdori|sekai/stories)/([a-z]+)$')
+          .firstMatch(route)
+      case final m?) {
+    return _ProviderStories(
+      key: ValueKey(route),
+      provider: m[1] == 'sekai/stories' ? 'sekai' : 'bestdori',
+      section: m[2]!,
+    );
+  }
+  if (RegExp(r'^/community/(songs-bestdori|sekai/songs)/(\d+)$')
+          .firstMatch(route)
+      case final m?) {
+    return _ProviderSong(
+      key: ValueKey(route),
+      provider: m[1] == 'sekai/songs' ? 'sekai' : 'bestdori',
+      id: m[2]!,
+    );
+  }
+  if (route == '/community/songs-bestdori' ||
+      route == '/community/sekai/songs') {
+    return _ProviderSongs(
+      key: ValueKey(route),
+      provider: route.contains('sekai') ? 'sekai' : 'bestdori',
+    );
+  }
   if (route.startsWith('/community/playlists/')) {
     return PlaylistsScreen(
       open: Uri.decodeComponent(
@@ -180,4 +208,63 @@ class PendingScreen extends StatelessWidget {
     title: AppScope.of(context).text(label),
     body: const SizedBox.expand(),
   );
+}
+
+/// GBP or Project Sekai songs on the song catalogue (`origin`).
+class _ProviderSongs extends StatelessWidget {
+  const _ProviderSongs({super.key, required this.provider});
+  final String provider;
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final api = state.providerApi(provider);
+    final profile = catalogProfiles.firstWhere((p) => p.resource == 'songs');
+    return SongsScreen(
+      api: api,
+      title: provider == 'sekai'
+          ? state.text('community.page.sekai.title', 'Project Sekai songs')
+          : state.text('community.page.songsBestDori', 'GBP songs'),
+      onOpen: (context, item) => openEntity(context, profile, item, api: api),
+    );
+  }
+}
+
+/// One GBP or Project Sekai song by its address.
+class _ProviderSong extends StatelessWidget {
+  const _ProviderSong({super.key, required this.provider, required this.id});
+  final String provider;
+  final String id;
+  @override
+  Widget build(BuildContext context) => DetailScreen(
+    profile: catalogProfiles.firstWhere((p) => p.resource == 'songs'),
+    id: id,
+    summary: const {},
+    api: AppScope.of(context).providerApi(provider),
+  );
+}
+
+/// GBP or Project Sekai stories of one section (`origin`).
+class _ProviderStories extends StatelessWidget {
+  const _ProviderStories({
+    super.key,
+    required this.provider,
+    required this.section,
+  });
+  final String provider;
+  final String section;
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context);
+    final capital = '${section[0].toUpperCase()}${section.substring(1)}';
+    return StoriesScreen(
+      mode: section,
+      api: state.providerApi(provider),
+      title: state.text(
+        provider == 'sekai'
+            ? 'community.page.sekai.stories.$section'
+            : 'story.navigation.bestdori$capital',
+        section,
+      ),
+    );
+  }
 }

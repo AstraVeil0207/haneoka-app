@@ -87,6 +87,17 @@ Future<bool> openLink(
   if (parts.join('/') == 'community/playlists' && playlist != null) {
     parts.add(playlist);
   }
+  // A GBP or Project Sekai song: `/community/songs-bestdori/detail/?song=1`.
+  final song = uri.queryParameters['song'];
+  if (const {
+        'community/songs-bestdori/detail',
+        'community/sekai/songs/detail',
+      }.contains(parts.join('/')) &&
+      song != null) {
+    parts
+      ..removeLast()
+      ..add(song);
+  }
   final route = '/${parts.join('/')}';
   if (navigate != null) {
     navigate(route);

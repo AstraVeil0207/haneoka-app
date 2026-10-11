@@ -6,6 +6,7 @@ import '../core/api.dart';
 import '../core/app_state.dart';
 import '../core/audio.dart';
 import '../core/i18n.dart';
+import '../core/provider_api.dart';
 import '../shell/page.dart';
 import '../ui/app_image.dart';
 import '../ui/detail.dart';
@@ -53,9 +54,12 @@ String _duration(Object? seconds) {
 }
 
 class _StoryData {
-  _StoryData(this.document, this.visuals);
+  _StoryData(this.document, this.visuals, {this.providerMode});
   final Map document;
   final CatalogVisuals visuals;
+
+  /// Another game's section: every episode is in it.
+  final String? providerMode;
 
   late final Set<String> eventChapters = {
     for (final e
@@ -89,7 +93,8 @@ class _StoryData {
         '${talk['storyKey']}': spot,
   };
 
-  String? mode(Entry e) => storyModeOf(e, eventChapters, birthdayChapters);
+  String? mode(Entry e) =>
+      providerMode ?? storyModeOf(e, eventChapters, birthdayChapters);
 
   Map get chapters => (document['chapters'] as Map?) ?? const {};
   Map get spots => (document['homeSpots'] as Map?) ?? const {};
@@ -99,8 +104,12 @@ class _StoryData {
 /// organised by in the rail, the chosen group's heading, and its episodes in
 /// the game's order, each opening its transcript.
 class StoriesScreen extends StatefulWidget {
-  const StoriesScreen({super.key, required this.mode});
+  const StoriesScreen({super.key, required this.mode, this.api, this.title});
   final String mode;
+
+  /// GBP or Project Sekai stories (`origin`); this release's when null.
+  final HaneokaApi? api;
+  final String? title;
   @override
   State<StoriesScreen> createState() => _StoriesScreenState();
 }
@@ -116,6 +125,7 @@ class _StoriesScreenState extends State<StoriesScreen> {
   }
 
   Future<_StoryData> _load() async {
+    if (widget.api case final api?) return _loadProvider(api);
     final api = AppScope.of(context).api;
     final (document, visuals) = await (
       api.catalog('stories'),
@@ -124,7 +134,96 @@ class _StoriesScreenState extends State<StoriesScreen> {
     return _StoryData((document as Map?) ?? const {}, visuals);
   }
 
-  String _label(SiteText t) => widget.mode == 'birthday'
+  /// A provider's section, read as this release's document: episodes by id
+  /// and their chapters with the event logo or band banner
+  /// (`loadBestdori`).
+  Future<_StoryData> _loadProvider(HaneokaApi api) async {
+    if (widget.mode == 'card' &&
+        api is ProviderApi &&
+        api.provider == 'bestdori') {
+      return _loadCards(api);
+    }
+    final (rows, visuals) = await (
+      api.catalog('stories/${widget.mode}'),
+      CatalogVisuals.of(api),
+    ).wait;
+    final records = switch (rows) {
+      List() => rows.whereType<Entry>(),
+      Map() => rows.values.whereType<Entry>(),
+      _ => const <Entry>[],
+    };
+    final episodes = <String, Entry>{};
+    final chapters = <String, Entry>{};
+    for (final e in records) {
+      final id = '${e['storyId'] ?? e['storyKey']}';
+      episodes[id] = {
+        ...e,
+        'storyKey': e['storyKey'] ?? e['storyId'],
+        'image': e['episodeImage'] ?? e['image'],
+      };
+      final chapter = '${e['chapterId'] ?? ''}';
+      chapters.putIfAbsent(
+        chapter,
+        () => {
+          'chapterName': e['chapterName'] ?? e['eventName'],
+          'banner': e['thumbnail'] ?? e['image'],
+          'chapterSort': e['chapterSort'],
+        },
+      );
+    }
+    return _StoryData(
+      {'episodes': episodes, 'chapters': chapters},
+      visuals,
+      providerMode: widget.mode,
+    );
+  }
+
+  /// GBP card stories are a card collection by character; a card opens
+  /// its own episodes (`isCardSection`).
+  Future<_StoryData> _loadCards(HaneokaApi api) async {
+    final (rows, visuals) = await (
+      api.catalog('cards'),
+      CatalogVisuals.of(api),
+    ).wait;
+    final cards = switch (rows) {
+      List() => rows.whereType<Entry>(),
+      Map() => rows.values.whereType<Entry>(),
+      _ => const <Entry>[],
+    }.where((card) => card['hasStory'] != false);
+    final episodes = <String, Entry>{};
+    final chapters = <String, Entry>{};
+    for (final card in cards) {
+      final character = (card['characterId'] as num?)?.toInt();
+      final thumbnails = card['cardThumbnails'];
+      episodes['card:${card['cardId']}'] = {
+        'storyKey': 'card:${card['cardId']}',
+        'chapterId': character,
+        'title': card['prefix'],
+        'image':
+            (thumbnails is Map ? thumbnails['normal'] : null) ??
+            card['cardImage'],
+        'storySort': card['releaseAt'],
+        'cardId': card['cardId'],
+      };
+      chapters.putIfAbsent(
+        '$character',
+        () => {
+          'chapterName': visuals.characters[character]?['characterName'],
+          'banner': visuals.characters[character]?['faceImage'],
+          'chapterSort': character,
+        },
+      );
+    }
+    return _StoryData(
+      {'episodes': episodes, 'chapters': chapters},
+      visuals,
+      providerMode: widget.mode,
+    );
+  }
+
+  String _label(SiteText t) => widget.title != null
+      ? widget.title!
+      : widget.mode == 'birthday'
       ? t('story.labels.birthdayStory', 'Birthday stories')
       : t('story.navigation.${widget.mode}', widget.mode);
 
@@ -154,7 +253,16 @@ class _StoriesScreenState extends State<StoriesScreen> {
               ];
         final keys = <String>{for (final e in episodes) _railKey(e, data!)}
             .toList();
-        if (widget.mode == 'event') {
+        if (data != null && data.providerMode != null) {
+          // Another game's chapters by first release, newest events first.
+          num sortOf(String key) =>
+              (data.chapters[key] as Map?)?['chapterSort'] as num? ?? 0;
+          keys.sort(
+            (a, b) => widget.mode == 'event'
+                ? sortOf(b).compareTo(sortOf(a))
+                : sortOf(a).compareTo(sortOf(b)),
+          );
+        } else if (widget.mode == 'event') {
           keys.sort(
             (a, b) => (int.tryParse(b) ?? 0).compareTo(int.tryParse(a) ?? 0),
           );
@@ -296,7 +404,8 @@ class _StoriesScreenState extends State<StoriesScreen> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final padding = pagePadding(context);
-    final info = rail == null ? null : _railInfo(data, rail, t, state.api);
+    final api = widget.api ?? state.api;
+    final info = rail == null ? null : _railInfo(data, rail, t, api);
     return CustomScrollView(
       slivers: [
         if (keys.length > 1 ||
@@ -311,7 +420,7 @@ class _StoriesScreenState extends State<StoriesScreen> {
                 separatorBuilder: (_, _) => const SizedBox(width: 8),
                 itemBuilder: (context, index) {
                   final key = keys[index];
-                  final item = _railInfo(data, key, t, state.api);
+                  final item = _railInfo(data, key, t, api);
                   final count = data.episodes
                       .where(
                         (e) =>
@@ -438,6 +547,7 @@ class _StoriesScreenState extends State<StoriesScreen> {
                   episode: list[index],
                   data: data,
                   mode: widget.mode,
+                  api: widget.api,
                 ),
               ),
             ),
@@ -454,15 +564,18 @@ class _EpisodeTile extends StatelessWidget {
     required this.episode,
     required this.data,
     required this.mode,
+    this.api,
   });
   final Entry episode;
   final _StoryData data;
   final String mode;
+  final HaneokaApi? api;
 
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final t = state.text;
+    final api = this.api ?? state.api;
     final number = episode['episodeNumber'];
     final duration = _duration(episode['playTime']);
     String subtitle;
@@ -502,17 +615,17 @@ class _EpisodeTile extends StatelessWidget {
               if (data.visuals.characters[data
                       .birthdayCharacter['${episode['storyKey']}']]?['faceImage']
                   case final String face)
-                state.api.asset(face).toString(),
+                api.asset(face).toString(),
             ]
           : [?data.visuals.bandIcon(episode['bandId'])],
       images: [
         for (final key in ['image', 'banner'])
           if (episode[key] case final String path when path.isNotEmpty)
-            state.api.asset(path).toString(),
+            api.asset(path).toString(),
         if (mode == 'home')
           if (data.spotOfStory['${episode['storyKey']}']?['thumbnail']
               case final String path)
-            state.api.asset(path).toString(),
+            api.asset(path).toString(),
       ],
       media: mode == 'afterlive' || mode == 'link' && episode['image'] == null
           ? StoryFaces(
@@ -521,7 +634,7 @@ class _EpisodeTile extends StatelessWidget {
                     in (episode['characterIds'] as List? ?? const []).take(2))
                   if (data.visuals.characters[(id as num).toInt()]?['faceImage']
                       case final String face)
-                    state.api.asset(face).toString(),
+                    api.asset(face).toString(),
               ],
             )
           : null,
@@ -536,10 +649,52 @@ class _EpisodeTile extends StatelessWidget {
           ),
         if (duration.isNotEmpty) TileMark.text(MarkAt.bottomEnd, duration),
       ],
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => StoryReaderScreen(episode: episode),
-        ),
+      onTap: () => episode['cardId'] != null
+          ? _openCard(context, api)
+          : Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) =>
+                    StoryReaderScreen(episode: episode, api: this.api),
+              ),
+            ),
+    );
+  }
+
+  /// A GBP card's episodes, each opening in the reader.
+  Future<void> _openCard(BuildContext context, HaneokaApi api) async {
+    final t = AppScope.of(context).text;
+    final card = await api
+        .catalog('cards', '${episode['cardId']}')
+        .then<Map?>((v) => v as Map?, onError: (_) => null);
+    if (card == null || !context.mounted) return;
+    final episodes = (card['episodes'] as List? ?? const []).whereType<Map>();
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheet) => ListView(
+        shrinkWrap: true,
+        children: [
+          for (final e in episodes)
+            ListTile(
+              leading: const Icon(Symbols.auto_stories_rounded),
+              title: Text(t.text(e['title'])),
+              onTap: () {
+                Navigator.pop(sheet);
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => StoryReaderScreen(
+                      api: api,
+                      episode: {
+                        'storyKey':
+                            'card.${e['resourceSetName'] ?? card['resourceSetName']}.${e['scenarioId']}',
+                        'title': e['title'],
+                      },
+                    ),
+                  ),
+                );
+              },
+            ),
+        ],
       ),
     );
   }
@@ -549,10 +704,50 @@ class _EpisodeTile extends StatelessWidget {
 /// their faces, lines and each line's voice, in order. The 3D stage player
 /// is the website's alone for now.
 class StoryReaderScreen extends StatefulWidget {
-  const StoryReaderScreen({super.key, required this.episode});
+  const StoryReaderScreen({super.key, required this.episode, this.api});
   final Entry episode;
+  final HaneokaApi? api;
   @override
   State<StoryReaderScreen> createState() => _StoryReaderScreenState();
+}
+
+/// A provider scenario as this release's transcript: grouped commands are
+/// flattened and talk (`command: 2`) becomes a talk line; sounds are keyed
+/// by their reference.
+Map _transcript(Map detail) {
+  final commands = detail['commands'] as List? ?? const [];
+  if (!commands.any((c) => c is Map && c['command'] == 101)) return detail;
+  final flat = <Map>[];
+  void add(Map command) {
+    if (command['command'] == 2) {
+      flat.add({...command, 'type': 'talk'});
+    }
+  }
+
+  for (final command in commands.whereType<Map>()) {
+    final group = command['commandGroup'];
+    if (group is Map) {
+      for (final action
+          in (group['actions'] as List? ?? const []).whereType<Map>()) {
+        if (action['command'] case final Map inner) add(inner);
+      }
+    } else {
+      add(command);
+    }
+  }
+  final sounds = (detail['assets'] as Map?)?['sounds'];
+  return {
+    ...detail,
+    'commands': flat,
+    'assets': {
+      ...((detail['assets'] as Map?) ?? const {}),
+      'sounds': [
+        if (sounds is Map)
+          for (final MapEntry(:key, :value) in sounds.entries)
+            if (value is Map) {'ref': key, ...value},
+      ],
+    },
+  };
 }
 
 class _StoryReaderScreenState extends State<StoryReaderScreen> {
@@ -561,14 +756,14 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final api = AppScope.of(context).api;
+    final api = widget.api ?? AppScope.of(context).api;
     _data ??= (
       api
           .catalog(
             'stories',
             '${widget.episode['storyKey'] ?? widget.episode['_key']}',
           )
-          .then((v) => v as Map),
+          .then((v) => {...widget.episode, ..._transcript(v as Map)}),
       CatalogVisuals.of(api),
     ).wait;
   }
@@ -576,6 +771,7 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
+    final api = widget.api ?? state.api;
     final t = state.text;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
@@ -590,7 +786,7 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
               in ((detail['assets'] as Map?)?['sounds'] as List? ?? const [])
                   .whereType<Map>())
             if (s['playableUrl'] is String)
-              '${s['cueSheetName']}/${s['cueName']}': state.api
+              '${s['ref'] ?? '${s['cueSheetName']}/${s['cueName']}'}': api
                   .asset(s['playableUrl'] as String)
                   .toString(),
         };
@@ -633,7 +829,7 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
               .firstOrNull;
           final character =
               visuals?.characters[(target?['characterId'] as num?)?.toInt()];
-          final face = character?['faceImage'];
+          final face = character?['faceImage'] ?? target?['faceImage'];
           final name = t.text(
             target?['name'] ??
                 (command['targetTextNames'] as List?)?.firstOrNull,
@@ -650,9 +846,7 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
                   url: url,
                   title: name,
                   subtitle: text,
-                  artwork: face is String
-                      ? state.api.asset(face).toString()
-                      : null,
+                  artwork: face is String ? api.asset(face).toString() : null,
                 );
           if (track != null) voices.add(track);
           lines.add(
@@ -667,9 +861,7 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
                       height: 40,
                       color: scheme.surfaceContainerHighest,
                       child: face is String
-                          ? AppImage(
-                              candidates: [state.api.asset(face).toString()],
-                            )
+                          ? AppImage(candidates: [api.asset(face).toString()])
                           : null,
                     ),
                   ),

@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
 import 'audio.dart';
+import 'provider_api.dart';
 import 'i18n.dart';
 
 /// The reader's choices and what follows from them: release server, language,
@@ -29,6 +30,16 @@ class AppState extends ChangeNotifier {
   /// The client for one release server; the selected one is [api].
   HaneokaApi apiFor(String value) =>
       value == server ? api : _apis[value] ??= HaneokaApi(server: value);
+
+  final _providers = <String, ProviderApi>{};
+
+  /// GBP (`bestdori`) or Project Sekai (`sekai`) data in the reading
+  /// language's region.
+  ProviderApi providerApi(String provider) =>
+      _providers['$provider:${text.locale}'] ??= ProviderApi(
+        provider: provider,
+        locale: text.locale,
+      );
 
   /// Both formal releases, for the cross-server catalogue.
   Map<String, HaneokaApi> get catalogApis => {

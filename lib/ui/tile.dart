@@ -189,15 +189,22 @@ class Tile extends StatelessWidget {
                       height: compact ? 18 : 20,
                       child: Row(
                         children: [
-                          for (final emblem in adornments) ...[
-                            ClipOval(
-                              child: SizedBox.square(
-                                dimension: 16,
-                                child: AppImage(candidates: [emblem]),
+                          // Several faces overlap as a stack
+                          // (`catalogPortraitStack`).
+                          for (final (index, emblem)
+                              in adornments.take(5).indexed)
+                            Align(
+                              widthFactor: index + 1 < adornments.take(5).length
+                                  ? 0.7
+                                  : 1,
+                              child: ClipOval(
+                                child: SizedBox.square(
+                                  dimension: 16,
+                                  child: AppImage(candidates: [emblem]),
+                                ),
                               ),
                             ),
-                            const SizedBox(width: 8),
-                          ],
+                          if (adornments.isNotEmpty) const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               subtitle!,

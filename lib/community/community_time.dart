@@ -102,3 +102,22 @@ String communityLocation(Object? value, String locale) {
   if (!RegExp(r'^[A-Z]{2}$').hasMatch(code) || code == 'XX') return '';
   return (regionNames[locale] ?? regionNames['en']!)[code] ?? '';
 }
+
+/// `Intl.ListFormat(locale, { style: "long", type: "conjunction" })`.
+String formatList(List<String> values, String locale) {
+  final items = values.where((v) => v.isNotEmpty).toList();
+  final [two, start, middle, end] =
+      listSeparators[locale] ?? listSeparators['en']!;
+  return switch (items.length) {
+    0 => '',
+    1 => items.single,
+    2 => '${items[0]}$two${items[1]}',
+    _ => () {
+      final buffer = StringBuffer('${items[0]}$start${items[1]}');
+      for (var i = 2; i < items.length - 1; i++) {
+        buffer.write('$middle${items[i]}');
+      }
+      return '$buffer$end${items.last}';
+    }(),
+  };
+}

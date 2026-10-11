@@ -52,6 +52,16 @@ const zhTw = new Intl.DateTimeFormat("zh-TW", { dateStyle: "medium", timeStyle: 
 out += "\nconst zhTwDayPeriods = <String>[\n";
 for (let h = 0; h < 24; h++) out += `  ${q(zhTw.formatToParts(Date.UTC(2026, 0, 5, h)).find((p) => p.type === "dayPeriod")?.value ?? "")},\n`;
 out += "];\n";
+// Intl.ListFormat(locale, { style: "long", type: "conjunction" }) as
+// separators: between two, then start / middle / end of longer lists.
+out += "\nconst listSeparators = <String, List<String>>{\n";
+for (const locale of locales) {
+  const f = new Intl.ListFormat(locale, { style: "long", type: "conjunction" });
+  const two = f.format(["\u0001", "\u0002"]).split(/[\u0001\u0002]/u)[1];
+  const four = f.format(["\u0001", "\u0002", "\u0003", "\u0004"]).split(/[\u0001-\u0004]/u);
+  out += `  ${q(locale)}: [${[two, four[1], four[2], four[3]].map(q).join(", ")}],\n`;
+}
+out += "};\n";
 writeFileSync(new URL("../lib/community/intl.g.dart", import.meta.url), out);
 // Fixtures for the date format and relative phrases.
 const at = Date.UTC(2026, 8, 26, 2, 44, 9);

@@ -19,10 +19,16 @@ class CatalogVisuals {
       _loaded[api] ??= _load(api);
 
   static Future<CatalogVisuals> _load(HaneokaApi api) async {
+    // A provider has no game emblems; what it has still loads.
     final results = await Future.wait([
-      api.catalog('ui-marks'),
-      api.catalog('bands'),
-      api.catalog('characters'),
+      for (final resource in const ['ui-marks', 'bands', 'characters'])
+        api
+            .catalog(resource)
+            .then<Object?>(
+              (v) => v,
+              onError: (Object error) =>
+                  resource == 'ui-marks' ? null : Future<Object?>.error(error),
+            ),
     ]);
     Map<int, Entry> byId(Object? value) => {
       if (_entries(value) case final Map<String, Object?> rows)

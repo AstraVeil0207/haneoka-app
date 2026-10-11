@@ -5,7 +5,10 @@ import 'package:intl/intl.dart';
 import '../core/api.dart';
 import '../core/app_state.dart';
 import '../core/audio.dart';
+import '../community/community_time.dart';
 import '../core/i18n.dart';
+import '../core/provider_api.dart';
+import '../playlists/song_performer.dart';
 import '../shell/page.dart';
 import '../ui/app_image.dart';
 import '../ui/tile.dart';
@@ -20,10 +23,15 @@ const _attributes = ['', 'red', 'blue', 'green', 'yellow', 'purple'];
 /// tiles with the live attribute and genre on the artwork, band emblems
 /// before the artist, a play button, and Play all in the bar.
 class SongsScreen extends StatefulWidget {
-  const SongsScreen({super.key, this.onOpen});
+  const SongsScreen({super.key, this.onOpen, this.api, this.title});
 
   /// Opens a song's page.
   final void Function(BuildContext context, Entry song)? onOpen;
+
+  /// Another game's songs (`origin: "bestdori"` / `"sekai"`); this
+  /// release's and the other's merged when null.
+  final HaneokaApi? api;
+  final String? title;
 
   @override
   State<SongsScreen> createState() => _SongsScreenState();
@@ -40,6 +48,26 @@ class _SongsScreenState extends State<SongsScreen> {
 
   Future<(List<Entry>, CatalogVisuals)> _load() async {
     final state = AppScope.of(context);
+    if (widget.api case final api?) {
+      final (document, visuals) = await (
+        api.catalog('songs'),
+        CatalogVisuals.of(api),
+      ).wait;
+      final rows = document is Map && document['items'] is Map
+          ? document['items'] as Map
+          : document;
+      return (
+        switch (rows) {
+          Map() => [
+            for (final MapEntry(:key, :value) in rows.entries)
+              if (value is Entry) {'_key': '$key', ...value},
+          ],
+          List() => rows.whereType<Entry>().toList(),
+          _ => <Entry>[],
+        },
+        visuals,
+      );
+    }
     final (songs, visuals) = await (
       crossServerCollection(
         resource: 'songs',
@@ -62,14 +90,19 @@ class _SongsScreenState extends State<SongsScreen> {
         final data = snapshot.data;
         final songs = data?.$1;
         final visuals = data?.$2;
-        final song = _SongText(t, visuals, state.api, state.songTitle);
+        final api = widget.api ?? state.api;
+        final song = _SongText(t, visuals, api, state.songTitle);
         return BrowseScreen(
-          title: t('navigation.songs', 'Songs'),
+          title: widget.title ?? t('navigation.songs', 'Songs'),
           items: songs,
           error: snapshot.error,
           onRetry: () => setState(() => _data = _load()),
           searchText: (item) => [
-            ...?(item['musicTitle'] as List?)?.whereType<String>(),
+            ...switch (item['musicTitle']) {
+              final List titles => titles.whereType<String>(),
+              final String title => [title],
+              _ => const <String>[],
+            },
             song.artist(item),
             '${item['musicId']}',
           ].join(' '),
@@ -128,7 +161,7 @@ class _SongsScreenState extends State<SongsScreen> {
                       return FacetOption(
                         t.text(character?['characterName']),
                         image: face is String
-                            ? state.api.asset(face).toString()
+                            ? api.asset(face).toString()
                             : null,
                       );
                     },
@@ -213,19 +246,48 @@ class _SongText {
       if (id is num && id > 0) id.toInt(),
   ];
 
+  late final PerformerRegistry? _registry = visuals == null
+      ? null
+      : PerformerRegistry(
+          game: api is ProviderApi ? 'gbp' : 'our-notes',
+          server: api.server,
+          bands: visuals!.bands,
+          characters: visuals!.characters,
+        );
+
+  /// Who performs it: bands, units or vocalists (`resolveSongPerformer`).
+  SongPerformer? performer(Entry song) =>
+      _registry == null ? null : resolveSongPerformer(song, _registry);
+
   String artist(Entry song) {
     final names = [
+      for (final name in performer(song)?.names ?? const []) t.text(name),
+    ].where((n) => n.isNotEmpty).toList();
+    if (names.isNotEmpty) return formatList(names, t.locale);
+    final bands = [
       for (final id in bandIds(song))
         if (t.text(visuals?.bands[id]?['bandName']) case final name
             when name.isNotEmpty)
           name,
     ];
-    return names.isNotEmpty ? names.join(', ') : t.text(song['bandName']);
+    return bands.isNotEmpty
+        ? formatList(bands, t.locale)
+        : t.text(song['artistName'] ?? song['bandName']);
   }
 
-  /// The performing bands' logos (`songPerformerAdornment`).
-  List<String> emblems(Entry song) =>
-      {for (final id in bandIds(song)) ?visuals?.bandLogo(id)}.toList();
+  /// Band logos, then the faces of credited vocalists
+  /// (`songPerformerAdornment`).
+  List<String> emblems(Entry song) {
+    final value = performer(song);
+    if (value == null) {
+      return {for (final id in bandIds(song)) ?visuals?.bandLogo(id)}.toList();
+    }
+    return [
+      for (final logo in value.logos) api.asset(logo.image).toString(),
+      for (final portrait in value.portraits)
+        if (portrait.image.isNotEmpty) api.asset(portrait.image).toString(),
+    ];
+  }
 
   String attribute(Entry song) {
     final id = (song['musicType'] as num?)?.toInt() ?? 0;
@@ -239,8 +301,11 @@ class _SongText {
   ].join(', ');
 
   num? level(Entry song, int difficulty) {
+    const names = ['easy', 'normal', 'hard', 'expert', 'special'];
     for (final row in (song['difficulty'] as List? ?? const [])) {
-      if (row is Entry && row['difficulty'] == difficulty) {
+      if (row is Entry &&
+          (row['difficulty'] == difficulty ||
+              row['difficulty'] == names[difficulty])) {
         return (row['displayLevel'] ?? row['playLevel']) as num?;
       }
     }
