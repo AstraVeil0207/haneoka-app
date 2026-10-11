@@ -11,10 +11,14 @@ class ShellScope extends InheritedWidget {
     super.key,
     required this.openNavigation,
     required this.compact,
+    required this.navigate,
     required super.child,
   });
   final VoidCallback openNavigation;
   final bool compact;
+
+  /// Opens a website route in the shell (`/catalog/songs`, `/calendar`).
+  final ValueChanged<String> navigate;
   static ShellScope? of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<ShellScope>();
   @override
@@ -289,12 +293,17 @@ class _ShellPageState extends State<ShellPage> {
     if (action.options.isNotEmpty) {
       return [
         for (final option in action.options)
-          IconButton(
-            tooltip: option.label,
-            isSelected: option.selected,
-            onPressed: option.onSelected,
-            icon: Icon(option.icon),
-          ),
+          option.selected
+              ? IconButton.filledTonal(
+                  tooltip: option.label,
+                  onPressed: option.onSelected,
+                  icon: Icon(option.icon, fill: 1),
+                )
+              : IconButton(
+                  tooltip: option.label,
+                  onPressed: option.onSelected,
+                  icon: Icon(option.icon),
+                ),
       ];
     }
     Widget icon = Icon(action.icon);

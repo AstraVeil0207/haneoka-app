@@ -15,15 +15,18 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 - [x] Title bar with overflow, search, applied-filter chips
 - [x] Settings: appearance, theme colour, density, language, Japanese titles, estimated difficulty, release server, spoilers
 - [x] Audio player: now-playing in the bar / drawer, full player sheet
-- [~] Drawer: the website's sections, order, labels and icons
+- [x] Drawer: the website's sections, order, labels and icons
+- [x] Catalogue hub
+- [x] Website links open their native page (`openLink`)
 - [ ] Global search
 - [ ] Account: sign-in (email, GitHub, Google, X, Discord), profile, account lifecycle
+- [ ] Game account binding: link an Our Notes player (by importing its save) to the haneoka account; the profile shows the player's in-game summary (rank, rating, clears, cards); the website's profile and the database carry the binding; app-only pages for it in M3 Expressive
 
 ## Home
 
 - [~] Dashboard (banners, event, birthdays, latest songs and cards; missing: announcements, community, news, fan info, layout editing)
-- [ ] Announcements
-- [ ] Calendar
+- [x] Announcements (list, detail, home module)
+- [~] Calendar
 - [ ] Join
 
 ## Library

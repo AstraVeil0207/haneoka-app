@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../catalog/catalog_screen.dart';
 import '../catalog/detail_screen.dart';
+import '../catalog/hub_screen.dart';
 import '../catalog/profiles.dart';
 import '../catalog/songs.dart';
 import '../core/app_state.dart';
+import '../home/announcements.dart';
+import '../home/calendar.dart';
 import '../home/home_screen.dart';
 import '../ui/import_screen.dart';
 import 'page.dart';
@@ -52,6 +55,9 @@ void openEntity(
 Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/') return HomeScreen(onBrowse: navigate);
   if (route == '/settings') return const SettingsScreen();
+  if (route == '/catalog') return CatalogHubScreen(navigate: navigate);
+  if (route == '/announcements') return const AnnouncementsScreen();
+  if (route == '/calendar') return const CalendarScreen();
   if (route == '/team-builder') return const ImportScreen();
   final resource = catalogRoutes[route];
   if (resource != null) {

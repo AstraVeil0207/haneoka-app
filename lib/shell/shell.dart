@@ -18,7 +18,10 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   final _scaffold = GlobalKey<ScaffoldState>();
-  String _route = '/';
+  String _route = const String.fromEnvironment(
+    'HANEOKA_ROUTE',
+    defaultValue: '/',
+  );
 
   void _navigate(String route) {
     setState(() => _route = route);
@@ -67,6 +70,7 @@ class _AppShellState extends State<AppShell> {
         final body = ShellScope(
           compact: compact,
           openNavigation: () => _scaffold.currentState?.openDrawer(),
+          navigate: _navigate,
           child: page,
         );
         if (compact) {

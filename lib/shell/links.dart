@@ -1,0 +1,76 @@
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import '../catalog/profiles.dart';
+import 'page.dart';
+import 'routes.dart';
+
+/// The website's entity kinds (`RESOURCE_KINDS`) and the API resource each
+/// browses, for addresses like `/intl/ja/events/1/`.
+const _kindResources = {
+  'songs': 'songs',
+  'events': 'events',
+  'characters': 'characters',
+  'member-cards': 'cards',
+  'support-cards': 'support-cards',
+  'skills': 'skills',
+  'comics': 'comics',
+  'gacha': 'gacha',
+  'login-campaigns': 'login-campaigns',
+  'missions': 'missions',
+  'passes': 'passes',
+  'tgw-card': 'tgw-card',
+  'shop': 'shop',
+  'exchange': 'exchange',
+  'stamps': 'stamps',
+  'stickers': 'stickers',
+  'backgrounds': 'backgrounds',
+  'items': 'items',
+  'band-items': 'band-items',
+  'real-lives': 'real-lives',
+};
+
+const _servers = {'jp', 'intl', 'jp-test', 'intl-test'};
+const _locales = {'ja', 'en', 'zh-TW', 'zh-CN', 'ko'};
+
+/// Opens a haneoka.org address inside the app: an entity's page, or the
+/// collection or tool the address names. Addresses on other sites open in
+/// the browser. Returns false when there is nothing to open.
+Future<bool> openLink(
+  BuildContext context,
+  String href, {
+  ValueChanged<String>? navigate,
+}) async {
+  navigate ??= ShellScope.of(context)?.navigate;
+  final uri = Uri.tryParse(href);
+  if (uri == null) return false;
+  if (uri.hasScheme && uri.host.isNotEmpty && uri.host != 'haneoka.org') {
+    return launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
+  final parts = uri.pathSegments.where((p) => p.isNotEmpty).toList();
+  if (parts.isNotEmpty && _servers.contains(parts.first)) parts.removeAt(0);
+  if (parts.isNotEmpty && _locales.contains(parts.first)) parts.removeAt(0);
+  if (parts.isEmpty) {
+    navigate?.call('/');
+    return navigate != null;
+  }
+  final resource = _kindResources[parts.first];
+  if (resource != null) {
+    final profile = catalogProfiles.firstWhere((p) => p.resource == resource);
+    if (parts.length >= 2) {
+      openEntity(context, profile, {
+        profile.id.first: int.tryParse(parts[1]) ?? parts[1],
+        '_key': parts[1],
+      });
+      return true;
+    }
+    navigate?.call('/catalog/${parts.first}');
+    return navigate != null;
+  }
+  final route = '/${parts.join('/')}';
+  if (navigate != null) {
+    navigate(route);
+    return true;
+  }
+  return false;
+}

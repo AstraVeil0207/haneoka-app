@@ -8,6 +8,7 @@ import '../catalog/detail_screen.dart';
 import '../catalog/profiles.dart';
 import '../catalog/visuals.dart';
 import '../core/api.dart';
+import 'announcements.dart';
 import '../core/app_state.dart';
 import '../core/i18n.dart';
 import '../core/relative_time.dart';
@@ -52,11 +53,13 @@ class _HomeData {
 
 class _HomeScreenState extends State<HomeScreen> {
   Future<_HomeData>? _data;
+  Future<List<Map<String, Object?>>>? _announcements;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _data ??= _load();
+    _announcements ??= fetchAnnouncements(AppScope.of(context));
   }
 
   Future<_HomeData> _load() async {
@@ -215,6 +218,35 @@ class _HomeScreenState extends State<HomeScreen> {
                       ],
                     );
                   },
+                ),
+                _Module(
+                  icon: Symbols.campaign_rounded,
+                  title: t('home.announcements.title', 'Announcements'),
+                  viewAll: t('home.announcements.viewAll', 'View all'),
+                  onViewAll: () => widget.onBrowse?.call('/announcements'),
+                  child: FutureBuilder(
+                    future: _announcements,
+                    builder: (context, snapshot) {
+                      final entries = snapshot.data;
+                      if (entries == null) {
+                        return snapshot.hasError
+                            ? Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Text(
+                                  t('home.dashboard.sourceUnavailable', ''),
+                                  textAlign: TextAlign.center,
+                                ),
+                              )
+                            : const SizedBox(height: 96);
+                      }
+                      return Column(
+                        children: [
+                          for (final entry in entries.take(3))
+                            AnnouncementRow(entry: entry),
+                        ],
+                      );
+                    },
+                  ),
                 ),
                 _Module(
                   icon: Symbols.library_music_rounded,
