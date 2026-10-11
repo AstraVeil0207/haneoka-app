@@ -32,7 +32,7 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 ## Library
 
 - [x] Songs · [~] song detail (missing: skill timeline, gekisou sections, MV, comments)
-- [ ] Song meta
+- [~] Song meta (table, tiers, live/gekisou; missing: scatter chart view)
 - [~] Events · [ ] event tracker
 - [x] Characters · [~] character detail (voices, related cards, archive)
 - [x] Members · [~] member detail (level/rank/skill sliders, costs)

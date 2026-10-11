@@ -4,6 +4,7 @@ import '../catalog/catalog_screen.dart';
 import '../catalog/detail_screen.dart';
 import '../catalog/hub_screen.dart';
 import '../catalog/profiles.dart';
+import '../catalog/song_meta.dart';
 import '../catalog/songs.dart';
 import '../core/app_state.dart';
 import '../home/announcements.dart';
@@ -60,6 +61,7 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/announcements') return const AnnouncementsScreen();
   if (route == '/calendar') return const CalendarScreen();
   if (route == '/join') return const JoinScreen();
+  if (route == '/catalog/song-meta') return const SongMetaScreen();
   if (route == '/team-builder') return const ImportScreen();
   final resource = catalogRoutes[route];
   if (resource != null) {
