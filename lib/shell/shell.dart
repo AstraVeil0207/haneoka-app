@@ -1,9 +1,14 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../core/app_state.dart';
 import '../ui/player.dart';
 import '../ui/theme.dart';
+import 'links.dart';
 import 'navigation.dart';
 import 'page.dart';
 import 'routes.dart';
@@ -18,13 +23,45 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> {
   final _scaffold = GlobalKey<ScaffoldState>();
+  // A new key per route, so each route starts its own page stack.
+  var _pages = GlobalKey<NavigatorState>();
+  StreamSubscription<Uri>? _links;
+
+  @override
+  void initState() {
+    super.initState();
+    // haneoka.org addresses opened from other apps (Android App Links).
+    if (Platform.isAndroid) {
+      _links = AppLinks().uriLinkStream.listen(_openAddress);
+    }
+  }
+
+  @override
+  void dispose() {
+    _links?.cancel();
+    super.dispose();
+  }
+
+  void _openAddress(Uri uri) {
+    if (uri.host != 'haneoka.org') return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = _pages.currentContext;
+      if (context != null && context.mounted) {
+        openLink(context, uri.toString(), navigate: _navigate);
+      }
+    });
+  }
+
   String _route = const String.fromEnvironment(
     'HANEOKA_ROUTE',
     defaultValue: '/',
   );
 
   void _navigate(String route) {
-    setState(() => _route = route);
+    setState(() {
+      _route = route;
+      _pages = GlobalKey<NavigatorState>();
+    });
     _scaffold.currentState?.closeDrawer();
   }
 
@@ -48,7 +85,7 @@ class _AppShellState extends State<AppShell> {
         .map((item) => item.label)
         .firstOrNull;
     final page = Navigator(
-      key: ValueKey(_route),
+      key: _pages,
       onGenerateRoute: (_) => MaterialPageRoute<void>(
         builder: (_) =>
             screenFor(_route, navigate: _navigate) ??

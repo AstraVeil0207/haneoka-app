@@ -26,6 +26,54 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="haneoka.org" />
+                <data android:pathPrefix="/jp/" />
+                <data android:pathPrefix="/intl/" />
+                <data android:pathPrefix="/ja/catalog" />
+                <data android:pathPrefix="/ja/stories" />
+                <data android:pathPrefix="/ja/community" />
+                <data android:pathPrefix="/ja/calendar" />
+                <data android:pathPrefix="/ja/search" />
+                <data android:pathPrefix="/ja/song-progress" />
+                <data android:pathPrefix="/ja/player-profile" />
+                <data android:pathPrefix="/ja/team-builder" />
+                <data android:pathPrefix="/en/catalog" />
+                <data android:pathPrefix="/en/stories" />
+                <data android:pathPrefix="/en/community" />
+                <data android:pathPrefix="/en/calendar" />
+                <data android:pathPrefix="/en/search" />
+                <data android:pathPrefix="/en/song-progress" />
+                <data android:pathPrefix="/en/player-profile" />
+                <data android:pathPrefix="/en/team-builder" />
+                <data android:pathPrefix="/zh-CN/catalog" />
+                <data android:pathPrefix="/zh-CN/stories" />
+                <data android:pathPrefix="/zh-CN/community" />
+                <data android:pathPrefix="/zh-CN/calendar" />
+                <data android:pathPrefix="/zh-CN/search" />
+                <data android:pathPrefix="/zh-CN/song-progress" />
+                <data android:pathPrefix="/zh-CN/player-profile" />
+                <data android:pathPrefix="/zh-CN/team-builder" />
+                <data android:pathPrefix="/zh-TW/catalog" />
+                <data android:pathPrefix="/zh-TW/stories" />
+                <data android:pathPrefix="/zh-TW/community" />
+                <data android:pathPrefix="/zh-TW/calendar" />
+                <data android:pathPrefix="/zh-TW/search" />
+                <data android:pathPrefix="/zh-TW/song-progress" />
+                <data android:pathPrefix="/zh-TW/player-profile" />
+                <data android:pathPrefix="/zh-TW/team-builder" />
+                <data android:pathPrefix="/ko/catalog" />
+                <data android:pathPrefix="/ko/stories" />
+                <data android:pathPrefix="/ko/community" />
+                <data android:pathPrefix="/ko/calendar" />
+                <data android:pathPrefix="/ko/search" />
+                <data android:pathPrefix="/ko/song-progress" />
+                <data android:pathPrefix="/ko/player-profile" />
+                <data android:pathPrefix="/ko/team-builder" />
+            </intent-filter>
         </activity>
         <activity
             android:name="com.linusu.flutter_web_auth_2.CallbackActivity"
