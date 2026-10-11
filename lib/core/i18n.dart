@@ -25,7 +25,11 @@ class SiteText {
   ]) {
     Object? node = _messages;
     for (final part in path.split('.')) {
-      node = node is Map<String, Object?> ? node[part] : null;
+      node = switch (node) {
+        Map<String, Object?>() => node[part],
+        List() => node.elementAtOrNull(int.tryParse(part) ?? -1),
+        _ => null,
+      };
     }
     var text = node is String ? node : fallback;
     values.forEach((key, value) => text = text.replaceAll('{$key}', '$value'));

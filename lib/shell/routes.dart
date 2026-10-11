@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../about/about_screen.dart';
 import '../catalog/browse.dart';
 import '../catalog/missions.dart';
 import '../catalog/tgw_card.dart';
@@ -81,6 +82,7 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/catalog/events/tracker') return const EventTrackerScreen();
   if (route == '/player-profile') return const PlayerProfileScreen();
   if (route == '/account') return const AccountsScreen();
+  if (route == '/about') return const AboutScreen();
   if (route.startsWith('/catalog/stories/')) {
     final mode = route.substring('/catalog/stories/'.length);
     if (storyModes.contains(mode)) {
