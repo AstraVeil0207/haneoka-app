@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../about/about_screen.dart';
 import '../community/feed_screen.dart';
 import '../community/post_screen.dart';
+import '../community/sections.dart';
 import '../community/user_screen.dart';
 import '../help/help_screen.dart';
 import '../search/search_screen.dart';
@@ -107,6 +108,17 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/search') return const SearchScreen();
   if (_communityFeeds[route] case final scope?) {
     return CommunityFeedScreen(key: ValueKey(scope), scope: scope);
+  }
+  if (route == '/community/tags') return const CommunityTagsScreen();
+  if (route == '/community/forums') return const CommunityForumsScreen();
+  if (route == '/community/notifications') {
+    return const CommunityNotificationsScreen();
+  }
+  if (route == '/community/activity') return const CommunityActivityScreen();
+  if (RegExp(r'^/community/forums/([a-z0-9]+(?:-[a-z0-9]+)*)$')
+          .firstMatch(route)
+      case final m?) {
+    return CommunityForumBySlug(slug: m[1]!);
   }
   if (RegExp(r'^/community/posts/([0-9a-f-]{36})$').firstMatch(route)
       case final m?) {
