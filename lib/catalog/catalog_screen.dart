@@ -18,8 +18,19 @@ const _attributes = ['', 'red', 'blue', 'green', 'yellow', 'purple'];
 /// profile's presentation decides each tile's subhead, emblems and marks,
 /// and the filters it offers.
 class CatalogScreen extends StatefulWidget {
-  const CatalogScreen({super.key, required this.profile, this.onOpen});
+  const CatalogScreen({
+    super.key,
+    required this.profile,
+    this.onOpen,
+    this.owned,
+    this.title,
+  });
   final CatalogProfile profile;
+
+  /// Only these entries (by id), each with a mark of the player's progress:
+  /// a save's own cards, items or band items.
+  final Map<String, String>? owned;
+  final String? title;
   final void Function(BuildContext context, Entry item)? onOpen;
 
   @override
@@ -57,7 +68,16 @@ class _CatalogScreenState extends State<CatalogScreen> {
       ],
       _ => <Entry>[],
     };
-    return (items, visuals);
+    final owned = widget.owned;
+    if (owned == null) return (items, visuals);
+    final kit = CatalogKit(profile, AppScope.of(context).text, api, visuals);
+    return (
+      [
+        for (final item in items)
+          if (owned.containsKey(kit.id(item))) item,
+      ],
+      visuals,
+    );
   }
 
   @override
@@ -110,7 +130,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
         }
         return BrowseScreen(
           key: ValueKey(profile.resource),
-          title: t(profile.label, profile.resource),
+          title: widget.title ?? t(profile.label, profile.resource),
           items: items,
           error: snapshot.error,
           onRetry: () => setState(() => _data = _load()),
@@ -129,7 +149,12 @@ class _CatalogScreenState extends State<CatalogScreen> {
             images: kit.images(item),
             aspectRatio: profile.aspectRatio,
             fit: profile.fit,
-            marks: kit.marks(item),
+            marks: [
+              ...kit.marks(item),
+              if (widget.owned?[kit.id(item)] case final progress?
+                  when progress.isNotEmpty)
+                TileMark.text(MarkAt.bottomEnd, progress),
+            ],
             placeholder: profile.icon,
             onTap: () => widget.onOpen?.call(context, item),
           ),

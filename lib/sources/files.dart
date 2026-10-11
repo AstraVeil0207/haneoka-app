@@ -99,8 +99,15 @@ class FileSaveSource {
         continue;
       }
       if (p.split(entry.name).any(skippedDirectories.contains)) continue;
-      final modified = DateTime.fromMillisecondsSinceEpoch(
-        entry.lastModTime * 1000,
+      // ZIP entries carry DOS date and time, local to the machine that packed them.
+      final dos = entry.lastModDateTime;
+      final modified = DateTime(
+        dos.year,
+        dos.month,
+        dos.day,
+        dos.hour,
+        dos.minute,
+        dos.second,
       );
       collector.offer(
         SaveCandidate(
