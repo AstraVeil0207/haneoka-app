@@ -16,6 +16,7 @@ import 'master.dart';
 import 'num.dart';
 import 'objectives.dart';
 import 'power.dart';
+import 'pt_eligibility.dart';
 import 'search.dart';
 import 'skills.dart';
 
@@ -112,6 +113,18 @@ class ConstraintInput {
   final String? leader;
   final List<(String, String?)> bindings;
   final bool noSnaps;
+  Map<String, Object?> toJson() => {
+    'requiredMembers': requiredMembers,
+    'excludedMembers': excludedMembers,
+    'requiredSnaps': requiredSnaps,
+    'excludedSnaps': excludedSnaps,
+    'leader': leader,
+    'bindings': [
+      for (final (member, snap) in bindings) [member, snap],
+    ],
+    'noSnaps': noSnaps,
+    'minBonusPercent': minBonusPercent,
+  };
 
   /// Event bonus floor in percent.
   final double? minBonusPercent;
@@ -145,6 +158,19 @@ sealed class Goal {
         songs: songs(json['songs']),
         consumption: (json['consumption'] as num).toInt(),
         play: play(),
+        ptOnly: json['ranking'] == 'pt-only',
+        cpExchange: json['cpExchange'] is Map
+            ? CpExchange(
+                intOf(objectRow(json['cpExchange'])['numerator']),
+                intOf(objectRow(json['cpExchange'])['denominator'], 1),
+              )
+            : null,
+        gekiso: json['gekiso'] is Map
+            ? (
+                just: numOf(objectRow(json['gekiso'])['just']),
+                luckSamples: intOf(objectRow(json['gekiso'])['luckSamples'], 1),
+              )
+            : null,
       ),
       'gekiso' => GekisoGoal(
         songs: songs(json['songs']),
@@ -196,7 +222,54 @@ class EventGoal extends Goal {
     required this.songs,
     required this.consumption,
     required this.play,
+    this.ptOnly = false,
+    this.cpExchange,
+    this.gekiso,
   });
+
+  /// Strict reward recommendation: exact inputs, AP solo/challenge lives,
+  /// reward-only ordering (`ranking: "pt-only"`).
+  final bool ptOnly;
+
+  /// Best challenge payout per CP for this objective (solo trial only).
+  final CpExchange? cpExchange;
+
+  /// Non-challenge Gekisou rewards, using per-outcome settlement.
+  final ({double just, int luckSamples})? gekiso;
+
+  EventGoal copyWith({
+    String? measure,
+    RouteKind? route,
+    List<SongRef>? songs,
+    int? consumption,
+    CpExchange? cpExchange,
+    bool dropGekiso = false,
+  }) => EventGoal(
+    measure: measure ?? this.measure,
+    route: route ?? this.route,
+    eventId: eventId,
+    songs: songs ?? this.songs,
+    consumption: consumption ?? this.consumption,
+    play: play,
+    ptOnly: ptOnly,
+    cpExchange: cpExchange ?? this.cpExchange,
+    gekiso: dropGekiso ? null : gekiso,
+  );
+
+  Map<String, Object?> toJson() => {
+    'kind': 'event',
+    'measure': measure,
+    'route': route.name,
+    'eventId': eventId,
+    'songs': [for (final song in songs) song.toJson()],
+    'consumption': consumption,
+    'play': play.toJson(),
+    if (ptOnly) 'ranking': 'pt-only',
+    if (cpExchange case final cp?)
+      'cpExchange': {'numerator': cp.numerator, 'denominator': cp.denominator},
+    if (gekiso case final g?)
+      'gekiso': {'just': g.just, 'luckSamples': g.luckSamples, 'rank': 1},
+  };
 
   /// `points`, `items` or `challenge-points`.
   final String measure;
@@ -267,6 +340,7 @@ class EngineRequest {
     this.constraints = const ConstraintInput(),
     this.k = 5,
     this.timeLimitMs,
+    this.rewardCutoff,
   });
   factory EngineRequest.fromJson(Map<String, Object?> json) => EngineRequest(
     members: [
@@ -285,7 +359,12 @@ class EngineRequest {
     constraints: ConstraintInput.fromJson(objectRow(json['constraints'])),
     k: (json['k'] as num?)?.toInt() ?? 5,
     timeLimitMs: (json['timeLimitMs'] as num?)?.toDouble(),
+    rewardCutoff: (json['rewardCutoff'] as num?)?.toDouble(),
   );
+
+  /// Other songs' Top-K key. Only a pt-only k=1 request may prove this song
+  /// strictly below the cutoff.
+  final double? rewardCutoff;
   final List<MemberInput> members;
   final List<SnapInput> snaps;
   final PlayerInput player;
@@ -295,7 +374,11 @@ class EngineRequest {
   final int k;
   final double? timeLimitMs;
 
-  EngineRequest withGoal(Goal goal, double? timeLimitMs) => EngineRequest(
+  EngineRequest withGoal(
+    Goal goal,
+    double? timeLimitMs, {
+    double? rewardCutoff,
+  }) => EngineRequest(
     members: members,
     snaps: snaps,
     player: player,
@@ -304,7 +387,20 @@ class EngineRequest {
     constraints: constraints,
     k: k,
     timeLimitMs: timeLimitMs,
+    rewardCutoff: rewardCutoff,
   );
+
+  /// Event requests only (the reward recommendation keeps them).
+  Map<String, Object?> toJson() => {
+    'members': [for (final row in members) row.toJson()],
+    'snaps': [for (final row in snaps) row.toJson()],
+    'player': player.toJson(),
+    'unknownPolicy': unknownPolicy.name,
+    'goal': (goal as EventGoal).toJson(),
+    'constraints': constraints.toJson(),
+    'k': k,
+    'timeLimitMs': timeLimitMs,
+  };
 }
 
 class HitScore {
@@ -349,7 +445,31 @@ class HitEvent {
     required this.challengePoints,
     required this.perPlayMin,
     required this.perPlayMax,
+    this.rewardSum,
+    this.comparisonSum,
+    this.orders,
+    this.directMean,
+    this.convertedMean,
   });
+  factory HitEvent.fromJson(Map<String, Object?> json) => HitEvent(
+    mean: numOf(json['mean']),
+    bonusPercent: numOf(json['bonusPercent']),
+    challengePoints: numOf(json['challengePoints']),
+    perPlayMin: numOf(json['perPlayMin']),
+    perPlayMax: numOf(json['perPlayMax']),
+    rewardSum: (json['rewardSum'] as num?)?.toDouble(),
+    comparisonSum: (json['comparisonSum'] as num?)?.toDouble(),
+    orders: (json['orders'] as num?)?.toInt(),
+    directMean: (json['directMean'] as num?)?.toDouble(),
+    convertedMean: (json['convertedMean'] as num?)?.toDouble(),
+  );
+
+  /// Exact order sums of the strict trial; mean includes CP conversion.
+  final double? rewardSum;
+  final double? comparisonSum;
+  final int? orders;
+  final double? directMean;
+  final double? convertedMean;
   final double mean;
   final double bonusPercent;
   final double challengePoints;
@@ -361,6 +481,11 @@ class HitEvent {
     'challengePoints': challengePoints,
     'perPlayMin': perPlayMin,
     'perPlayMax': perPlayMax,
+    'rewardSum': ?rewardSum,
+    'comparisonSum': ?comparisonSum,
+    'orders': ?orders,
+    'directMean': ?directMean,
+    'convertedMean': ?convertedMean,
   };
 }
 
@@ -409,16 +534,21 @@ class SongResult {
     required this.proven,
     required this.bound,
     required this.stats,
+    this.excludedBelow,
   });
   final SongRef? song;
   List<EngineHit> hits;
   bool proven;
   double? bound;
   final SearchStats stats;
+
+  /// Exhaustive proof that no team in this scope reaches this key.
+  double? excludedBelow;
   Map<String, Object?> toJson() => {
     'song': song?.toJson(),
     'proven': proven,
     'bound': bound,
+    'excludedBelow': ?excludedBelow,
     'stats': stats.toJson(),
     'hits': [for (final hit in hits) hit.toJson()],
   };
@@ -494,7 +624,7 @@ class ChartCache {
       if (song == null || difficulty == null) {
         return Future.error(RangeError('unknown-chart:${ref.key}'));
       }
-      value = load(ref).then(
+      value = source(ref).then(
         (source) => gekisoChart(
           master,
           source,
@@ -510,6 +640,16 @@ class ChartCache {
     return value;
   }
 
+  final _sources = <SongRef, Future<RuntimeChart>>{};
+
+  /// The converted chart file, kept for the few most recent songs.
+  Future<RuntimeChart> source(SongRef ref) {
+    final value = _sources.remove(ref) ?? load(ref);
+    _sources[ref] = value;
+    if (_sources.length > 4) _sources.remove(_sources.keys.first);
+    return value;
+  }
+
   Future<CompiledChart> chart(SongRef ref) {
     var value = _charts.remove(ref);
     if (value == null) {
@@ -520,7 +660,7 @@ class ChartCache {
       if (song == null || difficulty == null) {
         return Future.error(RangeError('unknown-chart:${ref.key}'));
       }
-      value = load(ref)
+      value = source(ref)
           .then((source) => compileChart(master, song, difficulty, source));
       final pending = value;
       pending.catchError((Object _) {
@@ -712,6 +852,18 @@ Future<EngineResponse> runEngine(
   final clock = Stopwatch()..start();
   double now() => clock.elapsedMicroseconds / 1000;
   final goal = request.goal;
+  final ptTrial = goal is EventGoal && goal.ptOnly;
+  final rewardCutoff = request.rewardCutoff;
+  if (rewardCutoff != null &&
+      (!ptTrial || request.k != 1 || !rewardCutoff.isFinite)) {
+    throw StateError('invalid-reward-cutoff');
+  }
+  if (ptTrial) {
+    final issues = validatePtRequest(master, request);
+    if (issues.isNotEmpty) {
+      throw StateError('pt-input:${[for (final i in issues) i.key].join(',')}');
+    }
+  }
   if (goal is PlanGoal) {
     return _runPlan(
       master,
@@ -787,6 +939,9 @@ Future<EngineResponse> runEngine(
         : null,
   );
   for (final (index, song) in songs.indexed) {
+    if (ptTrial && song != null) {
+      validatePtChart(master, song, await charts.source(song));
+    }
     songsLeft = songs.length - index;
     onProgress?.call(index, songs.length);
     final challengeId = switch (goal) {
@@ -873,6 +1028,42 @@ Future<EngineResponse> runEngine(
         final context = played
             ? LiveContext(master, members, snaps, live!, goal.play)
             : null;
+        final measured = played && goal.measure != 'challenge-points';
+        // Under another song's cutoff, the uncapped bounds alone usually
+        // prove this song cannot reach it.
+        if (rewardCutoff != null && measured) {
+          final quick = eventObjective(
+            shared,
+            context,
+            chart,
+            route,
+            points,
+            master.params.skipRank,
+            ptOnly: goal.ptOnly,
+            exchange: goal.cpExchange,
+          );
+          final probe = run(
+            quick,
+            music,
+            powerEffects,
+            limitMs: 150,
+            floor: rewardCutoff,
+          );
+          if (probe.proven &&
+              !probe.hits.any((hit) => hit.key >= rewardCutoff)) {
+            results.add(
+              SongResult(
+                song: song,
+                proven: false,
+                bound: rewardCutoff,
+                excludedBelow: rewardCutoff,
+                stats: probe.stats,
+                hits: [],
+              ),
+            );
+            continue;
+          }
+        }
         var scoreCap = inf;
         if (played) {
           final capKey =
@@ -902,6 +1093,8 @@ Future<EngineResponse> runEngine(
           points,
           master.params.skipRank,
           scoreCap: scoreCap,
+          ptOnly: goal.ptOnly,
+          exchange: goal.cpExchange,
         );
         var adapter = objective;
         if (goal.measure == 'challenge-points' && chart != null) {
@@ -958,19 +1151,20 @@ Future<EngineResponse> runEngine(
             _eventPrep[prepKey] = prep;
           }
           final floor = prep.aspiration;
+          final searchFloor = math.max(floor ?? -inf, rewardCutoff ?? -inf);
           out = run(
             adapter,
             music,
             powerEffects,
             seeds: prep.seeds,
-            floor: floor,
+            floor: searchFloor.isFinite ? searchFloor : null,
           );
           final enough =
               out.hits
                   .where((hit) => floor == null || hit.key >= floor)
                   .length >=
               request.k;
-          if (!enough) {
+          if (!enough && rewardCutoff == null) {
             out = run(adapter, music, powerEffects, seeds: prep.seeds);
           }
         } else {
@@ -980,7 +1174,7 @@ Future<EngineResponse> runEngine(
         var hits = out.hits;
         var proven = out.proven;
         var bound = out.bound;
-        if (hits.isNotEmpty && played && goal.measure != 'challenge-points') {
+        if (hits.isNotEmpty && measured && !goal.ptOnly) {
           final ordered = <SearchHit<EventDetail>>[];
           final keys = {for (final hit in hits) hit.key}.toList()
             ..sort((a, b) => b.compareTo(a));
@@ -1041,9 +1235,23 @@ Future<EngineResponse> runEngine(
                     );
                   }
                   final perOrder = detail.perOrder;
+                  final exchange = goal.cpExchange;
                   return base
                     ..event = HitEvent(
-                      mean: detail.mean,
+                      rewardSum: ptTrial ? detail.rewardSum : null,
+                      comparisonSum: ptTrial ? detail.comparisonSum : null,
+                      orders: ptTrial ? orders.length : null,
+                      directMean: ptTrial && detail.rewardSum != null
+                          ? detail.rewardSum! / orders.length
+                          : null,
+                      convertedMean: !ptTrial
+                          ? null
+                          : exchange != null
+                          ? detail.challengePoints *
+                                exchange.numerator /
+                                exchange.denominator
+                          : 0,
+                      mean: detail.mean / (exchange?.denominator ?? 1),
                       bonusPercent: detail.bonus / 100,
                       challengePoints: detail.challengePoints,
                       perPlayMin:
@@ -1117,6 +1325,18 @@ Future<EngineResponse> runEngine(
         );
       case PlanGoal():
         break;
+    }
+    if (rewardCutoff != null && results.isNotEmpty) {
+      final result = results.last;
+      result.hits = [
+        for (final hit in result.hits)
+          if (hit.key >= rewardCutoff) hit,
+      ];
+      if (result.proven && result.hits.isEmpty) {
+        result.excludedBelow = rewardCutoff;
+        result.proven = false;
+        result.bound = rewardCutoff;
+      }
     }
   }
   return EngineResponse(

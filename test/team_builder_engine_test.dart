@@ -45,6 +45,11 @@ void main() {
         final want = expectedResults[r] as Map<String, Object?>;
         final got = actualResults[r] as Map<String, Object?>;
         expect(got['proven'], want['proven'], reason: 'proven');
+        expect(
+          got['excludedBelow'],
+          want['excludedBelow'],
+          reason: 'excludedBelow',
+        );
         final wantHits = want['hits'] as List;
         final gotHits = got['hits'] as List;
         expect(gotHits.length, wantHits.length, reason: 'hit count');
@@ -85,6 +90,14 @@ void main() {
               'challengePoints',
               'perPlayMin',
               'perPlayMax',
+              for (final extra in [
+                'rewardSum',
+                'comparisonSum',
+                'orders',
+                'directMean',
+                'convertedMean',
+              ])
+                if (we.containsKey(extra)) extra,
             ]) {
               expect(ge![field], we[field], reason: '$at event.$field');
             }
