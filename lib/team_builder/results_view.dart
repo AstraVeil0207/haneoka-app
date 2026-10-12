@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+import '../catalog/catalog_screen.dart' show cardRarityName;
+
 import '../ui/app_image.dart';
 import '../ui/theme.dart';
 import '../ui/tile.dart';
@@ -17,6 +19,7 @@ import 'controller.dart';
 import 'engine/api.dart';
 import 'engine/live.dart' show orders;
 import 'engine_client.dart';
+import 'result_image.dart';
 import 'settings.dart';
 import 'widgets.dart';
 
@@ -491,6 +494,20 @@ class _HitCardState extends State<_HitCard> {
         ?.showSnackBar(SnackBar(content: Text(c.tb('copied', 'Copied'))));
   }
 
+  bool _rendering = false;
+
+  /// `exportImage`.
+  Future<void> _saveImage() async {
+    setState(() => _rendering = true);
+    try {
+      await saveResultImage(
+        await renderHitImage(c, hit, _primary(), Theme.of(context).colorScheme),
+      );
+    } finally {
+      if (mounted) setState(() => _rendering = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -582,6 +599,11 @@ class _HitCardState extends State<_HitCard> {
                   tooltip: c.tb('copyTeam', 'Copy as text'),
                   onPressed: _copy,
                   icon: const Icon(Symbols.content_copy_rounded),
+                ),
+                IconButton(
+                  tooltip: c.tb('saveImage', 'Save image'),
+                  onPressed: _rendering ? null : _saveImage,
+                  icon: const Icon(Symbols.image_rounded),
                 ),
               ],
             ),
@@ -1243,4 +1265,75 @@ class _DensityPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_DensityPainter old) => old.timeline != timeline;
+}
+
+/// A result as the website's shareable image (`exportImage`).
+Future<List<int>> renderHitImage(
+  TeamBuilderController c,
+  EngineHit hit,
+  ({String label, String value}) main,
+  ColorScheme scheme,
+) {
+  final catalog = c.catalog!;
+  final locale = c.state.text.locale;
+  ResultImageCard card(bool members, int id, bool leader) {
+    final characters = catalog.characterIds(members, id);
+    return ResultImageCard(
+      title: catalog.cardName(members, id),
+      character: [
+        for (final character in characters) catalog.characterName(character),
+      ].join(' · '),
+      image: catalog.cardImage(members, id),
+      avatars: [
+        for (final character in characters)
+          if (catalog.characterFace(character).isNotEmpty)
+            catalog.characterFace(character),
+      ],
+      attribute: catalog.attributeIcon(catalog.attribute(members, id)),
+      rarity: catalog.rarityIcon(catalog.rarity(members, id)),
+      attributeLabel: catalog.attributeName(catalog.attribute(members, id)),
+      rarityLabel: cardRarityName(catalog.rarity(members, id)),
+      leader: leader,
+    );
+  }
+
+  return renderTeamResultImage(
+    TeamResultImage(
+      title: c.tb('title', 'Team builder'),
+      subtitle: hit.song == null
+          ? main.label
+          : '${catalog.songTitle(hit.song!.songId)} · ${catalog.difficultyLabel(hit.song!.songId, hit.song!.difficulty)}',
+      membersLabel: c.tb('members', 'Members'),
+      snapshotsLabel: c.tb('snapshots', 'Snaps'),
+      leaderLabel: c.tb('leader', 'Leader'),
+      emptyLabel: c.tb('noSnap', 'No snap'),
+      imageUnavailableLabel: c.tb('imageUnavailable', 'Image unavailable'),
+      members: [
+        for (final (index, key) in hit.members.indexed)
+          card(true, cardIdOf(key), index == 0),
+      ],
+      snapshots: [
+        for (final key in hit.snaps)
+          key == null ? null : card(false, cardIdOf(key), false),
+      ],
+      metrics: [
+        (main.label, main.value),
+        (c.tb('power', 'Power'), formatNumber(locale, hit.power)),
+        if (hit.score case final score?)
+          (
+            c.tb('scoreRange', 'Range'),
+            '${formatNumber(locale, score.min)} – ${formatNumber(locale, score.max)}',
+          ),
+      ],
+      footer: const ['haneoka.org'],
+      theme: ResultImageTheme(
+        surface: scheme.surface,
+        container: scheme.surfaceContainer,
+        text: scheme.onSurface,
+        muted: scheme.onSurfaceVariant,
+        primary: scheme.primary,
+        outline: scheme.outlineVariant,
+      ),
+    ),
+  );
 }
