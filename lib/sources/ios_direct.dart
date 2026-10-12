@@ -9,7 +9,7 @@ import 'plist.dart';
 enum IosDirectAccess { available, restricted }
 
 /// Reads only Our Notes Documents in an already-unsandboxed environment.
-/// Ordinary iOS installations keep using Files/shared archives or backups.
+/// Ordinary iOS installations import save files or backups exported on a computer.
 class IosDirectSaveSource {
   static const roots = [
     '/var/mobile/Containers/Data/Application',

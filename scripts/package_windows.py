@@ -123,7 +123,8 @@ Filename: "{{app}}\\haneoka.exe"; Description: "Open Haneoka"; Flags: nowait pos
     ET.ElementTree(wix).write(source, encoding='utf-8', xml_declaration=True)
     subprocess.run(['wix', 'build', str(source), '-arch', args.arch,
                     '-o', str(output / f'{name}.msi')], check=True)
-    print(f'Created ZIP, EXE, MSI: {output}')
+    (output / f'{name}.wixpdb').unlink(missing_ok=True)
+    print(f'Created portable ZIP, EXE, MSI: {output}')
 
 
 if __name__ == '__main__':

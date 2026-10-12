@@ -131,7 +131,7 @@ class _ImportScreenState extends State<ImportScreen> {
         _say(
           AppScope.of(context).text(
             'app.import.iosDirectRestricted',
-            'This installation cannot read another app’s private files. Use Files/Share or import an exported backup.',
+            'This installation cannot read another app’s private files. Export the Our Notes saves or backup on a computer, then import the exported files.',
           ),
         );
       }
@@ -425,7 +425,7 @@ class _ImportScreenState extends State<ImportScreen> {
                 )
               : AppScope.of(context).text(
                   'app.import.iosDirectRestricted',
-                  'This installation cannot read another app’s private files. Use Files/Share or import an exported backup.',
+                  'This installation cannot read another app’s private files. Export the Our Notes saves or backup on a computer, then import the exported files.',
                 ),
           actions: [
             FilledButton.icon(
@@ -483,7 +483,7 @@ class _ImportScreenState extends State<ImportScreen> {
         note: Platform.isIOS
             ? AppScope.of(context).text(
                 'app.import.iosAccess',
-                'If Our Notes exposes its files in the Files app, choose the save there. Otherwise export its app data or a local backup on a computer, then transfer the save files, ZIP, or .imazingapp to this device. You can also use Share → Haneoka.',
+                'Our Notes does not expose its saves in the Files app. Standard iOS installations require game data exported on a computer through iMazing or a local device backup. Transfer the exported save files, ZIP, or .imazingapp to this device, then select those files below or use Share → Haneoka.',
               )
             : null,
         actions: [

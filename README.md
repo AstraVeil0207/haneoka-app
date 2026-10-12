@@ -64,8 +64,9 @@ button and links to the four tools. The source reads the version, build number,
 minimum iOS version, bundle ID and permissions from the actual standard IPA.
 AltStore PAL is a separate notarized marketplace route and is not configured.
 Physical-device installation and refresh still need verification.
- Standard iOS installations
-import through Files/Share or an exported archive/backup.
+ Our Notes does not expose its saves in Files. Standard iOS installations
+import saves or backups exported on a computer; Files/Share selects those
+exported files after they are transferred to the device.
 
 The separate `haneoka-ios-trollstore.tipa` enables existing unsandboxed
 container access. On a compatible [TrollStore](https://github.com/opa334/TrollStore)
@@ -98,7 +99,7 @@ phones, USB authorization and Wi-Fi pairing. The app uses bundled ADB first,
 then PATH/SDK/custom ADB as a fallback. Windows may need an
 [OEM USB driver](https://developer.android.com/studio/run/oem-usb).
 
-The game stores its saves in `Android/data/<package>/files/<account>/` on Android and in the app's `Documents` on iOS. Since Android 11 only the shell user can read `Android/data`; Shizuku and `adb` both read as that user. Standard iOS installations use Files/shared archives or an exported backup.
+The game stores its saves in `Android/data/<package>/files/<account>/` on Android and in the app's `Documents` on iOS. Since Android 11 only the shell user can read `Android/data`; Shizuku and `adb` both read as that user. Standard iOS installations import save files or backups exported on a computer.
 The separate privileged installation can directly read an already-accessible
 Our Notes container; the import page detects access and offers the appropriate
 workflow. [iMazing](https://imazing.com/download),
