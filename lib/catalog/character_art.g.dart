@@ -103,3 +103,364 @@ const characterArt = <int, List<String>>{
     '/images/characters/shizuku_shinomiya/portrait_alt.png',
   ],
 };
+
+class CharacterPortrait {
+  const CharacterPortrait(this.source, this.width, this.height, this.bounds);
+  final String source;
+  final double width;
+  final double height;
+  final List<double> bounds;
+}
+
+const characterPortraits = <int, List<CharacterPortrait>>{
+  1: [
+    CharacterPortrait(
+      '/images/characters/tomori_takamatsu/portrait.png',
+      1800,
+      2160,
+      [622, 187, 541, 1660],
+    ),
+    CharacterPortrait(
+      '/images/characters/tomori_takamatsu/portrait_alt.webp',
+      1800,
+      2160,
+      [712, 192, 392, 1661],
+    ),
+  ],
+  2: [
+    CharacterPortrait(
+      '/images/characters/anon_chihaya/portrait.png',
+      1800,
+      2160,
+      [506, 0, 912, 1929],
+    ),
+    CharacterPortrait(
+      '/images/characters/anon_chihaya/portrait_alt.webp',
+      1800,
+      2160,
+      [402, 192, 789, 1734],
+    ),
+  ],
+  3: [
+    CharacterPortrait(
+      '/images/characters/rana_kaname/portrait.png',
+      1800,
+      2160,
+      [619, 190, 901, 1682],
+    ),
+    CharacterPortrait(
+      '/images/characters/rana_kaname/portrait_alt.webp',
+      1800,
+      2160,
+      [525, 191, 788, 1682],
+    ),
+  ],
+  4: [
+    CharacterPortrait(
+      '/images/characters/soyo_nagasaki/portrait.png',
+      1800,
+      2160,
+      [300, 191, 1050, 1740],
+    ),
+    CharacterPortrait(
+      '/images/characters/soyo_nagasaki/portrait_alt.webp',
+      1800,
+      2160,
+      [533, 189, 639, 1743],
+    ),
+  ],
+  5: [
+    CharacterPortrait(
+      '/images/characters/taki_shiina/portrait.png',
+      1800,
+      2160,
+      [630, 190, 564, 1666],
+    ),
+    CharacterPortrait(
+      '/images/characters/taki_shiina/portrait_alt.webp',
+      1800,
+      2160,
+      [426, 73, 806, 1783],
+    ),
+  ],
+  6: [
+    CharacterPortrait(
+      '/images/characters/uika_misumi/portrait.png',
+      1800,
+      2160,
+      [549, 156, 963, 1714],
+    ),
+    CharacterPortrait(
+      '/images/characters/uika_misumi/portrait_alt.webp',
+      1800,
+      2160,
+      [606, 126, 523, 1844],
+    ),
+  ],
+  7: [
+    CharacterPortrait(
+      '/images/characters/mutsumi_wakaba/portrait.png',
+      1800,
+      2160,
+      [503, 111, 771, 1698],
+    ),
+    CharacterPortrait(
+      '/images/characters/mutsumi_wakaba/portrait_alt.webp',
+      1800,
+      2160,
+      [625, 147, 660, 1670],
+    ),
+  ],
+  8: [
+    CharacterPortrait(
+      '/images/characters/umiri_yahata/portrait.png',
+      1800,
+      2160,
+      [561, 139, 704, 1715],
+    ),
+    CharacterPortrait(
+      '/images/characters/umiri_yahata/portrait_alt.webp',
+      1800,
+      2160,
+      [726, 160, 557, 1696],
+    ),
+  ],
+  9: [
+    CharacterPortrait(
+      '/images/characters/nyamu_yutenji/portrait.png',
+      1800,
+      2160,
+      [541, 156, 688, 1742],
+    ),
+    CharacterPortrait(
+      '/images/characters/nyamu_yutenji/portrait_alt.webp',
+      1800,
+      2160,
+      [701, 153, 505, 1784],
+    ),
+  ],
+  10: [
+    CharacterPortrait(
+      '/images/characters/sakiko_togawa/portrait.png',
+      1800,
+      2160,
+      [358, 124, 1307, 1699],
+    ),
+    CharacterPortrait(
+      '/images/characters/sakiko_togawa/portrait_alt.webp',
+      1800,
+      2160,
+      [513, 123, 729, 1700],
+    ),
+  ],
+  11: [
+    CharacterPortrait(
+      '/images/characters/arale_nakamachi/portrait.png',
+      1800,
+      2160,
+      [424, 138, 815, 1695],
+    ),
+    CharacterPortrait(
+      '/images/characters/arale_nakamachi/portrait_alt.webp',
+      1800,
+      2160,
+      [516, 255, 768, 1733],
+    ),
+  ],
+  12: [
+    CharacterPortrait(
+      '/images/characters/nonoka_miyanaga/portrait.png',
+      1800,
+      2160,
+      [501, 172, 859, 1735],
+    ),
+    CharacterPortrait(
+      '/images/characters/nonoka_miyanaga/portrait_alt.webp',
+      1800,
+      2160,
+      [554, 147, 719, 1781],
+    ),
+  ],
+  13: [
+    CharacterPortrait(
+      '/images/characters/ritsu_minetsuki/portrait.png',
+      1800,
+      2160,
+      [570, 171, 636, 1628],
+    ),
+    CharacterPortrait(
+      '/images/characters/ritsu_minetsuki/portrait_alt.webp',
+      1800,
+      2160,
+      [640, 174, 471, 1712],
+    ),
+  ],
+  14: [
+    CharacterPortrait(
+      '/images/characters/miyako_fuji/portrait.png',
+      1200,
+      1440,
+      [383, 108, 645, 1145],
+    ),
+    CharacterPortrait(
+      '/images/characters/miyako_fuji/portrait_alt.webp',
+      1800,
+      2160,
+      [653, 187, 634, 1604],
+    ),
+  ],
+  15: [
+    CharacterPortrait(
+      '/images/characters/yuno_sengoku/portrait.png',
+      1800,
+      2160,
+      [517, 157, 1080, 1804],
+    ),
+    CharacterPortrait(
+      '/images/characters/yuno_sengoku/portrait_alt.webp',
+      1800,
+      2160,
+      [618, 138, 606, 1689],
+    ),
+  ],
+  16: [
+    CharacterPortrait(
+      '/images/characters/hotaru_shiomi/portrait.png',
+      1800,
+      2160,
+      [318, 159, 1143, 1647],
+    ),
+    CharacterPortrait(
+      '/images/characters/hotaru_shiomi/portrait_alt.png',
+      1800,
+      2160,
+      [411, 159, 786, 1652],
+    ),
+  ],
+  17: [
+    CharacterPortrait(
+      '/images/characters/natsume_izawa/portrait.png',
+      1800,
+      2160,
+      [549, 159, 888, 1731],
+    ),
+    CharacterPortrait(
+      '/images/characters/natsume_izawa/portrait_alt.png',
+      1800,
+      2160,
+      [688, 162, 426, 1758],
+    ),
+  ],
+  18: [
+    CharacterPortrait(
+      '/images/characters/nagi_kotohira/portrait.png',
+      1800,
+      2160,
+      [540, 133, 737, 1731],
+    ),
+    CharacterPortrait(
+      '/images/characters/nagi_kotohira/portrait_alt.png',
+      1800,
+      2160,
+      [674, 136, 506, 1732],
+    ),
+  ],
+  19: [
+    CharacterPortrait(
+      '/images/characters/mahoro_hamasaki/portrait.png',
+      1800,
+      2160,
+      [553, 54, 742, 1781],
+    ),
+    CharacterPortrait(
+      '/images/characters/mahoro_hamasaki/portrait_alt.png',
+      1800,
+      2160,
+      [607, 156, 571, 1683],
+    ),
+  ],
+  20: [
+    CharacterPortrait(
+      '/images/characters/houka_izumi/portrait.png',
+      1800,
+      2160,
+      [656, 148, 495, 1757],
+    ),
+    CharacterPortrait(
+      '/images/characters/houka_izumi/portrait_alt.png',
+      1800,
+      2160,
+      [588, 147, 571, 1763],
+    ),
+  ],
+  21: [
+    CharacterPortrait(
+      '/images/characters/raika_suga/portrait.png',
+      1800,
+      2160,
+      [573, 164, 984, 1757],
+    ),
+    CharacterPortrait(
+      '/images/characters/raika_suga/portrait_alt.png',
+      1800,
+      2160,
+      [609, 160, 691, 1759],
+    ),
+  ],
+  22: [
+    CharacterPortrait(
+      '/images/characters/miku_mahashi/portrait.png',
+      1800,
+      2160,
+      [582, 163, 818, 1770],
+    ),
+    CharacterPortrait(
+      '/images/characters/miku_mahashi/portrait_alt.png',
+      1800,
+      2160,
+      [706, 163, 472, 1774],
+    ),
+  ],
+  23: [
+    CharacterPortrait(
+      '/images/characters/yomogi_yakura/portrait.png',
+      1800,
+      2160,
+      [637, 58, 497, 1925],
+    ),
+    CharacterPortrait(
+      '/images/characters/yomogi_yakura/portrait_alt.png',
+      1800,
+      2160,
+      [456, 159, 591, 1796],
+    ),
+  ],
+  24: [
+    CharacterPortrait(
+      '/images/characters/chieri_umezato/portrait.png',
+      1800,
+      2160,
+      [561, 0, 609, 2012],
+    ),
+    CharacterPortrait(
+      '/images/characters/chieri_umezato/portrait_alt.png',
+      1800,
+      2160,
+      [641, 288, 528, 1697],
+    ),
+  ],
+  25: [
+    CharacterPortrait(
+      '/images/characters/shizuku_shinomiya/portrait.png',
+      1800,
+      2160,
+      [686, 164, 401, 1572],
+    ),
+    CharacterPortrait(
+      '/images/characters/shizuku_shinomiya/portrait_alt.png',
+      1800,
+      2160,
+      [625, 163, 566, 1574],
+    ),
+  ],
+};

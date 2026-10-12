@@ -1,18 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
-import '../catalog/browse.dart' show naturalCompare;
+import '../catalog/browse.dart';
 import '../catalog/visuals.dart';
+import '../catalog/cross_server.dart';
+import '../community/entity_comments.dart';
 import '../core/api.dart';
 import '../core/app_state.dart';
-import '../core/audio.dart';
+import '../core/voice.dart';
 import '../core/i18n.dart';
+import '../core/image_dimensions.dart';
 import '../core/provider_api.dart';
+import '../core/page_data.dart';
+import '../core/relative_time.dart';
 import '../shell/page.dart';
 import '../ui/app_image.dart';
 import '../ui/detail.dart';
-import '../ui/theme.dart';
 import '../ui/tile.dart';
+import 'transcript.dart';
+import 'transcript_view.dart';
 
 /// The website's story sections (`StoryMode`).
 const storyModes = [
@@ -118,6 +125,8 @@ class StoriesScreen extends StatefulWidget {
 class _StoriesScreenState extends State<StoriesScreen> {
   Future<_StoryData>? _data;
   String? _rail;
+  BrowseView _view = BrowseView.grid;
+  int? _partner;
 
   /// `id`, `title`, `release` or `duration` (`defaultSort`).
   String? _sort;
@@ -129,8 +138,78 @@ class _StoriesScreenState extends State<StoriesScreen> {
   bool get _defaultDescending =>
       widget.mode == 'card' || _defaultSort == 'release';
   String _query = '';
-  final Set<int> _characters = {};
-  final Set<int> _bands = {};
+  final _queryField = GlobalKey<FormFieldState<String>>();
+  final _facets = <String, Set<String>>{};
+  DateTime? _releaseFrom;
+  DateTime? _releaseTo;
+  int get _filterCount =>
+      _facets.values.fold(0, (sum, values) => sum + values.length) +
+      (_releaseFrom == null ? 0 : 1) +
+      (_releaseTo == null ? 0 : 1) +
+      (_query.trim().isEmpty ? 0 : 1);
+
+  List<int> _characterIds(Entry episode) => [
+    for (final value
+        in episode['characterIds'] as List? ?? [episode['characterId']])
+      if (value is num && value > 0) value.toInt(),
+  ];
+  Set<int> _bandIds(Entry episode, _StoryData data) => {
+    for (final value in episode['bandIds'] as List? ?? [episode['bandId']])
+      if (value is num && value > 0) value.toInt(),
+    for (final id in _characterIds(episode))
+      if (data.visuals.characters[id]?['bandId'] case final num band
+          when band > 0)
+        band.toInt(),
+    if ((data.chapters['${episode['chapterId']}'] as Map?)?['bandId']
+        case final num band when band > 0)
+      band.toInt(),
+  };
+  Iterable<String> _facetValues(String key, Entry e, _StoryData data) =>
+      switch (key) {
+        'character' => _characterIds(e).map((id) => '$id'),
+        'band' => _bandIds(e, data).map((id) => '$id'),
+        'kind' => [_group(e)],
+        'perspective' => [
+          if (e['perspectiveCharacterId'] case final num id when id > 0) '$id',
+        ],
+        'level' => [
+          if (e['unlockCharacterFriendshipLevel'] case final num level
+              when level > 0)
+            '$level',
+        ],
+        _ => [if (e[key] != null && '${e[key]}'.isNotEmpty) '${e[key]}'],
+      };
+  bool _matchesEpisode(Entry episode, _StoryData data, {String? omitted}) {
+    for (final facet in _facets.entries) {
+      if (facet.key != omitted &&
+          facet.value.isNotEmpty &&
+          !_facetValues(facet.key, episode, data).any(facet.value.contains)) {
+        return false;
+      }
+    }
+    final release = _releaseValue(episode);
+    if ((_releaseFrom != null || _releaseTo != null) && release <= 0) {
+      return false;
+    }
+    if (_releaseFrom != null &&
+        release < _releaseFrom!.millisecondsSinceEpoch) {
+      return false;
+    }
+    if (_releaseTo != null &&
+        release >=
+            DateTime(
+              _releaseTo!.year,
+              _releaseTo!.month,
+              _releaseTo!.day + 1,
+            ).millisecondsSinceEpoch) {
+      return false;
+    }
+    final query = _query.trim().toLowerCase();
+    final t = AppScope.of(context).text;
+    return '${t.text(episode['title'])} ${t.text(episode['description'])} ${t.text(episode['chapterName'])} ${episode['episodeNumber'] ?? ''}'
+        .toLowerCase()
+        .contains(query);
+  }
 
   @override
   void didChangeDependencies() {
@@ -140,12 +219,66 @@ class _StoriesScreenState extends State<StoriesScreen> {
 
   Future<_StoryData> _load() async {
     if (widget.api case final api?) return _loadProvider(api);
-    final api = AppScope.of(context).api;
-    final (document, visuals) = await (
-      api.catalog('stories'),
-      CatalogVisuals.of(api),
+    final state = AppScope.of(context);
+    final apis = state.catalogApis;
+    final servers = [
+      state.server,
+      ...apis.keys.where((server) => server != state.server),
+    ];
+    final (documents, visuals) = await (
+      Future.wait([
+        for (final server in servers)
+          apis[server]!
+              .catalog('stories')
+              .then<Object?>((value) => value, onError: (_) => null),
+      ]),
+      CatalogVisuals.of(state.api),
     ).wait;
-    return _StoryData((document as Map?) ?? const {}, visuals);
+    if (documents.every((document) => document == null)) {
+      throw StateError('Story catalog unavailable');
+    }
+    final sources = {
+      for (final (index, server) in servers.indexed) server: documents[index],
+    };
+    final episodes = await crossServerCollection(
+      resource: 'stories',
+      selected: state.server,
+      apis: apis,
+      rowsPath: 'episodes',
+      sourceDocuments: sources,
+    );
+    Map mergedMap(String key) => {
+      for (final document in documents.reversed.whereType<Map>())
+        ...((document[key] as Map?) ?? const {}),
+    };
+    final events = <String, Map>{};
+    final birthdays = <String, Map<String, Map>>{};
+    for (final document in documents.whereType<Map>()) {
+      for (final event
+          in (document['storyEvents'] as List? ?? const []).whereType<Map>()) {
+        events.putIfAbsent('${event['chapterId']}', () => event);
+      }
+      for (final group
+          in (document['birthdayStories'] as Map? ?? const {}).entries) {
+        final rows = birthdays.putIfAbsent('${group.key}', () => {});
+        for (final row in (group.value as List? ?? const []).whereType<Map>()) {
+          rows.putIfAbsent('${row['storyKey']}', () => row);
+        }
+      }
+    }
+    return _StoryData({
+      'episodes': {
+        for (final episode in episodes)
+          '${episode['storyKey'] ?? episode['_key']}': episode,
+      },
+      'chapters': mergedMap('chapters'),
+      'homeSpots': mergedMap('homeSpots'),
+      'storyEvents': events.values.toList(),
+      'birthdayStories': {
+        for (final group in birthdays.entries)
+          group.key: group.value.values.toList(),
+      },
+    }, visuals);
   }
 
   /// A provider's section, read as this release's document: episodes by id
@@ -218,6 +351,12 @@ class _StoriesScreenState extends State<StoriesScreen> {
             card['cardImage'],
         'storySort': card['releaseAt'],
         'cardId': card['cardId'],
+        'characterIds': [?character],
+        'rarity': card['rarity'],
+        'attribute': card['attribute'],
+        'cardThumbnails': card['cardThumbnails'],
+        'cardImages': card['cardImages'],
+        'releaseAt': card['releaseAt'],
       };
       chapters.putIfAbsent(
         '$character',
@@ -245,11 +384,17 @@ class _StoriesScreenState extends State<StoriesScreen> {
   String _railKey(Entry e, _StoryData data) => switch (widget.mode) {
     'link' => ([
       ...((e['characterIds'] as List?) ?? const []),
-    ]..sort((a, b) => '$a'.compareTo('$b'))).join('-'),
+    ]..sort((a, b) => jsNumber(a).compareTo(jsNumber(b)))).join('-'),
     'afterlive' => 'all',
     'home' => '${data.spotOfStory['${e['storyKey']}']?['spotId'] ?? ''}',
     _ => '${e['chapterId']}',
   };
+
+  bool _inRail(Entry episode, String? rail, _StoryData data) =>
+      rail == null ||
+      (widget.mode == 'link'
+          ? _characterIds(episode).contains(int.tryParse(rail))
+          : _railKey(episode, data) == rail);
 
   @override
   Widget build(BuildContext context) {
@@ -265,8 +410,12 @@ class _StoriesScreenState extends State<StoriesScreen> {
                 for (final e in data.episodes)
                   if (data.mode(e) == widget.mode) e,
               ];
-        final keys = <String>{for (final e in episodes) _railKey(e, data!)}
-            .toList();
+        final keys = widget.mode == 'link'
+            ? (<String>{
+                for (final episode in episodes)
+                  for (final id in _characterIds(episode)) '$id',
+              }.toList()..sort((a, b) => jsNumber(a).compareTo(jsNumber(b))))
+            : <String>{for (final e in episodes) _railKey(e, data!)}.toList();
         if (data != null && data.providerMode != null) {
           // Another game's chapters by first release, newest events first.
           num sortOf(String key) =>
@@ -309,28 +458,12 @@ class _StoriesScreenState extends State<StoriesScreen> {
           );
         }
         final rail = keys.contains(_rail) ? _rail! : keys.firstOrNull;
-        // A search reads every episode of the section, not just the rail's.
-        final query = _query.trim().toLowerCase();
-        List<int> ids(Object? value) => [
-          for (final v in value is List ? value : [?value])
-            if (v is num) v.toInt(),
-        ];
-        bool faceted(Entry e) =>
-            (_characters.isEmpty ||
-                ids(e['characterIds'] ?? e['characterId'])
-                    .any(_characters.contains)) &&
-            (_bands.isEmpty ||
-                ids(e['bandIds'] ?? e['bandId']).any(_bands.contains));
-        final filtering =
-            query.isNotEmpty || _characters.isNotEmpty || _bands.isNotEmpty;
-        bool matches(Entry e) =>
-            faceted(e) &&
-            '${t.text(e['title'])} ${t.text(e['description'])} ${t.text(e['chapterName'])} ${e['episodeNumber'] ?? ''}'
-                .toLowerCase()
-                .contains(query);
         final chosen = [
           for (final e in episodes)
-            if (filtering ? matches(e) : _railKey(e, data!) == rail) e,
+            if (_inRail(e, rail, data!) &&
+                _matchesEpisode(e, data) &&
+                (_partner == null || _characterIds(e).contains(_partner)))
+              e,
         ]..sort(_compareEpisodes);
         final groups = <(String, List<Entry>)>[
           (
@@ -361,24 +494,40 @@ class _StoriesScreenState extends State<StoriesScreen> {
         ].where((g) => g.$2.isNotEmpty).toList();
         return ShellPage(
           title: _label(t),
-          search: ShellSearch(
-            label: t('common.actions.search', 'Search'),
-            onChanged: (value) => setState(() => _query = value),
-          ),
           actions: [
             if (data != null)
               BarAction(
                 icon: Symbols.filter_alt_rounded,
                 label: t('common.actions.filter', 'Filter'),
-                badge: _characters.length + _bands.length,
-                onPressed: () => _filters(context, data, episodes, ids),
+                badge: _filterCount,
+                onPressed: () => _filters(context, data, episodes, rail),
               ),
+            BarAction.choice(
+              label: t('common.actions.view', 'View'),
+              options: [
+                for (final (view, icon, key) in [
+                  (BrowseView.grid, Symbols.grid_view_rounded, 'grid'),
+                  (BrowseView.list, Symbols.view_agenda_rounded, 'list'),
+                  (BrowseView.table, Symbols.table_rows_rounded, 'table'),
+                ])
+                  BarChoice(
+                    icon: icon,
+                    label: t('common.layout.$key', key),
+                    selected: _view == view,
+                    onSelected: () => setState(() => _view = view),
+                  ),
+              ],
+            ),
           ],
           status: Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Text(
-                data == null ? '' : '${chosen.length}',
+                data == null
+                    ? ''
+                    : chosen.length == episodes.length
+                    ? '${chosen.length}'
+                    : '${chosen.length} / ${episodes.length}',
                 style: Theme.of(context).textTheme.titleSmall,
               ),
             ),
@@ -392,14 +541,7 @@ class _StoriesScreenState extends State<StoriesScreen> {
                 )
               : data == null
               ? const Center(child: CircularProgressIndicator())
-              : _body(
-                  context,
-                  data,
-                  filtering ? const [] : keys,
-                  filtering ? null : rail,
-                  chosen,
-                  groups,
-                ),
+              : _body(context, data, keys, rail, chosen, groups),
         );
       },
     );
@@ -469,149 +611,210 @@ class _StoriesScreenState extends State<StoriesScreen> {
     BuildContext context,
     _StoryData data,
     List<Entry> episodes,
-    List<int> Function(Object?) ids,
-  ) => showModalBottomSheet<void>(
+    String? rail,
+  ) => showGeneralDialog<void>(
     context: context,
-    isScrollControlled: true,
-    showDragHandle: true,
-    builder: (sheet) => StatefulBuilder(
-      builder: (sheet, refresh) {
-        final t = AppScope.of(context).text;
-        final api = widget.api ?? AppScope.of(context).api;
-        final characters = <int, int>{}, bands = <int, int>{};
-        for (final e in episodes) {
-          for (final id in ids(e['characterIds'] ?? e['characterId'])) {
-            characters[id] = (characters[id] ?? 0) + 1;
-          }
-          for (final id in ids(e['bandIds'] ?? e['bandId'])) {
-            bands[id] = (bands[id] ?? 0) + 1;
-          }
-        }
-        void toggle(Set<int> set, int id) {
-          setState(() => set.contains(id) ? set.remove(id) : set.add(id));
-          refresh(() {});
-        }
-
-        Widget group(
-          String title,
-          Map<int, int> counts,
-          Set<int> selected,
-          String Function(int) name,
-          String? Function(int) image,
-        ) => counts.isEmpty
-            ? const SizedBox.shrink()
-            : Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: Theme.of(sheet).textTheme.titleMedium),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        for (final id in (counts.keys.toList()..sort()))
-                          FilterChip(
-                            avatar: switch (image(id)) {
-                              final url? => ClipOval(
-                                child: AppImage(candidates: [url]),
-                              ),
-                              null => null,
-                            },
-                            label: Text('${name(id)}  ${counts[id]}'),
-                            selected: selected.contains(id),
-                            onSelected: (_) => toggle(selected, id),
-                          ),
-                      ],
+    barrierDismissible: true,
+    barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
+    barrierColor: Theme.of(context).colorScheme.scrim.withValues(alpha: 0.32),
+    transitionDuration: const Duration(milliseconds: 300),
+    pageBuilder: (sheet, _, _) => Align(
+      alignment: AlignmentDirectional.centerEnd,
+      child: StatefulBuilder(
+        builder: (sheet, refresh) {
+          final t = AppScope.of(context).text;
+          final api = widget.api ?? AppScope.of(context).api;
+          final facets = <FacetSpec>[
+            for (final (key, label) in [
+              ('band', t.label('band', 'Band')),
+              ('character', t.label('character', 'Character')),
+              if (data.providerMode == null &&
+                  const {'band', 'event'}.contains(widget.mode))
+                ('kind', t('catalog.fields.type', 'Type')),
+              if (data.providerMode == null && widget.mode == 'band')
+                (
+                  'perspective',
+                  t(
+                    'story.labels.perspectiveCharacter',
+                    'Perspective character',
+                  ),
+                ),
+              if (widget.mode == 'card') ...[
+                ('rarity', t('catalog.cards.fields.rarity', 'Rarity')),
+                ('attribute', t('catalog.fields.attribute', 'Attribute')),
+              ],
+              ('level', t('catalog.characters.fields.friendship', 'Bond')),
+            ])
+              if (episodes.any((e) => _facetValues(key, e, data).isNotEmpty))
+                FacetSpec(
+                  key: key,
+                  label: label,
+                  values: (episode) => _facetValues(key, episode, data),
+                  option: (value) {
+                    final id = int.tryParse(value);
+                    final character = data.visuals.characters[id];
+                    return FacetOption(
+                      switch (key) {
+                        'band' => t.text(data.visuals.bands[id]?['bandName']),
+                        'character' ||
+                        'perspective' => t.text(character?['characterName']),
+                        'kind' => t('story.labels.$value', value),
+                        'level' => 'Lv.$value',
+                        _ => value,
+                      },
+                      image: key == 'band'
+                          ? data.visuals.bandIcon(id)
+                          : const {'character', 'perspective'}.contains(key) &&
+                                character?['faceImage'] is String
+                          ? api
+                                .asset(character!['faceImage'] as String)
+                                .toString()
+                          : null,
+                    );
+                  },
+                ),
+          ];
+          Widget date(bool end) {
+            final selected = end ? _releaseTo : _releaseFrom;
+            final label = t(
+              end ? 'common.fields.maximum' : 'common.fields.minimum',
+              end ? 'To' : 'From',
+            );
+            return ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(label),
+              subtitle: selected == null
+                  ? null
+                  : Text(DateFormat.yMd(t.locale).format(selected)),
+              leading: const Icon(Symbols.calendar_month_rounded),
+              trailing: selected == null
+                  ? null
+                  : IconButton(
+                      icon: const Icon(Symbols.close_rounded),
+                      tooltip: t('common.actions.clear', 'Clear'),
+                      onPressed: () {
+                        setState(() {
+                          if (end) {
+                            _releaseTo = null;
+                          } else {
+                            _releaseFrom = null;
+                          }
+                        });
+                        refresh(() {});
+                      },
                     ),
-                  ],
-                ),
-              );
-        return SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              group(
-                t.label('character', 'Character'),
-                characters,
-                _characters,
-                (id) => t.text(data.visuals.characters[id]?['characterName']),
-                (id) => switch (data.visuals.characters[id]?['faceImage']) {
-                  final String face => api.asset(face).toString(),
-                  _ => null,
-                },
-              ),
-              group(
-                t.label('band', 'Band'),
-                bands,
-                _bands,
-                (id) => t.text(data.visuals.bands[id]?['bandName']),
-                (id) => data.visuals.bandIcon(id),
-              ),
-              Text(
-                t('common.actions.sort', 'Sort'),
-                style: Theme.of(sheet).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              SegmentedButton<String>(
-                showSelectedIcon: false,
-                segments: [
-                  for (final (value, key) in const [
-                    ('id', 'common.layout.order'),
-                    ('title', 'common.fields.title'),
-                    ('release', 'catalog.fields.release'),
-                    ('duration', 'common.fields.duration'),
-                  ])
-                    ButtonSegment(value: value, label: Text(t(key, value))),
-                ],
-                selected: {_sort ?? _defaultSort},
-                onSelectionChanged: (value) {
-                  setState(() => _sort = value.single);
+              onTap: () async {
+                final value = await showDatePicker(
+                  context: sheet,
+                  initialDate: selected ?? DateTime.now(),
+                  firstDate: DateTime(2000),
+                  lastDate: DateTime(2100),
+                );
+                if (value != null && mounted && sheet.mounted) {
+                  setState(() {
+                    if (end) {
+                      _releaseTo = value;
+                    } else {
+                      _releaseFrom = value;
+                    }
+                  });
                   refresh(() {});
-                },
-              ),
-              const SizedBox(height: 8),
-              SegmentedButton<bool>(
-                showSelectedIcon: false,
-                segments: [
-                  ButtonSegment(
-                    value: false,
-                    icon: const Icon(Symbols.arrow_upward_rounded),
-                    tooltip: t('common.layout.ascending', 'Ascending'),
-                  ),
-                  ButtonSegment(
-                    value: true,
-                    icon: const Icon(Symbols.arrow_downward_rounded),
-                    tooltip: t('common.layout.descending', 'Descending'),
-                  ),
-                ],
-                selected: {_descending ?? _defaultDescending},
-                onSelectionChanged: (value) {
-                  setState(() => _descending = value.single);
-                  refresh(() {});
-                },
-              ),
-              const SizedBox(height: 16),
-              if (_characters.isNotEmpty || _bands.isNotEmpty)
-                Align(
-                  alignment: AlignmentDirectional.centerEnd,
-                  child: TextButton(
-                    onPressed: () {
-                      setState(() {
-                        _characters.clear();
-                        _bands.clear();
-                      });
-                      refresh(() {});
-                    },
-                    child: Text(t('common.actions.reset', 'Reset')),
-                  ),
-                ),
+                }
+              },
+            );
+          }
+
+          return BrowseFilterPanel(
+            switches: const [],
+            facets: facets,
+            sorts: [
+              for (final (key, path) in const [
+                ('id', 'common.layout.order'),
+                ('title', 'common.fields.title'),
+                ('release', 'catalog.fields.release'),
+                ('duration', 'common.fields.duration'),
+              ])
+                SortSpec(key, t(path, key), (_) => null),
             ],
-          ),
-        );
-      },
+            sort: _sort ?? _defaultSort,
+            descending: _descending ?? _defaultDescending,
+            selected: _facets,
+            counts: (key) {
+              final counts = <String, int>{
+                for (final episode in episodes)
+                  for (final value in _facetValues(key, episode, data))
+                    value: 0,
+              };
+              for (final episode in episodes) {
+                if (!_inRail(episode, rail, data) ||
+                    !_matchesEpisode(episode, data, omitted: key)) {
+                  continue;
+                }
+                for (final value in _facetValues(key, episode, data)) {
+                  counts[value] = (counts[value] ?? 0) + 1;
+                }
+              }
+              return counts;
+            },
+            onToggle: (key, value) {
+              setState(() {
+                final values = _facets.putIfAbsent(key, () => {});
+                if (!values.remove(value)) values.add(value);
+              });
+              refresh(() {});
+            },
+            onSort: (value) {
+              setState(() => _sort = value);
+              refresh(() {});
+            },
+            onOrder: () {
+              setState(
+                () => _descending = !(_descending ?? _defaultDescending),
+              );
+              refresh(() {});
+            },
+            onReset: () {
+              setState(() {
+                _facets.clear();
+                _query = '';
+                _queryField.currentState?.didChange('');
+                _releaseFrom = _releaseTo = null;
+              });
+              refresh(() {});
+            },
+            fields: [
+              TextFormField(
+                key: _queryField,
+                initialValue: _query,
+                decoration: InputDecoration(
+                  labelText: t('common.actions.search', 'Search'),
+                  prefixIcon: const Icon(Symbols.search_rounded),
+                ),
+                onChanged: (value) {
+                  setState(() => _query = value);
+                  refresh(() {});
+                },
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Text(
+                  t('catalog.fields.release', 'Release'),
+                  style: Theme.of(sheet).textTheme.titleSmall,
+                ),
+              ),
+              date(false),
+              date(true),
+            ],
+          );
+        },
+      ),
+    ),
+    transitionBuilder: (context, animation, _, child) => SlideTransition(
+      position: Tween(
+        begin: const Offset(1, 0),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+      child: child,
     ),
   );
 
@@ -676,166 +879,417 @@ class _StoriesScreenState extends State<StoriesScreen> {
     List<Entry> chosen,
     List<(String, List<Entry>)> groups,
   ) {
-    final state = AppScope.of(context);
-    final t = state.text;
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final padding = pagePadding(context);
+    final state = AppScope.of(context), t = AppScope.of(context).text;
     final api = widget.api ?? state.api;
+    final padding = pagePadding(context);
     final info = rail == null ? null : _railInfo(data, rail, t, api);
-    return CustomScrollView(
-      slivers: [
-        if (keys.length > 1 ||
-            (keys.isNotEmpty &&
-                const {'event', 'birthday'}.contains(widget.mode)))
-          SliverToBoxAdapter(
-            child: SizedBox(
-              height: 112,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: EdgeInsets.fromLTRB(padding.left, 8, padding.right, 0),
-                itemCount: keys.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (context, index) {
-                  final key = keys[index];
-                  final item = _railInfo(data, key, t, api);
-                  final count = data.episodes
-                      .where(
-                        (e) =>
-                            data.mode(e) == widget.mode &&
-                            _railKey(e, data) == key,
-                      )
-                      .length;
-                  final selected = key == rail;
-                  return SizedBox(
-                    width: 148,
-                    child: Material(
-                      color: selected
-                          ? scheme.secondaryContainer
-                          : scheme.surfaceContainerLow,
-                      borderRadius: BorderRadius.circular(Corner.medium),
-                      clipBehavior: Clip.antiAlias,
-                      child: InkWell(
-                        onTap: () => setState(() => _rail = key),
-                        child: Padding(
-                          padding: const EdgeInsets.all(8),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SizedBox(
-                                height: 44,
-                                width: double.infinity,
-                                child: item.image == null
-                                    ? null
-                                    : AppImage(candidates: [item.image!]),
+    void open(BuildContext context, Entry episode) => _EpisodeTile(
+      episode: episode,
+      data: data,
+      mode: widget.mode,
+      api: widget.api,
+    ).open(context);
+    Widget row(BuildContext context, Entry episode) => ListTile(
+      contentPadding: EdgeInsets.symmetric(
+        horizontal: padding.left,
+        vertical: 8,
+      ),
+      leading: SizedBox(
+        width: 80,
+        height: 48,
+        child: AppImage(
+          candidates: [
+            for (final source in [
+              episode['episodeImage'],
+              episode['banner'],
+              episode['image'],
+            ])
+              if (source is String && source.isNotEmpty)
+                api.asset(source).toString(),
+          ],
+          fit: BoxFit.contain,
+        ),
+      ),
+      title: Text(
+        t.text(episode['title']),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Text(
+        t.text(episode['chapterName']),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: Text(_duration(episode['playTime'])),
+      onTap: () => open(context, episode),
+    );
+    return CollectionPane(
+      rail:
+          keys.length > 1 ||
+              keys.isNotEmpty &&
+                  const {'event', 'birthday'}.contains(widget.mode)
+          ? BrowseRail(
+              value: rail ?? '',
+              onSelect: (key) => setState(() {
+                _rail = key;
+                _partner = null;
+              }),
+              items: [
+                for (final key in keys)
+                  () {
+                    final info = _railInfo(data, key, t, api);
+                    final count = data.episodes
+                        .where(
+                          (e) =>
+                              data.mode(e) == widget.mode &&
+                              _inRail(e, key, data),
+                        )
+                        .length;
+                    return RailItem(
+                      key,
+                      info.title,
+                      image: info.image,
+                      meta: '$count ${t('story.labels.episodes', 'episodes')}',
+                    );
+                  }(),
+              ],
+            )
+          : null,
+      heading: info == null || info.title.isEmpty
+          ? null
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (info.image != null) ...[
+                  SizedBox(
+                    width: (MediaQuery.sizeOf(context).width * 0.16).clamp(
+                      72.0,
+                      132.0,
+                    ),
+                    height: 64,
+                    child: AppImage(
+                      candidates: [
+                        api
+                            .asset(
+                              '${(data.chapters[rail] as Map?)?['icon'] ?? info.image!}',
+                            )
+                            .toString(),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        info.title,
+                        style: MediaQuery.sizeOf(context).width < 600
+                            ? Theme.of(context).textTheme.titleLarge
+                            : Theme.of(context).textTheme.headlineSmall,
+                      ),
+                      if ((info.description ?? '').isNotEmpty)
+                        Text(
+                          info.description!,
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                item.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.labelLarge,
-                              ),
-                              Text(
-                                '$count ${t('story.labels.episodes', 'episodes')}',
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: scheme.onSurfaceVariant,
-                                ),
-                              ),
-                            ],
-                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+      results: (context, headers) {
+        final partners = <int>{
+          for (final episode in data.episodes.where(
+            (e) => data.mode(e) == widget.mode && _inRail(e, rail, data),
+          ))
+            for (final id in _characterIds(episode))
+              if ('$id' != rail) id,
+        }.toList()..sort();
+        final contentHeaders = <Widget>[
+          ...headers,
+          if (widget.mode == 'link')
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(padding.left, 8, padding.right, 8),
+              sliver: SliverToBoxAdapter(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilterChip(
+                      label: Text(t('common.states.all', 'All')),
+                      selected: _partner == null,
+                      onSelected: (_) => setState(() => _partner = null),
+                    ),
+                    for (final id in partners)
+                      FilterChip(
+                        label: Text(
+                          t.text(data.visuals.characters[id]?['characterName']),
+                        ),
+                        selected: _partner == id,
+                        onSelected: (_) => setState(
+                          () => _partner = _partner == id ? null : id,
                         ),
                       ),
+                  ],
+                ),
+              ),
+            ),
+        ];
+        if (_view == BrowseView.table) {
+          return CustomScrollView(
+            slivers: [
+              ...contentHeaders,
+              SliverFillRemaining(child: _table(context, data, chosen, open)),
+            ],
+          );
+        }
+        return CustomScrollView(
+          slivers: [
+            ...contentHeaders,
+            if (_view == BrowseView.list)
+              SliverList.builder(
+                itemCount: chosen.length,
+                itemBuilder: (context, index) => row(context, chosen[index]),
+              )
+            else
+              for (final (title, list) in groups) ...[
+                SliverPadding(
+                  padding: EdgeInsets.fromLTRB(
+                    padding.left,
+                    16,
+                    padding.right,
+                    8,
+                  ),
+                  sliver: SliverToBoxAdapter(
+                    child: Row(
+                      children: [
+                        Text(
+                          title,
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${list.length}',
+                          style: Theme.of(context).textTheme.labelLarge,
+                        ),
+                      ],
                     ),
+                  ),
+                ),
+                SliverPadding(
+                  padding: EdgeInsets.symmetric(horizontal: padding.left),
+                  sliver: SliverLayoutBuilder(
+                    builder: (context, constraints) {
+                      final compact = MediaQuery.sizeOf(context).width < 600;
+                      final gap = compact ? 8.0 : 12.0;
+                      final grid = collectionGrid(
+                        context,
+                        constraints.crossAxisExtent,
+                        minWidth: 260,
+                      ) as SliverGridDelegateWithFixedCrossAxisCount;
+                      final columns = grid.crossAxisCount;
+                      final width =
+                          (constraints.crossAxisExtent - gap * (columns - 1)) /
+                          columns;
+                      return SliverList.builder(
+                        itemCount: (list.length / columns).ceil(),
+                        itemBuilder: (context, row) {
+                          final entries = list
+                              .skip(row * columns)
+                              .take(columns)
+                              .toList();
+                          final height =
+                              entries
+                                  .map(
+                                    (e) =>
+                                        width /
+                                        _episodeRatio(
+                                          e,
+                                          data,
+                                          widget.mode,
+                                          api is ProviderApi,
+                                        ),
+                                  )
+                                  .reduce((a, b) => a > b ? a : b) +
+                              (compact ? 16 + 40 + 4 + 18 : 32 + 48 + 8 + 20);
+                          return Padding(
+                            padding: EdgeInsets.only(bottom: gap),
+                            child: SizedBox(
+                              height: height,
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  for (
+                                    var index = 0;
+                                    index < columns;
+                                    index++
+                                  ) ...[
+                                    if (index > 0) SizedBox(width: gap),
+                                    Expanded(
+                                      child: index >= entries.length
+                                          ? const SizedBox.shrink()
+                                          : _EpisodeTile(
+                                              episode: entries[index],
+                                              data: data,
+                                              mode: widget.mode,
+                                              api: widget.api,
+                                            ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            SliverToBoxAdapter(child: SizedBox(height: padding.bottom)),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _table(
+    BuildContext context,
+    _StoryData data,
+    List<Entry> episodes,
+    void Function(BuildContext, Entry) open,
+  ) {
+    final t = AppScope.of(context).text;
+    final titles = [
+      '#',
+      t('common.fields.title', 'Title'),
+      t('story.labels.chapter', 'Chapter'),
+      t('navigation.characters', 'Characters'),
+      t('common.fields.duration', 'Duration'),
+      t('catalog.characters.fields.friendship', 'Bond'),
+      t('catalog.fields.release', 'Release'),
+    ];
+    const widths = [56.0, 280.0, 180.0, 240.0, 90.0, 90.0, 140.0];
+    Widget row(List<String> values, {bool header = false}) => SizedBox(
+      height: header ? 48 : 64,
+      child: Row(
+        children: [
+          for (final (index, value) in values.indexed)
+            SizedBox(
+              width: widths[index],
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  value,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: header
+                      ? Theme.of(context).textTheme.labelLarge
+                      : Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: SizedBox(
+        width: widths.reduce((a, b) => a + b),
+        child: Column(
+          children: [
+            row(titles, header: true),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.builder(
+                primary: false,
+                itemCount: episodes.length,
+                itemBuilder: (context, index) {
+                  final e = episodes[index];
+                  final release = _releaseValue(e);
+                  return InkWell(
+                    onTap: () => open(context, e),
+                    child: row([
+                      '${e['episodeNumber'] ?? ''}',
+                      t.text(e['title']),
+                      t.text(e['chapterName']),
+                      _characterIds(e)
+                          .map(
+                            (id) => t.text(
+                              data.visuals.characters[id]?['characterName'],
+                            ),
+                          )
+                          .join(
+                            t(
+                              'story.relationships.speakerNameSeparator',
+                              ' & ',
+                            ),
+                          ),
+                      _duration(e['playTime']),
+                      e['unlockCharacterFriendshipLevel'] == null
+                          ? ''
+                          : 'Lv.${e['unlockCharacterFriendshipLevel']}',
+                      release <= 0
+                          ? ''
+                          : DateFormat.yMMMd(t.locale).format(
+                              DateTime.fromMillisecondsSinceEpoch(
+                                release.toInt(),
+                              ),
+                            ),
+                    ]),
                   );
                 },
               ),
             ),
-          ),
-        if (info != null)
-          SliverPadding(
-            padding: EdgeInsets.fromLTRB(padding.left, 16, padding.right, 8),
-            sliver: SliverToBoxAdapter(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (info.image != null)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 16),
-                      child: SizedBox(
-                        width: 72,
-                        height: 48,
-                        child: AppImage(candidates: [info.image!]),
-                      ),
-                    ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(info.title, style: theme.textTheme.headlineSmall),
-                        if ((info.description ?? '').isNotEmpty)
-                          Text(
-                            info.description!,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        for (final (title, list) in groups) ...[
-          SliverPadding(
-            padding: EdgeInsets.fromLTRB(padding.left, 16, padding.right, 8),
-            sliver: SliverToBoxAdapter(
-              child: Row(
-                children: [
-                  Text(
-                    title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    '${list.length}',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          SliverPadding(
-            padding: EdgeInsets.symmetric(horizontal: padding.left),
-            sliver: SliverLayoutBuilder(
-              builder: (context, constraints) => SliverGrid.builder(
-                gridDelegate: collectionGrid(
-                  context,
-                  constraints.crossAxisExtent,
-                  minWidth: 260,
-                  aspectRatio: 16 / 9,
-                ),
-                itemCount: list.length,
-                itemBuilder: (context, index) => _EpisodeTile(
-                  episode: list[index],
-                  data: data,
-                  mode: widget.mode,
-                  api: widget.api,
-                ),
-              ),
-            ),
-          ),
-        ],
-        SliverToBoxAdapter(child: SizedBox(height: padding.bottom)),
-      ],
+          ],
+        ),
+      ),
     );
   }
 }
+
+List<String> _episodeImages(Entry episode, _StoryData data, String mode) {
+  final chapter = data.chapters['${episode['chapterId']}'] as Map?;
+  final spot = data.spotOfStory['${episode['storyKey']}'];
+  if (mode == 'afterlive') return const [];
+  return [
+    for (final source
+        in mode == 'home'
+            ? [
+                spot?['thumbnail'],
+                (spot?['spine'] as Map?)?['backgroundPreview'],
+                spot?['backgroundPreview'],
+              ]
+            : [
+                episode['episodeImage'],
+                episode['banner'],
+                episode['image'],
+                episode['thumbnail'],
+                episode['cardImage'],
+                (episode['cardImages'] as Map?)?['normal'],
+                chapter?['banner'],
+              ])
+      if (source is String && source.isNotEmpty) source,
+  ];
+}
+
+double _episodeRatio(
+  Entry episode,
+  _StoryData data,
+  String mode,
+  bool provider,
+) => provider || mode == 'home' || mode == 'afterlive'
+    ? 16 / 9
+    : familyImageRatio(_episodeImages(episode, data, mode).firstOrNull ?? '') ??
+          16 / 9;
 
 class _EpisodeTile extends StatelessWidget {
   const _EpisodeTile({
@@ -897,15 +1351,25 @@ class _EpisodeTile extends StatelessWidget {
             ]
           : [?data.visuals.bandIcon(episode['bandId'])],
       images: [
-        for (final key in ['image', 'banner'])
-          if (episode[key] case final String path when path.isNotEmpty)
-            api.asset(path).toString(),
-        if (mode == 'home')
-          if (data.spotOfStory['${episode['storyKey']}']?['thumbnail']
-              case final String path)
-            api.asset(path).toString(),
+        for (final path in _episodeImages(episode, data, mode))
+          api.asset(path).toString(),
       ],
-      media: mode == 'afterlive' || mode == 'link' && episode['image'] == null
+      media: mode == 'card'
+          ? Row(
+              children: [
+                for (final state in const ['normal', 'trained'])
+                  if (((episode['cardThumbnails'] as Map?)?[state] ??
+                          (episode['cardImages'] as Map?)?[state])
+                      case final String image when image.isNotEmpty)
+                    Expanded(
+                      child: AppImage(
+                        candidates: [api.asset(image).toString()],
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+              ],
+            )
+          : mode == 'afterlive' || mode == 'link' && episode['image'] == null
           ? StoryFaces(
               faces: [
                 for (final id
@@ -916,8 +1380,9 @@ class _EpisodeTile extends StatelessWidget {
               ],
             )
           : null,
-      aspectRatio: 16 / 9,
-      fit: BoxFit.cover,
+      aspectRatio: _episodeRatio(episode, data, mode, api is ProviderApi),
+      fit: BoxFit.contain,
+      serverMark: serverMark(episode, t.call),
       placeholder: Symbols.auto_stories_rounded,
       marks: [
         if (number is num)
@@ -927,14 +1392,26 @@ class _EpisodeTile extends StatelessWidget {
           ),
         if (duration.isNotEmpty) TileMark.text(MarkAt.bottomEnd, duration),
       ],
-      onTap: () => episode['cardId'] != null
-          ? _openCard(context, api)
-          : Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) =>
-                    StoryReaderScreen(episode: episode, api: this.api),
-              ),
-            ),
+      onTap: () => open(context),
+    );
+  }
+
+  void open(BuildContext context) {
+    final state = AppScope.of(context);
+    final api =
+        this.api ?? state.apiFor('${episode[serverKey] ?? state.server}');
+    if (episode['cardId'] != null) {
+      _openCard(context, api);
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        settings: RouteSettings(
+          name:
+              '/stories/${Uri.encodeComponent('${episode['storyKey'] ?? episode['storyId'] ?? episode['_key']}')}?mode=$mode',
+        ),
+        builder: (_) => StoryReaderScreen(episode: episode, api: api),
+      ),
     );
   }
 
@@ -989,61 +1466,86 @@ class StoryReaderScreen extends StatefulWidget {
   State<StoryReaderScreen> createState() => _StoryReaderScreenState();
 }
 
-/// A provider scenario as this release's transcript: grouped commands are
-/// flattened and talk (`command: 2`) becomes a talk line; sounds are keyed
-/// by their reference.
-Map _transcript(Map detail) {
-  final commands = detail['commands'] as List? ?? const [];
-  if (!commands.any((c) => c is Map && c['command'] == 101)) return detail;
-  final flat = <Map>[];
-  void add(Map command) {
-    if (command['command'] == 2) {
-      flat.add({...command, 'type': 'talk'});
-    }
-  }
-
-  for (final command in commands.whereType<Map>()) {
-    final group = command['commandGroup'];
-    if (group is Map) {
-      for (final action
-          in (group['actions'] as List? ?? const []).whereType<Map>()) {
-        if (action['command'] case final Map inner) add(inner);
-      }
-    } else {
-      add(command);
-    }
-  }
-  final sounds = (detail['assets'] as Map?)?['sounds'];
-  return {
-    ...detail,
-    'commands': flat,
-    'assets': {
-      ...((detail['assets'] as Map?) ?? const {}),
-      'sounds': [
-        if (sounds is Map)
-          for (final MapEntry(:key, :value) in sounds.entries)
-            if (value is Map) {'ref': key, ...value},
-      ],
-    },
-  };
-}
-
 class _StoryReaderScreenState extends State<StoryReaderScreen> {
+  late final _voice = VoicePlayback(
+    beforePlay: () => AppScope.of(context).audio.pause(),
+  );
+  @override
+  void dispose() {
+    _voice.dispose();
+    super.dispose();
+  }
+
   Future<(Map, CatalogVisuals)>? _data;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final api = widget.api ?? AppScope.of(context).api;
-    _data ??= (
-      api
-          .catalog(
-            'stories',
-            '${widget.episode['storyKey'] ?? widget.episode['_key']}',
-          )
-          .then((v) => {...widget.episode, ..._transcript(v as Map)}),
+    _data ??= _load(api);
+  }
+
+  Future<(Map, CatalogVisuals)> _load(HaneokaApi api) async {
+    final id = '${widget.episode['storyKey'] ?? widget.episode['_key']}';
+    final locale = AppScope.of(context).text.locale;
+    final (record, visuals, page) = await (
+      api.catalog('stories', id),
       CatalogVisuals.of(api),
+      api is ProviderApi
+          ? Future<Map<String, Object?>?>.value(null)
+          : pageData(
+              '/${api.server}/$locale/stories/${Uri.encodeComponent(id)}/',
+              'story-page-$id',
+            ).then<Map<String, Object?>?>(
+              (value) => value,
+              onError: (_) => null,
+            ),
     ).wait;
+    return (
+      {
+        ...widget.episode,
+        if (record is Map) ...record,
+        if ((page?['episodes'] as Map?)?[id] case final Map episode) ...episode,
+        '_storyPayload': ?page,
+      },
+      visuals,
+    );
+  }
+
+  List<GalleryImage> _artwork(Map detail, HaneokaApi api) {
+    if (api is ProviderApi) return const [];
+    final payload = detail['_storyPayload'] as Map?;
+    final chapters = payload?['chapters'] as Map? ?? const {};
+    final chapter = chapters.values
+        .whereType<Map>()
+        .where((c) => c['chapterId'] == detail['chapterId'])
+        .firstOrNull;
+    final source =
+        detail['episodeImage'] ??
+        detail['banner'] ??
+        detail['image'] ??
+        detail['thumbnail'] ??
+        chapter?['banner'];
+    final variants =
+        (detail['imageVariants'] as Map?)?[source] ??
+        (chapter?['imageVariants'] as Map?)?[source];
+    if (variants is! Map || variants.length < 2) return const [];
+    const names = {
+      'ja': '日本語',
+      'en': 'English',
+      'zh-Hant': '繁體中文',
+      'zh-Hans': '简体中文',
+      'ko': '한국어',
+    };
+    return [
+      for (final code in names.keys)
+        if (variants[code] case final String url)
+          GalleryImage(
+            api.asset(url).toString(),
+            names[code]!,
+            localized: false,
+          ),
+    ];
   }
 
   @override
@@ -1059,125 +1561,18 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
         final data = snapshot.data;
         final detail = data?.$1 ?? widget.episode;
         final visuals = data?.$2;
-        final sounds = <String, String>{
-          for (final s
-              in ((detail['assets'] as Map?)?['sounds'] as List? ?? const [])
-                  .whereType<Map>())
-            if (s['playableUrl'] is String)
-              '${s['ref'] ?? '${s['cueSheetName']}/${s['cueName']}'}': api
-                  .asset(s['playableUrl'] as String)
-                  .toString(),
-        };
-        final lines = <Widget>[];
-        final voices = <Track>[];
-        for (final command
-            in (detail['commands'] as List? ?? const []).whereType<Map>()) {
-          final type = command['type'];
-          if (type == 'location' || type == 'subtitle') {
-            final text = t.text(command['text']);
-            if (text.isNotEmpty) {
-              lines.add(
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Symbols.location_on_rounded,
-                        size: 18,
-                        color: scheme.primary,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          text,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            color: scheme.primary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+        final entries = projectTranscript(detail);
+        final artwork = _artwork(detail, api);
+        final voices = <VoiceClip>[
+          for (final entry in entries)
+            for (final voice in entry.voices)
+              if ((voice['playableUrl'] ?? voice['url']) case final String path
+                  when path.isNotEmpty)
+                VoiceClip(
+                  id: api.asset(path).toString(),
+                  url: api.asset(path).toString(),
                 ),
-              );
-            }
-          }
-          if (type != 'talk') continue;
-          final target = (command['targets'] as List? ?? const [])
-              .whereType<Map>()
-              .firstOrNull;
-          final character =
-              visuals?.characters[(target?['characterId'] as num?)?.toInt()];
-          final face = character?['faceImage'] ?? target?['faceImage'];
-          final name = t.text(
-            target?['name'] ??
-                (command['targetTextNames'] as List?)?.firstOrNull,
-          );
-          final text = t.text(command['text']).replaceAll(r'\n', '\n');
-          final ref = (command['voiceRefs'] as List?)
-              ?.whereType<String>()
-              .firstOrNull;
-          final url = ref == null ? null : sounds[ref];
-          final track = url == null
-              ? null
-              : Track(
-                  id: url,
-                  url: url,
-                  title: name,
-                  subtitle: text,
-                  artwork: face is String ? api.asset(face).toString() : null,
-                );
-          if (track != null) voices.add(track);
-          lines.add(
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  ClipOval(
-                    child: Container(
-                      width: 40,
-                      height: 40,
-                      color: scheme.surfaceContainerHighest,
-                      child: face is String
-                          ? AppImage(candidates: [api.asset(face).toString()])
-                          : null,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (name.isNotEmpty)
-                          Text(
-                            name,
-                            style: theme.textTheme.labelLarge?.copyWith(
-                              color: scheme.onSurfaceVariant,
-                            ),
-                          ),
-                        const SizedBox(height: 2),
-                        Text(text, style: theme.textTheme.bodyLarge),
-                      ],
-                    ),
-                  ),
-                  if (track != null)
-                    ListenableBuilder(
-                      listenable: state.audio,
-                      builder: (context, _) => IconButton(
-                        tooltip: t('story.labels.playVoice', 'Play voice'),
-                        onPressed: () => state.audio.toggle(track),
-                        icon: Icon(
-                          state.audio.isPlaying(track.id)
-                              ? Symbols.pause_rounded
-                              : Symbols.volume_up_rounded,
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          );
-        }
+        ];
         final title = t.text(detail['title']);
         return ShellPage(
           title: title.isEmpty ? '#${detail['episodeNumber'] ?? ''}' : title,
@@ -1186,7 +1581,7 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
               BarAction(
                 icon: Symbols.playlist_play_rounded,
                 label: t.label('playAll', 'Play all'),
-                onPressed: () => state.audio.playQueue(voices),
+                onPressed: () => _voice.playAll(voices),
               ),
           ],
           body: snapshot.hasError
@@ -1196,24 +1591,20 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
               : data == null
               ? const Center(child: CircularProgressIndicator())
               : ListView(
-                  padding: pagePadding(context),
+                  padding: EdgeInsets.fromLTRB(
+                    (MediaQuery.sizeOf(context).width * 0.03).clamp(16.0, 48.0),
+                    24,
+                    (MediaQuery.sizeOf(context).width * 0.03).clamp(16.0, 48.0),
+                    40,
+                  ),
                   children: [
-                    if (detail['image'] is String)
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(Corner.extraLarge),
-                        child: AspectRatio(
-                          aspectRatio: 16 / 9,
-                          child: AppImage(
-                            candidates: [
-                              state.api
-                                  .asset(detail['image'] as String)
-                                  .toString(),
-                            ],
-                            fit: BoxFit.cover,
-                          ),
-                        ),
+                    if (artwork.isNotEmpty)
+                      ImageGallery(
+                        images: artwork.map((image) => image.url).toList(),
+                        entries: artwork,
+                        natural: true,
+                        aspectRatio: 16 / 9,
                       ),
-                    const SizedBox(height: 16),
                     if (t.text(detail['description']).isNotEmpty)
                       Text(
                         t.text(detail['description']).replaceAll('\r', ''),
@@ -1221,15 +1612,83 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
                           color: scheme.onSurfaceVariant,
                         ),
                       ),
-                    DetailSection(
-                      icon: Symbols.chat_rounded,
-                      title: t('story.labels.conversation', 'Conversation'),
-                      count: voices.length,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: lines,
+                    const SizedBox(height: 16),
+                    DetailFold(
+                      title: t('common.actions.details', 'Details'),
+                      meta: _duration(detail['playTime']),
+                      child: SpecList(
+                        facts: [
+                          Fact(
+                            t('story.labels.chapter', 'Chapter'),
+                            t.text(detail['chapterName']),
+                          ),
+                          Fact(
+                            t('common.fields.duration', 'Duration'),
+                            _duration(detail['playTime']),
+                          ),
+                          Fact(
+                            t('catalog.fields.release', 'Release'),
+                            switch (RelativeTime.timestamp(
+                              detail['publishedAt'] ?? detail['releaseAt'],
+                            )) {
+                              final num at => DateFormat.yMMMd(t.locale).format(
+                                DateTime.fromMillisecondsSinceEpoch(at.toInt()),
+                              ),
+                              _ => '',
+                            },
+                          ),
+                          if (detail['unlockCharacterFriendshipLevel']
+                              case final num level when level > 0)
+                            Fact(
+                              t('catalog.characters.fields.friendship', 'Bond'),
+                              'Lv.$level',
+                            ),
+                          Fact(
+                            t('navigation.characters', 'Characters'),
+                            [
+                                  for (final character
+                                      in detail['characterIds'] as List? ??
+                                          const [])
+                                    t.text(
+                                      visuals?.characters[(character as num?)
+                                          ?.toInt()]?['characterName'],
+                                    ),
+                                ]
+                                .where((name) => name.isNotEmpty)
+                                .join(
+                                  t(
+                                    'story.relationships.speakerNameSeparator',
+                                    ' & ',
+                                  ),
+                                ),
+                          ),
+                          for (final condition
+                              in (detail['unlockConditions'] as List? ??
+                                      const [])
+                                  .whereType<Map>())
+                            Fact(
+                              t('common.fields.required', 'Required'),
+                              '${t.text((condition['reference'] as Map?)?['name'] ?? (condition['band'] as Map?)?['name'])} ${condition['rank'] ?? condition['episodeNumber'] ?? ''}',
+                            ),
+                        ],
                       ),
                     ),
+                    StoryTranscript(
+                      playback: _voice,
+                      entries: entries,
+                      visuals: visuals,
+                      api: api,
+                      provider: widget.api is ProviderApi,
+                      joiner: (detail['runtime'] as Map?)?['displayNameJoiner'],
+                    ),
+                    if (api.server == 'jp' || api.server == 'intl')
+                      if (detail['sourceTable'] == 'MasterAdv' &&
+                          detail['advId'] is num)
+                        EntityComments(
+                          type: 'stories',
+                          id: '${detail['advId']}',
+                          server: api.server,
+                        ),
                   ],
                 ),
         );

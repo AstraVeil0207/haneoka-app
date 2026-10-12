@@ -4343,5 +4343,69 @@
       "showTestServerContent": "테스트 서버 콘텐츠 표시",
       "showTestServerContentHint": "도감과 팀 편성 도구에 테스트 서버 콘텐츠를 표시합니다."
     }
+  },
+  "app": {
+    "updates": {
+      "automatic": "자동으로 업데이트 확인",
+      "frequency": "앱을 열 때 하루에 한 번 확인합니다.",
+      "check": "업데이트 확인",
+      "checking": "확인 중…",
+      "failed": "업데이트를 확인하지 못했습니다. 다시 시도해 주세요.",
+      "upToDate": "최신 버전입니다.",
+      "available": "새 버전: {version}",
+      "later": "나중에",
+      "releaseNotes": "업데이트 내용",
+      "download": "업데이트 다운로드",
+      "openFailed": "다운로드 링크를 열 수 없습니다."
+    },
+    "import": {
+      "downloadShizuku": "Shizuku 다운로드",
+      "setupGuide": "설정 안내",
+      "downloadIMazing": "iMazing 다운로드",
+      "exportGuide": "앱 데이터 내보내기",
+      "iosAccess": "Our Notes가 파일 앱에 저장 데이터를 공개한 경우 직접 선택할 수 있습니다. 그렇지 않으면 컴퓨터에서 앱 데이터나 로컬 백업을 내보낸 후 저장 파일, ZIP 또는 .imazingapp을 이 기기로 전송하세요. 공유 → Haneoka로도 열 수 있습니다.",
+      "advancedTitle": "TrollStore / 탈옥 기기",
+      "advancedSummary": "호환되는 파일 관리자로 게임 계정 폴더를 내보냅니다.",
+      "advancedSteps": "Filza 또는 Apps Manager에서 번들 ID로 Our Notes를 찾아 데이터 컨테이너의 Documents/<계정>을 복사해 ZIP으로 압축하고 파일 앱에 저장하세요. 아래에서 ZIP을 선택하거나 Haneoka로 공유할 수 있습니다. SFTP로 같은 폴더를 컴퓨터에 복사할 수도 있습니다. 각 도구의 기기 및 iOS 호환성은 공식 안내를 확인하세요.",
+      "readConnected": "연결된 기기에서 읽기",
+      "chooseDevice": "기기 선택 / 무선 페어링",
+      "iosDirectTitle": "이 기기에서 직접 가져오기",
+      "iosDirectSummary": "앱 컨테이너 접근 권한이 있는 설치에서 Our Notes Documents를 직접 읽습니다.",
+      "iosDirectSteps": "지원 기기에서 전용 TrollStore 빌드 또는 컨테이너 접근이 허용된 탈옥 설치를 사용하세요. 세이브 읽기를 누르면 게임을 자동으로 찾습니다. 게임 파일은 유지됩니다.",
+      "iosDirectAvailable": "앱 컨테이너 접근 가능",
+      "iosDirectRestricted": "현재 설치는 다른 앱의 비공개 파일을 읽을 수 없습니다. 파일/공유 또는 내보낸 백업을 사용하세요.",
+      "adbFailed": "기기를 읽지 못했습니다. 디버깅 승인을 확인하고 다시 연결하세요.",
+      "deviceOffline": "기기가 오프라인입니다. 다시 연결하고 USB 디버깅을 허용하세요.",
+      "pairFormat": "IP:포트와 6자리 페어링 코드를 입력하세요.",
+      "usbDriverGuide": "USB 드라이버 설치 안내"
+    },
+    "storage": {
+      "title": "저장 공간과 캐시",
+      "total": "로컬 앱 데이터: {size}",
+      "usedLimit": "캐시: {used} / {limit}",
+      "clear": "정리",
+      "data": "도감과 페이지 데이터 캐시",
+      "images": "이미지 캐시",
+      "memory": "메모리 이미지 캐시",
+      "accounts": "가져온 세이브 데이터",
+      "manageAccounts": "가져온 세이브 관리",
+      "other": "설정과 기타 로컬 데이터",
+      "temporary": "가져오기 및 기타 임시 파일",
+      "automatic": "오래된 캐시 자동 정리",
+      "limit": "캐시 한도",
+      "preserved": "가져온 세이브, 로그인 상태와 설정은 유지됩니다.",
+      "clearAll": "모든 캐시 지우기",
+      "cleared": "{size} 확보",
+      "unlimited": "제한 없음",
+      "noLimit": "무제한일 때는 용량에 따른 정리를 실행하지 않습니다."
+    },
+    "distribution": {
+      "title": "설치 파일과 설치 안내",
+      "available": "릴리스 페이지에서 시스템과 아키텍처별로 실제 게시된 파일을 확인할 수 있습니다.",
+      "downloads": "전체 다운로드",
+      "guide": "설치 안내",
+      "copySource": "AltStore / SideStore 소스 URL 복사",
+      "sourceCopied": "소스 URL을 복사했습니다. 0.1.0 출시 후 AltStore Classic 또는 SideStore에 추가하세요。"
+    }
   }
 }

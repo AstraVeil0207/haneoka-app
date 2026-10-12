@@ -77,6 +77,7 @@ class _SpineScreenState extends State<SpineScreen> {
     return FutureBuilder(
       future: _models,
       builder: (context, snapshot) => BrowseScreen(
+        onOpen: (context, model) => open(model),
         title: t('navigation.spine', 'Spine'),
         items: snapshot.data,
         error: snapshot.error,

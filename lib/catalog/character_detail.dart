@@ -3,7 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../core/app_state.dart';
-import '../core/audio.dart';
+import '../core/voice.dart';
 import '../core/i18n.dart';
 import '../shell/links.dart';
 import '../shell/routes.dart';
@@ -14,6 +14,7 @@ import '../ui/theme.dart';
 import '../ui/tile.dart';
 import '../ui/upgrade.dart';
 import 'catalog_screen.dart';
+import 'character_art.g.dart';
 import 'format.dart';
 import 'profiles.dart';
 import 'visuals.dart';
@@ -140,6 +141,14 @@ class CharacterDetail extends StatefulWidget {
 }
 
 class _CharacterDetailState extends State<CharacterDetail> {
+  late final _voice = VoicePlayback(beforePlay: () => state.audio.pause());
+
+  @override
+  void dispose() {
+    _voice.dispose();
+    super.dispose();
+  }
+
   String _section = 'profile';
   int? _partner;
   int _missionType = 0;
@@ -393,34 +402,78 @@ class _CharacterDetailState extends State<CharacterDetail> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 8),
-          child: Row(
-            children: [
-              for (final (section, icon, label, count) in tabs)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: ChoiceChip(
-                    showCheckmark: false,
-                    selected: _section == section,
-                    avatar: Icon(
-                      icon,
-                      size: 18,
-                      fill: _section == section ? 1 : 0,
-                    ),
-                    label: Text(count > 0 ? '$label  $count' : label),
-                    shape: const StadiumBorder(),
-                    onSelected: (_) => setState(() => _section = section),
-                  ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(gutter, 24, gutter + 10, 0),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: ColoredBox(
+              color: scheme.surfaceContainerLow,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.all(4),
+                child: Row(
+                  children: [
+                    for (final (section, icon, label, count) in tabs)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 2),
+                        child: TextButton(
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(0, 40),
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            foregroundColor: _section == section
+                                ? scheme.onSecondaryContainer
+                                : scheme.onSurfaceVariant,
+                            backgroundColor: _section == section
+                                ? scheme.secondaryContainer
+                                : Colors.transparent,
+                            shape: const StadiumBorder(),
+                          ),
+                          onPressed: () => setState(() => _section = section),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                icon,
+                                size: 18,
+                                fill: _section == section ? 1 : 0,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(label),
+                              if (count > 0) ...[
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: scheme.onSurface.withValues(
+                                      alpha: 0.08,
+                                    ),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Text(
+                                    '$count',
+                                    style: theme.textTheme.labelMedium
+                                        ?.copyWith(
+                                          color: scheme.onSurfaceVariant,
+                                        ),
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
-            ],
+              ),
+            ),
           ),
         ),
         Expanded(
           child: ListView(
             key: PageStorageKey(_section),
-            padding: EdgeInsets.fromLTRB(gutter, 8, gutter, 32),
+            padding: EdgeInsets.fromLTRB(gutter + 2, 17, gutter + 12, 32),
             children: [panel],
           ),
         ),
@@ -697,6 +750,12 @@ class _CharacterDetailState extends State<CharacterDetail> {
       (p) => p.resource == 'characters',
     );
     final fields = [
+      if (t.text(
+            item['bandName'] ??
+                widget.visuals?.bands[item['bandId']]?['bandName'],
+          )
+          case final band when band.isNotEmpty)
+        (t.label('band', 'Band'), band),
       for (final key in profile.detail)
         if (!const {'voiceActor', 'bandPart', 'englishName'}.contains(key))
           if (item[key] case final value?)
@@ -710,16 +769,25 @@ class _CharacterDetailState extends State<CharacterDetail> {
       ),
       _ => scheme.primaryContainer,
     };
-    final images = {
-      for (final key in [
-        'profileImage',
-        'thumbnailImage',
-        'spriteImage',
-        'faceImage',
-      ])
-        if (item[key] case final String path when path.isNotEmpty) _asset(path),
-    }.toList();
-    final wide = MediaQuery.sizeOf(context).width >= 840;
+    final portraits = characterPortraits[id] ?? const <CharacterPortrait>[];
+    final entries = [
+      for (final (index, portrait) in portraits.indexed)
+        GalleryImage(
+          _asset(portrait.source),
+          '${t('media.images.fields.portrait', 'Portrait')} ${(index + 1).toString().padLeft(2, '0')}',
+          localized: false,
+          sourceSize: Size(portrait.width, portrait.height),
+          bounds: Rect.fromLTWH(
+            portrait.bounds[0],
+            portrait.bounds[1],
+            portrait.bounds[2],
+            portrait.bounds[3],
+          ),
+        ),
+    ];
+    final images = [for (final entry in entries) entry.url];
+    final viewport = MediaQuery.sizeOf(context).width;
+    final wide = viewport >= 840;
     final visual = CustomPaint(
       painter: _Stripes(accent, scheme.surface.withValues(alpha: 0.24)),
       child: Padding(
@@ -728,11 +796,22 @@ class _CharacterDetailState extends State<CharacterDetail> {
             : const EdgeInsets.all(16),
         child: images.isEmpty
             ? const SizedBox(height: 240)
-            : ImageGallery(images: images, aspectRatio: 3 / 4, framed: false),
+            : ImageGallery(
+                images: images,
+                entries: entries,
+                stageHeight: wide
+                    ? (viewport * 0.68).clamp(720.0, 940.0)
+                    : (MediaQuery.sizeOf(context).height * 0.65).clamp(
+                        0.0,
+                        640.0,
+                      ),
+                aspectRatio: 3 / 4,
+                framed: false,
+              ),
       ),
     );
     final body = Padding(
-      padding: EdgeInsets.all(wide ? 40 : 24),
+      padding: EdgeInsets.all((viewport * 0.04).clamp(24.0, 64.0)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -767,7 +846,9 @@ class _CharacterDetailState extends State<CharacterDetail> {
           Text(
             name,
             style: TextStyle(
-              fontSize: wide ? 40 : 30,
+              fontSize: wide
+                  ? (viewport * 0.032).clamp(28.0, 48.0)
+                  : (viewport * 0.07).clamp(26.0, 36.0),
               height: 1.25,
               fontWeight: FontWeight.w700,
               letterSpacing: 1.4,
@@ -816,7 +897,7 @@ class _CharacterDetailState extends State<CharacterDetail> {
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
               child: Text(
-                catchCopy,
+                '\n$catchCopy',
                 style: TextStyle(
                   fontSize: 18,
                   height: 1.7,
@@ -829,7 +910,7 @@ class _CharacterDetailState extends State<CharacterDetail> {
             Padding(
               padding: const EdgeInsets.only(top: 4, bottom: 28),
               child: Text(
-                description,
+                '\n$description',
                 style: const TextStyle(
                   fontSize: 15,
                   height: 1.9,
@@ -985,7 +1066,7 @@ class _CharacterDetailState extends State<CharacterDetail> {
             : _num(entry['unlockFriendshipRank']) > 0
             ? v('unlockBond', entry['unlockFriendshipRank'])
             : '';
-        final audio = state.audio;
+        final audio = _voice;
         return ListenableBuilder(
           listenable: audio,
           builder: (context, _) => Column(
@@ -1064,7 +1145,7 @@ class _CharacterDetailState extends State<CharacterDetail> {
     Map entry,
     int index,
     Map line,
-    AudioService audio,
+    VoicePlayback audio,
     String Function(String, [Object?]) v,
   ) {
     final sound = (line['sound'] as Map?) ?? const {};
@@ -1121,14 +1202,7 @@ class _CharacterDetailState extends State<CharacterDetail> {
           IconButton(
             tooltip: '${v(playing ? 'stop' : 'playLine')} · ${_name(speaker)}',
             onPressed: url is String && url.isNotEmpty
-                ? () => audio.toggle(
-                    Track(
-                      id: key,
-                      url: _asset(url),
-                      title: text.isEmpty ? _name(speaker) : text,
-                      artwork: face,
-                    ),
-                  )
+                ? () => audio.toggle(VoiceClip(id: key, url: _asset(url)))
                 : null,
             icon: Icon(
               playing ? Symbols.stop_rounded : Symbols.play_arrow_rounded,

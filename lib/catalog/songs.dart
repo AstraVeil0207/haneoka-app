@@ -151,6 +151,7 @@ class _SongsScreenState extends State<SongsScreen> {
         return BrowseScreen(
           title: widget.title ?? t('navigation.songs', 'Songs'),
           items: items,
+          onOpen: widget.onOpen,
           itemId: (item) => '${item['musicId'] ?? item['_key'] ?? ''}',
           error: snapshot.error,
           onRetry: () => setState(() => _data = _load()),
@@ -445,7 +446,7 @@ class _SongText {
   }
 
   List<String> jackets(Entry song) => [
-    for (final key in ['jacketThumbUrl', 'jacketUrl'])
+    for (final key in ['jacketUrl', 'jacketThumbUrl'])
       if (song[key] case final String path when path.isNotEmpty)
         api.asset(path).toString(),
   ];
@@ -455,10 +456,12 @@ class _SongText {
     if (url is! String) return null;
     return Track(
       id: '${song['musicId']}',
+      songKey:
+          '${api is ProviderApi ? 'gbp' : 'our-notes'}:${song[serverKey] ?? api.server}:${song['musicId']}',
       url: api.asset(url).toString(),
       title: title(song['musicTitle']),
       subtitle: artist(song),
-      artwork: jackets(song).lastOrNull,
+      artwork: jackets(song).firstOrNull,
     );
   }
 }
@@ -479,6 +482,8 @@ class _SongTile extends StatelessWidget {
       title: AppScope.of(context).songTitle(song['musicTitle']),
       subtitle: text.artist(song),
       adornments: text.emblems(song),
+      adornmentPortraitStart:
+          text.performer(song)?.logos.length ?? text.bandIds(song).length,
       images: text.jackets(song),
       placeholder: Symbols.album_rounded,
       serverMark: serverMark(song, text.t.call),
@@ -493,7 +498,7 @@ class _SongTile extends StatelessWidget {
           : ListenableBuilder(
               listenable: audio,
               builder: (context, _) {
-                final playing = audio.isPlaying(track.id);
+                final playing = audio.isPlaying(track.id, track.url);
                 return Material(
                   type: MaterialType.transparency,
                   elevation: 1,
@@ -501,7 +506,7 @@ class _SongTile extends StatelessWidget {
                   child: IconButton.filledTonal(
                     tooltip:
                         '${text.t(playing ? 'common.actions.pause' : 'common.actions.play')}: ${track.title}',
-                    onPressed: () => audio.toggle(track),
+                    onPressed: () => audio.enqueueTrack(track),
                     icon: Icon(
                       playing
                           ? Symbols.pause_rounded
@@ -532,7 +537,7 @@ class _SongRow extends StatelessWidget {
           dimension: 48,
           child: ColoredBox(
             color: scheme.surfaceContainerHighest,
-            child: AppImage(candidates: text.jackets(song).reversed.toList()),
+            child: AppImage(candidates: text.jackets(song)),
           ),
         ),
       ),

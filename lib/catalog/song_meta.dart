@@ -16,6 +16,7 @@ import '../ui/detail.dart';
 import '../ui/theme.dart';
 import '../ui/tile.dart';
 import 'profiles.dart';
+import 'cross_server.dart';
 import 'visuals.dart';
 
 const _difficultyNames = ['EASY', 'NORMAL', 'HARD', 'EXPERT', 'SPECIAL'];
@@ -65,10 +66,27 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
   }
 
   Future<(List<_Chart>, CatalogVisuals, Map<String, String>)> _load() async {
-    final api = AppScope.of(context).api;
-    final (songs, meta, visuals, atlas) = await (
-      api.catalog('songs'),
-      api.catalog('song-meta'),
+    final state = AppScope.of(context);
+    final api = state.api;
+    final (songs, metaDocuments, visuals, atlas) = await (
+      crossServerCollection(
+        resource: 'songs',
+        selected: state.server,
+        apis: state.catalogApis,
+        rowsPath: null,
+      ),
+      Future.wait([
+        for (final entry in state.catalogApis.entries)
+          entry.value
+              .catalog('song-meta')
+              .then(
+                (value) => (entry.key, value),
+                onError: (Object error) {
+                  if (entry.key == state.server) throw error;
+                  return (entry.key, null);
+                },
+              ),
+      ]),
       CatalogVisuals.of(api),
       api
           .json(
@@ -88,10 +106,17 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
       }
     }
     final charts = <_Chart>[];
-    for (final MapEntry(:key, :value) in ((meta as Map?) ?? const {}).entries) {
-      final song = (songs as Map?)?[key];
-      if (song is! Entry || value is! Map) continue;
-      final rows = (song['difficulty'] as List? ?? const []).cast<Entry>();
+    final meta = {
+      for (final (server, document) in metaDocuments) server: document,
+    };
+    for (final song in songs) {
+      final source = '${song[serverKey] ?? state.server}';
+      final value =
+          (meta[source] as Map?)?['${song['musicId'] ?? song['_key']}'];
+      if (value is! Map) continue;
+      final rows = (song['difficulty'] as List? ?? const [])
+          .whereType<Entry>()
+          .toList();
       for (final MapEntry(key: index, value: difficulty) in value.entries) {
         final i = int.tryParse('$index');
         if (i == null || difficulty is! Map || difficulty['chart'] is! Entry) {
@@ -102,7 +127,7 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
             song,
             i,
             rows.where((r) => r['difficulty'] == i).firstOrNull ??
-                (i < rows.length ? rows[i] : const {}),
+                (i >= 0 && i < rows.length ? rows[i] : const {}),
             difficulty['chart'] as Entry,
             (difficulty['gekisou'] as Entry?) ?? const {},
           ),
@@ -246,6 +271,8 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
                         if (c.song['musicUrl'] case final String url)
                           Track(
                             id: '${c.song['musicId']}',
+                            songKey:
+                                'our-notes:${state.api.server}:${c.song['musicId']}',
                             url: state.api.asset(url).toString(),
                             title: state.songTitle(c.song['musicTitle']),
                             subtitle: t.text(
@@ -394,6 +421,9 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
                     context,
                     catalogProfiles.firstWhere((p) => p.resource == 'songs'),
                     points[hit].$3.song,
+                    api: AppScope.of(context).apiFor(
+                      '${points[hit].$3.song[serverKey] ?? AppScope.of(context).server}',
+                    ),
                   );
                 }
               },
@@ -606,7 +636,7 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
       final band = (c.song['bandId'] as num?)?.toInt();
       switch (key) {
         case 'title':
-          final jacket = c.song['jacketThumbUrl'] ?? c.song['jacketUrl'];
+          final jacket = c.song['jacketUrl'] ?? c.song['jacketThumbUrl'];
           return Padding(
             padding: EdgeInsets.symmetric(
               horizontal: compact ? 8 : 12,
@@ -762,6 +792,7 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
           if (url is! String) return const SizedBox.shrink();
           final track = Track(
             id: '${c.song['musicId']}',
+            songKey: 'our-notes:${state.api.server}:${c.song['musicId']}',
             url: state.api.asset(url).toString(),
             title: state.songTitle(c.song['musicTitle']),
             artwork: c.song['jacketUrl'] is String
@@ -772,9 +803,9 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
             listenable: state.audio,
             builder: (context, _) => IconButton(
               tooltip: t('common.actions.play', 'Play'),
-              onPressed: () => state.audio.toggle(track),
+              onPressed: () => state.audio.enqueueTrack(track),
               icon: Icon(
-                state.audio.isPlaying(track.id)
+                state.audio.isPlaying(track.id, track.url)
                     ? Symbols.pause_rounded
                     : Symbols.play_arrow_rounded,
               ),
@@ -840,6 +871,9 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
                               context,
                               songsProfile,
                               rows[index - 1].song,
+                              api: AppScope.of(context).apiFor(
+                                '${rows[index - 1].song[serverKey] ?? AppScope.of(context).server}',
+                              ),
                             ),
                           ),
                     },

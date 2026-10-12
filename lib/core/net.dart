@@ -42,8 +42,10 @@ http.Client _client() {
 final CacheManager artworkCache = CacheManager(
   Config(
     'haneoka-artwork',
-    stalePeriod: const Duration(days: 30),
-    maxNrOfCacheObjects: 20000,
+    // Disk capacity is managed by CacheStorage. Keep the library's own
+    // count/age cleanup from imposing a hidden limit on unlimited mode.
+    stalePeriod: const Duration(days: 3650),
+    maxNrOfCacheObjects: 1 << 30,
     fileService: HttpFileService(httpClient: netClient),
   ),
 );

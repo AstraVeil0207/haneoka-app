@@ -28,7 +28,7 @@ String _category(SiteText t, Object? category) => t(
 /// The game's announcements for the release server, newest first
 /// (`fetchAnnouncements`, `sortAnnouncements`).
 Future<List<Announcement>> fetchAnnouncements(AppState state) async {
-  final value = await state.api.json(
+  final value = await state.api.live(
     '/api/v1/announcements?server=${state.server}&locale=${state.text.locale}',
   );
   final list = [
@@ -48,8 +48,9 @@ Future<List<Announcement>> fetchAnnouncements(AppState state) async {
 /// One announcement in a list (`announcementRow`): banner, date and
 /// category, then the title over three lines.
 class AnnouncementRow extends StatelessWidget {
-  const AnnouncementRow({super.key, required this.entry});
+  const AnnouncementRow({super.key, required this.entry, this.compact = false});
   final Announcement entry;
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -64,15 +65,18 @@ class AnnouncementRow extends StatelessWidget {
         ),
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 4 : 16,
+          vertical: compact ? 6 : 12,
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Container(
-                width: 112,
-                height: 64,
+                width: compact ? 56 : 112,
+                height: compact ? 32 : 64,
                 color: scheme.surfaceContainerHighest,
                 alignment: Alignment.center,
                 child: banner is String
@@ -133,9 +137,11 @@ class AnnouncementRow extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     '${entry['title'] ?? ''}',
-                    maxLines: 3,
+                    maxLines: compact ? 2 : 3,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyLarge,
+                    style: compact
+                        ? theme.textTheme.titleSmall
+                        : theme.textTheme.bodyLarge,
                   ),
                 ],
               ),
@@ -248,7 +254,7 @@ class _AnnouncementScreenState extends State<AnnouncementScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final state = AppScope.of(context);
-    _detail ??= state.api.json(
+    _detail ??= state.api.live(
       '/api/v1/announcements/${widget.entry['id']}?server=${state.server}&locale=${state.text.locale}',
     );
   }

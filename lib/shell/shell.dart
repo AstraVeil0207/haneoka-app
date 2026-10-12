@@ -6,8 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../core/app_state.dart';
+import '../core/app_updates.dart';
+import '../core/voice.dart';
+import '../core/storage.dart';
+import '../ui/app_updates.dart';
 import '../ui/player.dart';
 import '../ui/theme.dart';
+import '../ui/import_screen.dart';
 import 'links.dart';
 import 'navigation.dart';
 import 'page.dart';
@@ -16,22 +21,95 @@ import 'routes.dart';
 /// The website's shell: an expanded drawer on wide windows, a rail on medium
 /// ones, a modal drawer on phones; the page's bar and pane beside it.
 class AppShell extends StatefulWidget {
-  const AppShell({super.key});
+  const AppShell({super.key, this.initialAddress});
+  final Uri? initialAddress;
   @override
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AppShellState extends State<AppShell> {
+class _PageNavigationObserver extends NavigatorObserver {
+  _PageNavigationObserver(this.onChange);
+  final ValueChanged<String> onChange;
+  final _routes = <Route<dynamic>>[];
+  void _changed() {
+    VoicePlayback.stopAll();
+    final route = _routes.reversed
+        .map((route) => route.settings.name)
+        .whereType<String>()
+        .firstOrNull;
+    if (route != null) onChange(route);
+  }
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _routes.add(route);
+    _changed();
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _routes.remove(route);
+    _changed();
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    _routes.remove(route);
+    _changed();
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    final index = oldRoute == null ? -1 : _routes.indexOf(oldRoute);
+    if (index >= 0) {
+      if (newRoute == null) {
+        _routes.removeAt(index);
+      } else {
+        _routes[index] = newRoute;
+      }
+    }
+    _changed();
+  }
+}
+
+class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   final _scaffold = GlobalKey<ScaffoldState>();
-  // A new key per route, so each route starts its own page stack.
   var _pages = GlobalKey<NavigatorState>();
+  String _route = const String.fromEnvironment(
+    'HANEOKA_ROUTE',
+    defaultValue: '/',
+  );
+  late var _observer = _PageNavigationObserver(_routeChanged);
+  bool _nestedCanPop = false;
+  bool _drawerCollapsed = false;
+  (String, String)? _dataKey;
+  void _routeChanged(String value) {
+    if (mounted && _route != value) setState(() => _route = value);
+  }
+
   StreamSubscription<Uri>? _links;
+  String? _notifiedVersion;
+
+  Future<void> _checkUpdates() async {
+    final updates = AppUpdates.instance;
+    await updates.check();
+    final notify = await updates.shouldNotify();
+    if (!mounted || !notify || _notifiedVersion == updates.available?.version) {
+      return;
+    }
+    _notifiedVersion = updates.available!.version;
+    await showAppUpdate(context, updates.available!);
+  }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    CacheStorage.instance.scheduleTrim();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkUpdates());
+    if (widget.initialAddress case final address?) _openAddress(address);
     // haneoka.org addresses opened from other apps (Android App Links).
-    if (Platform.isAndroid) {
+    if (Platform.isAndroid || Platform.isIOS) {
       _links = AppLinks().uriLinkStream.listen(_openAddress);
     }
   }
@@ -39,10 +117,40 @@ class _AppShellState extends State<AppShell> {
   @override
   void dispose() {
     _links?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_checkUpdates());
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      AppScope.of(context).audio.saveSnapshot();
+    }
+  }
+
   void _openAddress(Uri uri) {
+    if (uri.scheme == 'haneoka' && uri.host == 'auth') return;
+    if (uri.scheme == 'haneoka') {
+      uri = Uri(
+        scheme: 'https',
+        host: 'haneoka.org',
+        path: '/${uri.host}${uri.path}',
+        query: uri.hasQuery ? uri.query : null,
+      );
+    }
+    if (uri.scheme == 'file') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _pages.currentState?.push(
+          MaterialPageRoute<void>(
+            builder: (_) => ImportScreen(initialPath: uri.toFilePath()),
+          ),
+        );
+      });
+      WidgetsBinding.instance.scheduleFrame();
+      return;
+    }
     if (uri.host != 'haneoka.org') return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final context = _pages.currentContext;
@@ -50,149 +158,219 @@ class _AppShellState extends State<AppShell> {
         openLink(context, uri.toString(), navigate: _navigate);
       }
     });
+    WidgetsBinding.instance.scheduleFrame();
   }
 
-  String _route = const String.fromEnvironment(
-    'HANEOKA_ROUTE',
-    defaultValue: '/',
-  );
-
   void _navigate(String route) {
-    // The stories root is band stories, as on the website.
     if (route == '/catalog/stories') route = '/catalog/stories/band';
-    setState(() {
-      _route = route;
-      _pages = GlobalKey<NavigatorState>();
-    });
     _scaffold.currentState?.closeDrawer();
+    if (route == _route) return;
+    final destination = route;
+    _pages.currentState?.push(
+      MaterialPageRoute<void>(
+        settings: RouteSettings(name: destination),
+        builder: (_) =>
+            screenFor(destination, navigate: _navigate) ??
+            PendingScreen(label: destination),
+      ),
+    );
+  }
+
+  Future<void> _back() async {
+    if (_scaffold.currentState?.isDrawerOpen ?? false) {
+      _scaffold.currentState?.closeDrawer();
+      return;
+    }
+    await _pages.currentState?.maybePop();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final state = AppScope.of(context);
+    final key = (state.server, state.text.locale);
+    if (_dataKey != null && _dataKey != key) {
+      _pages = GlobalKey<NavigatorState>();
+      _observer = _PageNavigationObserver(_routeChanged);
+      _nestedCanPop = false;
+    }
+    _dataKey = key;
   }
 
   NavDestination? get _destination {
-    bool contains(List<NavItem> items) =>
-        items.any((item) => item.route == _route || contains(item.children));
-    for (final destination in navDestinations) {
-      if (destination.route == _route) return destination;
-      if (destination.sections.any((s) => contains(s.items))) {
-        return destination;
+    NavDestination? best;
+    var score = -1;
+    void matchItems(List<NavItem> items, NavDestination destination) {
+      for (final item in items) {
+        final match = routeMatch(_route, item.route);
+        if (match > score) {
+          best = destination;
+          score = match;
+        }
+        matchItems(item.children, destination);
       }
     }
-    return null;
+
+    for (final destination in navDestinations) {
+      final match = routeMatch(_route, destination.route);
+      if (match > score) {
+        best = destination;
+        score = match;
+      }
+      for (final section in destination.sections) {
+        matchItems(section.items, destination);
+      }
+    }
+    return best;
   }
 
   @override
   Widget build(BuildContext context) {
     final t = AppScope.of(context).text;
-    final label = allNavItems
-        .where((item) => item.route == _route)
-        .map((item) => item.label)
-        .firstOrNull;
-    final page = Navigator(
-      key: _pages,
-      onGenerateRoute: (_) => MaterialPageRoute<void>(
-        builder: (_) =>
-            screenFor(_route, navigate: _navigate) ??
-            PendingScreen(label: label ?? _route),
+    final destinationRoute = _route;
+    final page = NotificationListener<NavigationNotification>(
+      onNotification: (notification) {
+        if (_nestedCanPop != notification.canHandlePop) {
+          setState(() => _nestedCanPop = notification.canHandlePop);
+        }
+        return false;
+      },
+      child: Navigator(
+        key: _pages,
+        observers: [_observer],
+        onGenerateRoute: (_) => MaterialPageRoute<void>(
+          settings: RouteSettings(name: destinationRoute),
+          builder: (_) =>
+              screenFor(destinationRoute, navigate: _navigate) ??
+              PendingScreen(label: destinationRoute),
+        ),
       ),
     );
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final width = constraints.maxWidth;
-        final compact = width < ShellMetrics.compact;
-        final destination = _destination;
-        Widget drawer(bool modal) => _Drawer(
-          route: _route,
-          current: destination,
-          modal: modal,
-          onNavigate: _navigate,
-          onClose: () => _scaffold.currentState?.closeDrawer(),
-        );
-        final body = ShellScope(
-          compact: compact,
-          openNavigation: () => _scaffold.currentState?.openDrawer(),
-          navigate: _navigate,
-          child: page,
-        );
-        if (compact) {
-          return Scaffold(
-            key: _scaffold,
-            drawer: Drawer(
-              width: ShellMetrics.drawer + 40,
-              child: drawer(true),
-            ),
-            body: SafeArea(child: body),
+    return PopScope<void>(
+      canPop: !_nestedCanPop,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) unawaited(_back());
+      },
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          final compact = width < ShellMetrics.compact;
+          AppScope.of(context).audio.compact = compact;
+          final destination = _destination;
+          Widget drawer(bool modal) => _Drawer(
+            route: _route,
+            current: destination,
+            modal: modal,
+            onNavigate: _navigate,
+            onClose: modal
+                ? () => _scaffold.currentState?.closeDrawer()
+                : () => setState(() => _drawerCollapsed = true),
           );
-        }
-        if (width < ShellMetrics.expanded) {
-          return Scaffold(
-            key: _scaffold,
-            drawer: Drawer(
-              width: ShellMetrics.drawer + 40,
-              child: drawer(true),
-            ),
-            body: Row(
-              children: [
-                NavigationRail(
-                  selectedIndex: destination == null
-                      ? null
-                      : navDestinations.indexOf(destination),
-                  labelType: NavigationRailLabelType.all,
-                  leading: Padding(
-                    padding: const EdgeInsets.only(top: 8),
-                    child: IconButton(
-                      tooltip: MaterialLocalizations.of(context)
-                          .openAppDrawerTooltip,
-                      onPressed: () => _scaffold.currentState?.openDrawer(),
-                      icon: const Icon(Symbols.menu_rounded),
-                    ),
+          final body = ShellScope(
+            compact: compact,
+            openNavigation: () => _scaffold.currentState?.openDrawer(),
+            navigate: _navigate,
+            child: compact
+                ? page
+                : Column(
+                    children: [
+                      Expanded(child: page),
+                      const DockedPlayer(),
+                    ],
                   ),
-                  trailing: Expanded(
-                    child: Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const NowPlaying(),
-                            for (final item in utilityItems)
-                              IconButton(
-                                tooltip: t(item.label),
-                                isSelected: _route == item.route,
-                                onPressed: () => _navigate(item.route),
-                                icon: Icon(item.icon),
-                                selectedIcon: Icon(item.icon, fill: 1),
-                              ),
-                          ],
+          );
+          if (compact) {
+            return Scaffold(
+              key: _scaffold,
+              drawer: Drawer(
+                width: ShellMetrics.drawer + 40,
+                child: drawer(true),
+              ),
+              body: SafeArea(child: body),
+            );
+          }
+          if (width < ShellMetrics.expanded || _drawerCollapsed) {
+            return Scaffold(
+              key: _scaffold,
+              drawer: Drawer(
+                width: ShellMetrics.drawer + 40,
+                child: drawer(true),
+              ),
+              body: SafeArea(
+                child: Row(
+                  children: [
+                    NavigationRail(
+                      scrollable: true,
+                      selectedIndex: destination == null
+                          ? null
+                          : navDestinations.indexOf(destination),
+                      labelType: NavigationRailLabelType.all,
+                      leading: Padding(
+                        padding: const EdgeInsets.only(top: 8),
+                        child: IconButton(
+                          tooltip: MaterialLocalizations.of(context)
+                              .openAppDrawerTooltip,
+                          onPressed: () {
+                            if (width >= ShellMetrics.expanded &&
+                                _drawerCollapsed) {
+                              setState(() => _drawerCollapsed = false);
+                            } else {
+                              _scaffold.currentState?.openDrawer();
+                            }
+                          },
+                          icon: const Icon(Symbols.menu_rounded),
                         ),
                       ),
-                    ),
-                  ),
-                  onDestinationSelected: (index) =>
-                      _navigate(navDestinations[index].route),
-                  destinations: [
-                    for (final d in navDestinations)
-                      NavigationRailDestination(
-                        icon: Icon(d.icon),
-                        selectedIcon: Icon(d.icon, fill: 1),
-                        label: Text(t(d.label)),
+                      trailing: Align(
+                        alignment: Alignment.bottomCenter,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const NowPlaying(),
+                              for (final item in utilityItems)
+                                IconButton(
+                                  tooltip: t(item.label),
+                                  isSelected: _route == item.route,
+                                  onPressed: () => _navigate(item.route),
+                                  icon: Icon(item.icon),
+                                  selectedIcon: Icon(item.icon, fill: 1),
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
+                      onDestinationSelected: (index) =>
+                          _navigate(navDestinations[index].route),
+                      destinations: [
+                        for (final d in navDestinations)
+                          NavigationRailDestination(
+                            icon: Icon(d.icon),
+                            selectedIcon: Icon(d.icon, fill: 1),
+                            label: Text(t(d.label)),
+                          ),
+                      ],
+                    ),
+                    Expanded(child: body),
                   ],
                 ),
-                Expanded(child: body),
-              ],
+              ),
+            );
+          }
+          return Scaffold(
+            key: _scaffold,
+            body: SafeArea(
+              child: Row(
+                children: [
+                  SizedBox(width: ShellMetrics.drawer, child: drawer(false)),
+                  Expanded(child: body),
+                ],
+              ),
             ),
           );
-        }
-        return Scaffold(
-          key: _scaffold,
-          body: Row(
-            children: [
-              SizedBox(width: ShellMetrics.drawer, child: drawer(false)),
-              Expanded(child: body),
-            ],
-          ),
-        );
-      },
+        },
+      ),
     );
   }
 }
@@ -223,11 +401,41 @@ class _DrawerState extends State<_Drawer> {
 
   /// Collapsible sections (the archive mirrors) the reader opened.
   final Set<String> _expanded = {};
+  final _selected = GlobalKey();
+
+  void _revealCurrent() {
+    bool contains(List<NavItem> items) => items.any(
+      (item) =>
+          item.route == activeNavigationItem(widget.route)?.route ||
+          contains(item.children),
+    );
+    for (final section in widget.current?.sections ?? const <NavSection>[]) {
+      if (section.collapsible && contains(section.items)) {
+        _expanded.add(section.id);
+      }
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = _selected.currentContext;
+      if (mounted && context != null) {
+        Scrollable.ensureVisible(
+          context,
+          alignment: widget.current?.id == 'stories' ? 0.12 : 0.35,
+        );
+      }
+    });
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _revealCurrent();
+  }
 
   @override
   void didUpdateWidget(_Drawer old) {
     super.didUpdateWidget(old);
     if (widget.current != null) _open.add(widget.current!.id);
+    if (old.route != widget.route) _revealCurrent();
   }
 
   void _toggle(Set<String> set, String id) =>
@@ -238,6 +446,7 @@ class _DrawerState extends State<_Drawer> {
     final t = AppScope.of(context).text;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final activeRoute = activeNavigationItem(widget.route)?.route;
 
     Widget row({
       required String label,
@@ -248,7 +457,9 @@ class _DrawerState extends State<_Drawer> {
       double height = 56,
       Widget? trailing,
       TextStyle? style,
+      Key? key,
     }) => Padding(
+      key: key,
       padding: EdgeInsets.fromLTRB(16 + indent, 0, 12, 0),
       child: Material(
         color: active ? scheme.secondaryContainer : Colors.transparent,
@@ -295,12 +506,13 @@ class _DrawerState extends State<_Drawer> {
     List<Widget> items(List<NavItem> list, double indent) => [
       for (final item in list) ...[
         row(
+          key: item.route == activeRoute ? _selected : null,
           label: t(item.label),
           icon: item.icon,
-          active: item.route == widget.route,
+          active: item.route == activeRoute,
           onTap: () => widget.onNavigate(item.route),
           indent: indent,
-          height: 50,
+          height: 48,
         ),
         ...items(item.children, indent + 16),
       ],
@@ -322,7 +534,7 @@ class _DrawerState extends State<_Drawer> {
               height: ShellMetrics.topBar,
               child: Row(
                 children: [
-                  const SizedBox(width: 16),
+                  SizedBox(width: widget.modal ? 16 : 28),
                   if (widget.modal)
                     IconButton(
                       tooltip: MaterialLocalizations.of(context)
@@ -331,8 +543,13 @@ class _DrawerState extends State<_Drawer> {
                       icon: const Icon(Symbols.menu_open_rounded),
                     )
                   else
-                    const SizedBox(width: 8),
-                  const SizedBox(width: 4),
+                    IconButton(
+                      tooltip: MaterialLocalizations.of(context)
+                          .openAppDrawerTooltip,
+                      onPressed: widget.onClose,
+                      icon: const Icon(Symbols.menu_open_rounded),
+                    ),
+                  SizedBox(width: widget.modal ? 4 : 12),
                   Image.asset(
                     'assets/brand/android-chrome-512x512.png',
                     width: 32,

@@ -796,13 +796,13 @@ abstract class AppLocalizations {
   /// No description provided for @methodAdbSummary.
   ///
   /// In en, this message translates to:
-  /// **'Reads the save from a phone connected to this computer with ADB.'**
+  /// **'Bundled ADB reads saves from this computer’s connected Android phone.'**
   String get methodAdbSummary;
 
   /// No description provided for @methodAdbSteps.
   ///
   /// In en, this message translates to:
-  /// **'On the phone, turn on Developer options and USB debugging.\nConnect it by cable, or pair it over Wi-Fi.\nTap Connect, choose the phone and allow the prompt on it.'**
+  /// **'Enable Developer options and USB debugging on the phone.\nConnect by cable and approve this computer, then tap Read connected device.\nFor multiple phones or Wi-Fi pairing, use Choose device / wireless pairing.'**
   String get methodAdbSteps;
 
   /// No description provided for @iosNote.

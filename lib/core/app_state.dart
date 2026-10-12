@@ -24,7 +24,7 @@ class AppState extends ChangeNotifier {
   String server;
   SiteText text;
   HaneokaApi api;
-  final AudioService audio = AudioService();
+  late final AudioService audio = AudioService(_prefs);
   final _apis = <String, HaneokaApi>{};
 
   /// The client for one release server; the selected one is [api].

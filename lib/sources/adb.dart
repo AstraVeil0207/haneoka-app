@@ -27,6 +27,17 @@ class AdbSaveSource {
   AdbSaveSource(this.adb);
   final String adb;
 
+  Map<String, String>? get _environment {
+    final libraries = p.join(p.dirname(adb), 'lib');
+    if (!Platform.isLinux || !Directory(libraries).existsSync()) return null;
+    return {
+      'LD_LIBRARY_PATH': [
+        libraries,
+        Platform.environment['LD_LIBRARY_PATH'] ?? '',
+      ].where((path) => path.isNotEmpty).join(':'),
+    };
+  }
+
   /// `adb` from the platform tools: on PATH, in the Android SDK, or where the
   /// user points. Null when none is found.
   static Future<String?> locate() async {
@@ -36,6 +47,16 @@ class AdbSaveSource {
         Platform.environment['USERPROFILE'] ??
         '';
     final candidates = <String>[
+      p.join(p.dirname(Platform.resolvedExecutable), 'tools', 'adb', name),
+      if (Platform.isMacOS)
+        p.join(
+          p.dirname(Platform.resolvedExecutable),
+          '..',
+          'Resources',
+          'tools',
+          'adb',
+          name,
+        ),
       for (final dir in (Platform.environment['PATH'] ?? '').split(
         Platform.isWindows ? ';' : ':',
       ))
@@ -68,7 +89,7 @@ class AdbSaveSource {
   }
 
   Future<List<AdbDevice>> devices() async {
-    final result = await Process.run(adb, ['devices', '-l']);
+    final result = await _run(['devices', '-l']);
     if (result.exitCode != 0) throw AdbException('adb devices failed');
     return [
       for (final line in LineSplitter.split(result.stdout as String).skip(1))
@@ -83,13 +104,13 @@ class AdbSaveSource {
 
   /// Wireless debugging on Android 11+: pair once with the code the phone shows.
   Future<bool> pair(String hostPort, String code) async {
-    final result = await Process.run(adb, ['pair', hostPort, code]);
+    final result = await _run(['pair', hostPort, code]);
     return result.exitCode == 0 &&
         (result.stdout as String).contains('Successfully');
   }
 
   Future<bool> connect(String hostPort) async {
-    final result = await Process.run(adb, ['connect', hostPort]);
+    final result = await _run(['connect', hostPort]);
     return result.exitCode == 0 &&
         (result.stdout as String).contains('connected');
   }
@@ -167,7 +188,13 @@ class AdbSaveSource {
     String command, {
     bool allowFailure = false,
   }) async {
-    final result = await Process.run(adb, ['-s', serial, 'shell', command]);
+    final result = await _run(['-s', serial, 'shell', command]);
+    if (result.exitCode != 0 &&
+        '${result.stderr}'.toLowerCase().contains('permission denied')) {
+      throw AdbException(
+        'game folder access denied; use Shizuku or import an exported folder',
+      );
+    }
     if (result.exitCode != 0 && !allowFailure) {
       throw AdbException(command.split(' ').first);
     }
@@ -180,17 +207,55 @@ class AdbSaveSource {
       serial,
       'exec-out',
       'cat ${_quote(file)}',
-    ]);
+    ], environment: _environment);
     final builder = BytesBuilder(copy: false);
-    await for (final chunk in process.stdout) {
-      builder.add(chunk);
-      if (builder.length > SaveCodec.maxFileBytes) {
-        process.kill();
-        break;
+    final errors = process.stderr.drain<void>().catchError((Object _) {});
+    final timer = Timer(const Duration(seconds: 30), () => process.kill());
+    try {
+      await for (final chunk in process.stdout) {
+        builder.add(chunk);
+        if (builder.length > SaveCodec.maxFileBytes) {
+          process.kill();
+          throw AdbException('save file exceeds the size limit');
+        }
       }
+      final status = await process.exitCode;
+      await errors;
+      if (status != 0) throw AdbException('read save');
+      return builder.takeBytes();
+    } finally {
+      timer.cancel();
     }
-    await process.exitCode;
-    return builder.takeBytes();
+  }
+
+  Future<ProcessResult> _run(List<String> arguments) async {
+    final process = await Process.start(
+      adb,
+      arguments,
+      environment: _environment,
+    );
+    final output = const Utf8Decoder(allowMalformed: true)
+        .bind(process.stdout)
+        .join();
+    final errors = const Utf8Decoder(allowMalformed: true)
+        .bind(process.stderr)
+        .join();
+    try {
+      final results = await Future.wait<Object>([
+        process.exitCode,
+        output,
+        errors,
+      ]).timeout(const Duration(seconds: 30));
+      return ProcessResult(
+        process.pid,
+        results[0] as int,
+        results[1] as String,
+        results[2] as String,
+      );
+    } on TimeoutException {
+      process.kill();
+      throw AdbException('connection timed out');
+    }
   }
 
   /// Single-quoted for the phone's shell; names come from the game's folder.

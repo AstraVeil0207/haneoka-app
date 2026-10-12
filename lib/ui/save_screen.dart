@@ -55,24 +55,25 @@ class _Catalog {
   }
 
   static final _loaded = <HaneokaApi, Future<_Catalog>>{};
-  static Future<_Catalog> of(HaneokaApi api) => _loaded[api] ??= () async {
-    final (cards, supports, songs, items, events, visuals) = await (
-      api.catalog('cards'),
-      api.catalog('support-cards'),
-      api.catalog('songs'),
-      api.catalog('items'),
-      api.catalog('events'),
-      CatalogVisuals.of(api),
-    ).wait;
-    return _Catalog(
-      _rows(cards),
-      _rows(supports),
-      _rows(songs),
-      _rows(items, 'items'),
-      _rows(events, 'entries'),
-      visuals,
-    );
-  }();
+  static Future<_Catalog> of(HaneokaApi api) =>
+      cachedResource(_loaded, api, () async {
+        final (cards, supports, songs, items, events, visuals) = await (
+          api.catalog('cards'),
+          api.catalog('support-cards'),
+          api.catalog('songs'),
+          api.catalog('items'),
+          api.catalog('events'),
+          CatalogVisuals.of(api),
+        ).wait;
+        return _Catalog(
+          _rows(cards),
+          _rows(supports),
+          _rows(songs),
+          _rows(items, 'items'),
+          _rows(events, 'entries'),
+          visuals,
+        );
+      });
 }
 
 /// One player's profile, read from their save: who they are, their

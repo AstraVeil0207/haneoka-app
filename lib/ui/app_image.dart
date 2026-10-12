@@ -1,8 +1,13 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import '../core/app_state.dart';
 import '../core/net.dart';
+import '../core/storage.dart';
 
 const _localeImageTags = {
   'en': ['en'],
@@ -20,21 +25,28 @@ List<String> localeImageCandidates(String source, String locale) {
   if (source.isEmpty ||
       tags == null ||
       !_gameAsset.hasMatch(source) ||
-      _tagged.hasMatch(source)) {
+      _tagged.hasMatch(Uri.parse(source).path)) {
     return [source];
   }
-  final slash = source.lastIndexOf('/'), dot = source.lastIndexOf('.');
+  final uri = Uri.parse(source);
+  final path = uri.path;
+  final slash = path.lastIndexOf('/'), dot = path.lastIndexOf('.');
   return [
     for (final tag in tags)
       dot > slash
-          ? '${source.substring(0, dot)}($tag)${source.substring(dot)}'
-          : '$source($tag)',
+          ? uri
+                .replace(
+                  path: '${path.substring(0, dot)}($tag)${path.substring(dot)}',
+                )
+                .toString()
+          : uri.replace(path: '$path($tag)').toString(),
     source,
   ];
 }
 
 /// Addresses that failed this session, so a missing variant is asked for once.
 final _missing = <String>{};
+final _retryAfter = <String, DateTime>{};
 
 /// Network artwork decoded at the size it is shown, trying each candidate in
 /// turn (original first, thumbnail last), as the website's `nextImageCandidate`.
@@ -64,11 +76,18 @@ class AppImage extends StatefulWidget {
 
 class _AppImageState extends State<AppImage> {
   int _index = 0;
+  Timer? _retry;
+
+  @override
+  void dispose() {
+    _retry?.cancel();
+    super.dispose();
+  }
 
   @override
   void didUpdateWidget(AppImage old) {
     super.didUpdateWidget(old);
-    if (old.candidates.firstOrNull != widget.candidates.firstOrNull) _index = 0;
+    if (!listEquals(old.candidates, widget.candidates)) _index = 0;
   }
 
   @override
@@ -82,20 +101,33 @@ class _AppImageState extends State<AppImage> {
             in locale == null
                 ? [source]
                 : localeImageCandidates(source, locale))
-          if (!_missing.contains(url)) url,
+          if (!_missing.contains(url) &&
+              !(_retryAfter[url]?.isAfter(DateTime.now()) ?? false))
+            url,
     ];
     if (_index >= candidates.length) {
       return widget.placeholder ?? const SizedBox.expand();
     }
+    final url = candidates[_index];
     return LayoutBuilder(
       builder: (context, constraints) {
         final ratio = MediaQuery.devicePixelRatioOf(context);
         final width = constraints.hasBoundedWidth
-            ? (constraints.maxWidth * ratio).round()
+            ? (constraints.maxWidth * ratio).round().clamp(1, 8192)
             : null;
         return CachedNetworkImage(
-          key: ValueKey(candidates[_index]),
-          imageUrl: candidates[_index],
+          key: ValueKey(url),
+          imageUrl: url,
+          imageBuilder: (context, provider) {
+            CacheStorage.instance.scheduleTrim();
+            return Image(
+              image: ResizeImage.resizeIfNeeded(width, null, provider),
+              fit: widget.fit,
+              alignment: widget.alignment,
+              width: double.infinity,
+              height: double.infinity,
+            );
+          },
           cacheManager: artworkCache,
           fit: widget.fit,
           alignment: widget.alignment,
@@ -105,11 +137,24 @@ class _AppImageState extends State<AppImage> {
           fadeInDuration: const Duration(milliseconds: 120),
           fadeOutDuration: Duration.zero,
           placeholder: (_, _) => const SizedBox.expand(),
-          errorWidget: (_, _, _) {
-            final failed = candidates[_index];
+          errorWidget: (_, _, error) {
+            final failed = url;
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              // Dropping the failed address moves the next candidate into place.
-              _missing.add(failed);
+              if (error is HttpExceptionWithStatus &&
+                  const {404, 410}.contains(error.statusCode)) {
+                _missing.add(failed);
+              } else {
+                // Temporary network/decode failures can recover in this session.
+                _retryAfter[failed] = DateTime.now().add(
+                  const Duration(seconds: 30),
+                );
+                if (mounted) {
+                  _retry ??= Timer(const Duration(seconds: 31), () {
+                    _retry = null;
+                    if (mounted) setState(() => _index = 0);
+                  });
+                }
+              }
               if (mounted) setState(() {});
             });
             return const SizedBox.expand();

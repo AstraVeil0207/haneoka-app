@@ -368,11 +368,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get methodAdbSummary =>
-      'Reads the save from a phone connected to this computer with ADB.';
+      'Bundled ADB reads saves from this computer’s connected Android phone.';
 
   @override
   String get methodAdbSteps =>
-      'On the phone, turn on Developer options and USB debugging.\nConnect it by cable, or pair it over Wi-Fi.\nTap Connect, choose the phone and allow the prompt on it.';
+      'Enable Developer options and USB debugging on the phone.\nConnect by cable and approve this computer, then tap Read connected device.\nFor multiple phones or Wi-Fi pairing, use Choose device / wireless pairing.';
 
   @override
   String get iosNote =>

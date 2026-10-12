@@ -7,17 +7,22 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:material_new_shapes/material_new_shapes.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../account/account_widgets.dart';
 import '../account/haneoka_account.dart';
 import '../core/app_state.dart';
+import '../core/storage.dart';
 import '../l10n/app_localizations.dart';
 import '../save/account_store.dart';
 import '../save/game_save.dart';
 import '../save/save_view.dart';
 import '../shell/page.dart';
 import '../sources/android.dart';
+import '../sources/adb.dart';
 import '../sources/files.dart';
+import '../sources/ios_backup.dart';
+import '../sources/ios_direct.dart';
 import 'adb_sheet.dart';
 import 'backup_sheet.dart';
 import 'labels.dart';
@@ -34,7 +39,8 @@ String releaseEmblem(GameRelease? release) => release == GameRelease.jp
 /// Reading the game's save: what it is for, the version, and every way this
 /// platform can reach the save, each with what it needs and its steps.
 class ImportScreen extends StatefulWidget {
-  const ImportScreen({super.key});
+  const ImportScreen({super.key, this.initialPath});
+  final String? initialPath;
   @override
   State<ImportScreen> createState() => _ImportScreenState();
 }
@@ -43,12 +49,28 @@ class _ImportScreenState extends State<ImportScreen> {
   bool _busy = false;
   ShizukuStatus? _shizuku;
   bool _canGrant = false;
+  IosDirectAccess? _iosAccess;
   GameRelease? _release;
 
   @override
   void initState() {
     super.initState();
     if (Platform.isAndroid) _refreshAndroid();
+    if (Platform.isIOS) {
+      IosDirectSaveSource.access().then((access) {
+        if (mounted) setState(() => _iosAccess = access);
+      });
+    }
+    if (widget.initialPath case final path?) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _run(
+            (collector) =>
+                FileSaveSource(collector, release: release).addPath(path),
+          );
+        }
+      });
+    }
   }
 
   @override
@@ -78,34 +100,48 @@ class _ImportScreenState extends State<ImportScreen> {
 
   /// Runs one import; every account found is kept, and one opens directly.
   Future<void> _run(Future<void> Function(SaveCollector collector) read) async {
+    if (!mounted || _busy) return;
     setState(() => _busy = true);
     final collector = SaveCollector();
+    CacheStorage.instance.beginImport();
     try {
       await read(collector);
+      if (!mounted) return;
+      if (collector.saves.isEmpty) {
+        _say(t.noSaves);
+        return;
+      }
+      for (final save in collector.saves) {
+        await AccountStore.instance.put(save);
+        unawaited(HaneokaAccount.instance.syncIfLinked(save));
+      }
+      if (!mounted) return;
+      if (collector.saves.length == 1) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute<void>(
+            builder: (_) => SaveScreen(save: collector.saves.single),
+          ),
+        );
+      } else {
+        _say(t.foundAccounts(collector.saves.length));
+        Navigator.of(context).pop();
+      }
+    } on IosDirectAccessException {
+      if (mounted) {
+        _say(
+          AppScope.of(context).text(
+            'app.import.iosDirectRestricted',
+            'This installation cannot read another app’s private files. Use Files/Share or import an exported backup.',
+          ),
+        );
+      }
+    } on BackupPasswordException {
+      if (mounted) _say(t.wrongPassword);
     } catch (error) {
       if (mounted) _say('$error');
     } finally {
+      CacheStorage.instance.endImport();
       if (mounted) setState(() => _busy = false);
-    }
-    if (!mounted) return;
-    if (collector.saves.isEmpty) {
-      _say(t.noSaves);
-      return;
-    }
-    for (final save in collector.saves) {
-      await AccountStore.instance.put(save);
-      unawaited(HaneokaAccount.instance.syncIfLinked(save));
-    }
-    if (!mounted) return;
-    if (collector.saves.length == 1) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
-          builder: (_) => SaveScreen(save: collector.saves.single),
-        ),
-      );
-    } else {
-      _say(t.foundAccounts(collector.saves.length));
-      Navigator.of(context).pop();
     }
   }
 
@@ -115,6 +151,7 @@ class _ImportScreenState extends State<ImportScreen> {
         await AndroidSaveSource.requestShizuku()) {
       status = ShizukuStatus.ready;
     }
+    if (!mounted) return;
     setState(() => _shizuku = status);
     if (status != ShizukuStatus.ready) {
       if (status == ShizukuStatus.notRunning) {
@@ -131,7 +168,7 @@ class _ImportScreenState extends State<ImportScreen> {
 
   Future<void> _grantFolder() async {
     final uri = await AndroidSaveSource.grantGameFolder(release);
-    if (uri == null) return;
+    if (!mounted || uri == null) return;
     await _run(
       (collector) =>
           AndroidSaveSource.readFolder(uri, collector, release: release),
@@ -147,7 +184,7 @@ class _ImportScreenState extends State<ImportScreen> {
   Future<void> _pickFiles({bool folder = false}) async {
     if (folder) {
       final path = await FilePicker.platform.getDirectoryPath();
-      if (path == null) return;
+      if (!mounted || path == null) return;
       await _run(
         (collector) =>
             FileSaveSource(collector, release: release).addPath(path),
@@ -156,17 +193,58 @@ class _ImportScreenState extends State<ImportScreen> {
     }
     final picked = await FilePicker.platform.pickFiles(
       allowMultiple: true,
-      withData: !_hasPaths,
+      withData: false,
     );
-    if (picked == null) return;
+    if (!mounted || picked == null) return;
     await _run((collector) async {
       final source = FileSaveSource(collector, release: release);
       for (final file in picked.files) {
-        if (_hasPaths && file.path != null) {
+        if (file.path != null) {
           await source.addPath(file.path!);
         } else if (file.bytes != null) {
           source.addBytes(file.bytes!, file.name);
         }
+      }
+    });
+  }
+
+  Future<void> _readConnected() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    AdbSaveSource? source;
+    AdbDevice? device;
+    List<GameRelease> installed = const [];
+    try {
+      final path = await AdbSaveSource.locate();
+      if (path != null) {
+        source = AdbSaveSource(path);
+        final ready = (await source.devices())
+            .where((device) => device.ready)
+            .toList();
+        if (ready.length == 1) {
+          device = ready.single;
+          installed = await source.installed(device.serial);
+        }
+      }
+    } catch (error) {
+      if (mounted) _say('$error');
+      return;
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+    if (!mounted) return;
+    if (source == null || device == null) {
+      await showAdbSheet(context, onRead: _run);
+      return;
+    }
+    if (installed.isEmpty) {
+      _say(t.gameNotInstalled);
+      return;
+    }
+    final adb = source, serial = device.serial;
+    await _run((collector) async {
+      for (final release in installed) {
+        await adb.scan(serial, release, collector);
       }
     });
   }
@@ -193,6 +271,27 @@ class _ImportScreenState extends State<ImportScreen> {
             _ => null,
           },
           actions: [
+            TextButton.icon(
+              onPressed: () => launchUrl(
+                Uri.parse('https://shizuku.rikka.app/download/'),
+                mode: LaunchMode.externalApplication,
+              ),
+              icon: const Icon(Symbols.open_in_new_rounded),
+              label: Text(
+                AppScope.of(context)
+                    .text('app.import.downloadShizuku', 'Download Shizuku'),
+              ),
+            ),
+            TextButton(
+              onPressed: () => launchUrl(
+                Uri.parse('https://shizuku.rikka.app/guide/setup/'),
+                mode: LaunchMode.externalApplication,
+              ),
+              child: Text(
+                AppScope.of(context)
+                    .text('app.import.setupGuide', 'Setup guide'),
+              ),
+            ),
             if (_shizuku == ShizukuStatus.notRunning)
               TextButton(
                 onPressed: AndroidSaveSource.openShizuku,
@@ -233,11 +332,24 @@ class _ImportScreenState extends State<ImportScreen> {
           recommended: true,
           actions: [
             FilledButton.icon(
+              onPressed: _busy ? null : _readConnected,
+              icon: const Icon(Symbols.cable_rounded),
+              label: Text(
+                AppScope.of(context)
+                    .text('app.import.readConnected', 'Read connected device'),
+              ),
+            ),
+            TextButton.icon(
               onPressed: _busy
                   ? null
                   : () => showAdbSheet(context, onRead: _run),
-              icon: const Icon(Symbols.cable_rounded),
-              label: Text(t.connect),
+              icon: const Icon(Symbols.devices_rounded),
+              label: Text(
+                AppScope.of(context).text(
+                  'app.import.chooseDevice',
+                  'Choose device / wireless pairing',
+                ),
+              ),
             ),
           ],
         ),
@@ -247,6 +359,42 @@ class _ImportScreenState extends State<ImportScreen> {
           summary: t.methodBackupSummary,
           steps: t.methodBackupSteps,
           actions: [
+            if (Platform.isMacOS || Platform.isWindows) ...[
+              TextButton.icon(
+                onPressed: () => launchUrl(
+                  Uri.parse('https://imazing.com/download'),
+                  mode: LaunchMode.externalApplication,
+                ),
+                icon: const Icon(Symbols.open_in_new_rounded),
+                label: Text(
+                  AppScope.of(context)
+                      .text('app.import.downloadIMazing', 'Download iMazing'),
+                ),
+              ),
+              TextButton(
+                onPressed: () => launchUrl(
+                  Uri.parse(
+                    'https://imazing.com/guides/how-to-export-backup-and-transfer-ios-apps-data-and-settings',
+                  ),
+                  mode: LaunchMode.externalApplication,
+                ),
+                child: Text(
+                  AppScope.of(context)
+                      .text('app.import.exportGuide', 'Export app data'),
+                ),
+              ),
+            ],
+            if (Platform.isLinux)
+              TextButton.icon(
+                onPressed: () => launchUrl(
+                  Uri.parse(
+                    'https://github.com/libimobiledevice/libimobiledevice',
+                  ),
+                  mode: LaunchMode.externalApplication,
+                ),
+                icon: const Icon(Symbols.open_in_new_rounded),
+                label: const Text('libimobiledevice'),
+              ),
             FilledButton.tonalIcon(
               onPressed: _busy
                   ? null
@@ -257,13 +405,87 @@ class _ImportScreenState extends State<ImportScreen> {
           ],
         ),
       ],
+      if (Platform.isIOS)
+        _Method(
+          icon: Symbols.phone_iphone_rounded,
+          title: AppScope.of(context)
+              .text('app.import.iosDirectTitle', 'Import from this device'),
+          summary: AppScope.of(context).text(
+            'app.import.iosDirectSummary',
+            'Reads Our Notes Documents directly when this installation already has container access.',
+          ),
+          steps: AppScope.of(context).text(
+            'app.import.iosDirectSteps',
+            'Use the dedicated TrollStore build on a supported device, or an already-authorized jailbreak installation. Tap Read save. Haneoka reads the matching game containers and does not modify the game.',
+          ),
+          status: _iosAccess == IosDirectAccess.available
+              ? AppScope.of(context).text(
+                  'app.import.iosDirectAvailable',
+                  'Container access available',
+                )
+              : AppScope.of(context).text(
+                  'app.import.iosDirectRestricted',
+                  'This installation cannot read another app’s private files. Use Files/Share or import an exported backup.',
+                ),
+          actions: [
+            FilledButton.icon(
+              onPressed: _busy ? null : () => _run(IosDirectSaveSource.read),
+              icon: const Icon(Symbols.download_rounded),
+              label: Text(t.readSave),
+            ),
+            TextButton.icon(
+              onPressed: () => launchUrl(
+                Uri.parse('https://github.com/opa334/TrollStore'),
+                mode: LaunchMode.externalApplication,
+              ),
+              icon: const Icon(Symbols.open_in_new_rounded),
+              label: const Text('TrollStore'),
+            ),
+          ],
+        ),
+      if (Platform.isIOS)
+        _Method(
+          icon: Symbols.folder_special_rounded,
+          title: AppScope.of(
+            context,
+          ).text('app.import.advancedTitle', 'TrollStore / jailbroken device'),
+          summary: AppScope.of(context).text(
+            'app.import.advancedSummary',
+            'Export the game account folder using a compatible file manager.',
+          ),
+          steps: AppScope.of(context).text(
+            'app.import.advancedSteps',
+            'In Filza or Apps Manager, find Our Notes by its bundle ID, open its data container, and copy Documents/<account> to a ZIP in Files. Then choose that ZIP below or share it to Haneoka. For SFTP, copy the same folder to your computer. Check each tool’s supported device and iOS versions on its official page.',
+          ),
+          actions: [
+            for (final (title, url) in const [
+              ('TrollStore', 'https://github.com/opa334/TrollStore'),
+              ('Filza', 'https://www.tigisoftware.com/default/?p=439'),
+              ('Apps Manager', 'https://www.tigisoftware.com/default/?p=510'),
+              ('Dopamine', 'https://ellekit.space/dopamine/'),
+            ])
+              TextButton.icon(
+                onPressed: () => launchUrl(
+                  Uri.parse(url),
+                  mode: LaunchMode.externalApplication,
+                ),
+                icon: const Icon(Symbols.open_in_new_rounded),
+                label: Text(title),
+              ),
+          ],
+        ),
       _Method(
         icon: Symbols.file_open_rounded,
         title: t.methodFilesTitle,
         summary: t.methodFilesSummary,
         steps: t.methodFilesSteps,
         recommended: Platform.isIOS,
-        note: Platform.isIOS ? t.iosNote : null,
+        note: Platform.isIOS
+            ? AppScope.of(context).text(
+                'app.import.iosAccess',
+                'If Our Notes exposes its files in the Files app, choose the save there. Otherwise export its app data or a local backup on a computer, then transfer the save files, ZIP, or .imazingapp to this device. You can also use Share → Haneoka.',
+              )
+            : null,
         actions: [
           if (_hasPaths)
             TextButton(

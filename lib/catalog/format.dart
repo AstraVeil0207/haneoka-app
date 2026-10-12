@@ -29,14 +29,8 @@ class ValueFormat {
         return _date.format(DateTime.fromMillisecondsSinceEpoch(ms.toInt()));
       }
     }
-    if (value is Map && value['month'] != null && value['day'] != null) {
-      return DateFormat.MMMd(text.locale).format(
-        DateTime(
-          2000,
-          (value['month'] as num).toInt(),
-          (value['day'] as num).toInt(),
-        ),
-      );
+    if (key == 'birthday' && value is Map) {
+      return '${value['month'] ?? '—'}/${value['day'] ?? '—'}';
     }
     if (value is List && value.isNotEmpty && value.every((v) => v is String)) {
       final localized = text.text(value);

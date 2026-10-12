@@ -13,6 +13,31 @@
 			</array>
 		</dict>
 	</array>
+    <key>UIFileSharingEnabled</key>
+    <true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+      <dict>
+        <key>CFBundleTypeName</key><string>Our Notes Save</string>
+        <key>CFBundleTypeRole</key><string>Viewer</string>
+        <key>LSHandlerRank</key><string>Alternate</string>
+        <key>LSItemContentTypes</key>
+        <array><string>public.data</string><string>public.zip-archive</string><string>org.haneoka.game-save</string></array>
+      </dict>
+    </array>
+    <key>UTImportedTypeDeclarations</key>
+    <array>
+      <dict>
+        <key>UTTypeIdentifier</key><string>org.haneoka.game-save</string>
+        <key>UTTypeDescription</key><string>Our Notes Save</string>
+        <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+        <key>UTTypeTagSpecification</key>
+        <dict><key>public.filename-extension</key><array><string>imazingapp</string><string>onpkg</string><string>haneoka-save</string></array></dict>
+      </dict>
+    </array>
+
 		<key>CADisableMinimumFrameDurationOnPhone</key>
 		<true/>
 		<key>CFBundleDevelopmentRegion</key>

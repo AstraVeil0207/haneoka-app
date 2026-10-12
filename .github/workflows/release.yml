@@ -25,6 +25,12 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+      - name: Version
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; fi
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
       - name: Release key
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -32,6 +38,11 @@ jobs:
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
+          if [[ -z "$KEYSTORE" ]]; then
+            if [[ "$GITHUB_REF" == refs/tags/* ]]; then echo "::error::A release signing key is required for update-compatible Android releases."; exit 1; fi
+            echo "No release key configured; workflow_dispatch uses a development signature."
+            exit 0
+          fi
           echo "$KEYSTORE" | base64 -d > android/upload.jks
           {
             echo "storeFile=$GITHUB_WORKSPACE/android/upload.jks"
@@ -39,9 +50,9 @@ jobs:
             echo "keyAlias=$KEY_ALIAS"
             echo "keyPassword=$KEY_PASSWORD"
           } > android/key.properties
-      - run: flutter build apk --release --split-per-abi --dart-define=cronetHttpNoPlay=true
-      - run: flutter build apk --release --dart-define=cronetHttpNoPlay=true
-      - run: flutter build appbundle --release --dart-define=cronetHttpNoPlay=true
+      - run: flutter build apk --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ github.run_number }}" --split-per-abi --dart-define=cronetHttpNoPlay=true
+      - run: flutter build apk --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ github.run_number }}" --dart-define=cronetHttpNoPlay=true
+      - run: flutter build appbundle --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ github.run_number }}" --dart-define=cronetHttpNoPlay=true
       - name: Collect
         run: |
           mkdir dist
@@ -56,43 +67,182 @@ jobs:
           path: dist/*
 
   linux:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-22.04
+            tool_arch: x86_64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            tool_arch: aarch64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build libgtk-3-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libmpv-dev libsecret-1-dev libjsoncpp-dev
+          sudo apt-get install -y ninja-build clang cmake pkg-config libgtk-3-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libmpv-dev libsecret-1-dev libjsoncpp-dev rpm zstd patchelf file adb squashfs-tools flatpak flatpak-builder
       - uses: subosito/flutter-action@v2
+        if: matrix.arch == 'x64'
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
+          architecture: ${{ matrix.arch }}
           cache: true
-      - run: flutter build linux --release
-      - run: |
-          mkdir dist
-          tar -C build/linux/x64/release/bundle -czf dist/haneoka-linux-x64.tar.gz .
+      - name: Native ARM64 Flutter SDK
+        if: matrix.arch == 'arm64'
+        run: |
+          git clone --depth 1 --branch "$FLUTTER_VERSION" https://github.com/flutter/flutter.git "$RUNNER_TEMP/flutter-native"
+          "$RUNNER_TEMP/flutter-native/bin/flutter" --version
+          "$RUNNER_TEMP/flutter-native/bin/cache/dart-sdk/bin/dart" --version 2>&1 | tee "$RUNNER_TEMP/dart-version.txt"
+          grep -q linux_arm64 "$RUNNER_TEMP/dart-version.txt"
+          echo "FLUTTER_ROOT=$RUNNER_TEMP/flutter-native" >> "$GITHUB_ENV"
+          echo "$RUNNER_TEMP/flutter-native/bin" >> "$GITHUB_PATH"
+      - name: Version
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; fi
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+      - run: flutter build linux --release --target-platform=linux-${{ matrix.arch }} --build-name="${{ env.APP_VERSION }}" --build-number="${{ github.run_number }}"
+        env:
+          CMAKE_BUILD_PARALLEL_LEVEL: 2
+      - name: Bundle ADB
+        run: python3 scripts/bundle_adb.py --platform linux --arch ${{ matrix.arch }} --dest build/linux/${{ matrix.arch }}/release/bundle/tools/adb
+      - name: AppImage tools
+        run: |
+          mkdir -p build/package-tools
+          curl -fL https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-${{ matrix.tool_arch }}.AppImage -o build/package-tools/linuxdeploy
+          curl -fL https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-${{ matrix.tool_arch }}.AppImage -o build/package-tools/linuxdeploy-plugin-appimage
+          curl -fL https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -o build/package-tools/linuxdeploy-plugin-gtk.sh
+          chmod +x build/package-tools/*
+          echo "$GITHUB_WORKSPACE/build/package-tools" >> "$GITHUB_PATH"
+      - name: Installers
+        env:
+          DEPLOY_GTK_VERSION: 3
+        run: python3 scripts/package_linux.py --bundle build/linux/${{ matrix.arch }}/release/bundle --arch ${{ matrix.arch }} --version "$APP_VERSION" --formats tar,deb,rpm,arch,appimage,snap --linuxdeploy build/package-tools/linuxdeploy
+      - name: Flatpak
+        run: |
+          mkdir -p build/flatpak
+          (cd build/flatpak && "$GITHUB_WORKSPACE/dist/haneoka-linux-${{ matrix.arch }}.AppImage" --appimage-extract > /dev/null)
+          mv build/flatpak/squashfs-root/usr/share/haneoka build/flatpak/bundle
+          cp -a build/flatpak/squashfs-root/usr/lib/. build/flatpak/bundle/lib/
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.gnome.Platform//48 org.gnome.Sdk//48
+          flatpak-builder --user --force-clean --repo=build/flatpak/repo build/flatpak/build packaging/flatpak/org.haneoka.haneoka.yml
+          flatpak build-bundle build/flatpak/repo dist/haneoka-linux-${{ matrix.arch }}.flatpak org.haneoka.haneoka
       - uses: actions/upload-artifact@v4
         with:
-          name: linux
+          name: linux-${{ matrix.arch }}
           path: dist/*
 
   windows:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-latest
+          - arch: arm64
+            runner: windows-11-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - uses: subosito/flutter-action@v2
+        if: matrix.arch == 'x64'
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
+          architecture: x64
           cache: true
-      - run: flutter build windows --release
-      - shell: pwsh
+      - name: Native ARM64 Flutter SDK
+        if: matrix.arch == 'arm64'
+        shell: pwsh
         run: |
-          New-Item -ItemType Directory dist | Out-Null
-          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath dist/haneoka-windows-x64.zip
+          if ([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -ne 'Arm64') {
+            throw 'Use native ARM64 PowerShell to bootstrap the ARM64 Flutter SDK.'
+          }
+          $sdk = Join-Path $env:RUNNER_TEMP 'flutter-native'
+          git clone --depth 1 --branch $env:FLUTTER_VERSION https://github.com/flutter/flutter.git $sdk
+          if ($LASTEXITCODE -ne 0) { throw 'Flutter checkout failed' }
+          & "$sdk/bin/flutter.bat" --version
+          if ($LASTEXITCODE -ne 0) { throw 'Flutter bootstrap failed' }
+          $dartVersion = & "$sdk/bin/cache/dart-sdk/bin/dart.exe" --version 2>&1
+          if ($dartVersion -notmatch 'windows_arm64') { throw 'Native ARM64 Dart SDK is required' }
+          Add-Content $env:GITHUB_ENV "FLUTTER_ROOT=$sdk"
+          Add-Content $env:GITHUB_PATH "$sdk/bin"
+      - name: Version
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; fi
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+      - run: flutter build windows --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ github.run_number }}"
+      - name: Bundle Visual C++ runtime
+        shell: pwsh
+        run: |
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
+          $vs = & $vswhere -latest -products '*' -property installationPath
+          if (!$vs) { throw 'Visual Studio runtime source not found' }
+          $versions = Get-ChildItem (Join-Path $vs 'VC/Redist/MSVC') -Directory | Sort-Object { [version]$_.Name } -Descending
+          $crt = $null
+          foreach ($version in $versions) {
+            $candidate = Get-ChildItem (Join-Path $version.FullName '${{ matrix.arch }}') -Directory -Filter 'Microsoft.VC*.CRT' -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($candidate) { $crt = $candidate; break }
+          }
+          if (!$crt) { throw 'Redistributable runtime for the package architecture not found' }
+          $bundle = 'build/windows/${{ matrix.arch }}/runner/Release'
+          Copy-Item (Join-Path $crt.FullName '*.dll') $bundle
+          foreach ($name in @('msvcp140.dll', 'vcruntime140.dll')) {
+            if (!(Test-Path (Join-Path $bundle $name))) { throw "Required C++ runtime missing: $name" }
+          }
+      - name: Bundle ADB
+        run: python scripts/bundle_adb.py --platform windows --arch ${{ matrix.arch }} --dest build/windows/${{ matrix.arch }}/runner/Release/tools/adb
+      - name: Installer tools
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 6.0.2
+          $iscc = 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+          if (!(Test-Path $iscc)) {
+            winget install --id JRSoftware.InnoSetup --exact --silent --accept-package-agreements --accept-source-agreements
+          }
+          Add-Content $env:GITHUB_PATH 'C:\Program Files (x86)\Inno Setup 6'
+      - name: Signing certificate
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_PFX_BASE64 }}
+          WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
+          WINDOWS_MSIX_PUBLISHER: ${{ vars.WINDOWS_MSIX_PUBLISHER }}
+        run: |
+          $publisher = if ($env:WINDOWS_MSIX_PUBLISHER) { $env:WINDOWS_MSIX_PUBLISHER } else { 'CN=Haneoka' }
+          Add-Content $env:GITHUB_ENV "WINDOWS_MSIX_PUBLISHER=$publisher"
+          if (!$env:WINDOWS_SIGNING_PFX_BASE64) { exit 0 }
+          $pfx = Join-Path $env:RUNNER_TEMP 'haneoka-signing.pfx'
+          try {
+            [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_SIGNING_PFX_BASE64))
+            $password = ConvertTo-SecureString $env:WINDOWS_SIGNING_PASSWORD -AsPlainText -Force
+            $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation 'Cert:/CurrentUser/My' -Password $password
+            if ($cert.Subject -ne $publisher) { throw 'Certificate subject must match the MSIX publisher' }
+            Add-Content $env:GITHUB_ENV "WINDOWS_SIGNING_THUMBPRINT=$($cert.Thumbprint)"
+            if ($cert.Subject -eq $cert.Issuer) {
+              $publicCert = Join-Path $env:RUNNER_TEMP 'haneoka-signing.cer'
+              Export-Certificate -Cert $cert -FilePath $publicCert -Force | Out-Null
+              # Trust the signing leaf only on this disposable CI runner for signature verification.
+              Import-Certificate -FilePath $publicCert -CertStoreLocation 'Cert:/LocalMachine/Root' | Out-Null
+            }
+          } finally { Remove-Item $pfx -Force -ErrorAction SilentlyContinue }
+      - name: Installers
+        run: python scripts/package_windows.py --bundle build/windows/${{ matrix.arch }}/runner/Release --arch ${{ matrix.arch }} --version "${{ env.APP_VERSION }}"
+      - name: MSIX
+        shell: pwsh
+        run: ./scripts/package_msix.ps1 -Bundle build/windows/${{ matrix.arch }}/runner/Release -Arch ${{ matrix.arch }} -Version "$env:APP_VERSION" -BuildNumber ${{ github.run_number }} -Destination dist
       - uses: actions/upload-artifact@v4
         with:
-          name: windows
+          name: windows-${{ matrix.arch }}
           path: dist/*
 
   apple:
@@ -104,15 +254,30 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-      - run: flutter build macos --release
-      - run: flutter build ios --release --no-codesign
-      - name: Collect
+      - name: Version
+        shell: bash
         run: |
-          mkdir dist
-          ditto -c -k --keepParent build/macos/Build/Products/Release/haneoka.app dist/haneoka-macos.zip
-          mkdir Payload
-          cp -R build/ios/iphoneos/Runner.app Payload/
-          zip -qry dist/haneoka-ios-unsigned.ipa Payload
+          version=$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; fi
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+      - run: flutter build macos --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ github.run_number }}"
+      - name: Bundle ADB
+        run: |
+          python3 scripts/bundle_adb.py --platform darwin --arch universal --dest build/macos/Build/Products/Release/haneoka.app/Contents/Resources/tools/adb
+          codesign --force --deep --sign - build/macos/Build/Products/Release/haneoka.app
+          lipo -verify_arch x86_64 arm64 build/macos/Build/Products/Release/haneoka.app/Contents/MacOS/haneoka
+      - name: Installers
+        run: bash scripts/package_macos.sh build/macos/Build/Products/Release/haneoka.app "$APP_VERSION" dist
+      - run: flutter build ios --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ github.run_number }}" --no-codesign
+      - name: iOS standard and privileged packages
+        run: |
+          brew install ldid
+          mkdir -p build/ios-packages/standard/Payload build/ios-packages/trollstore/Payload
+          ditto build/ios/iphoneos/Runner.app build/ios-packages/standard/Payload/Runner.app
+          ditto build/ios/iphoneos/Runner.app build/ios-packages/trollstore/Payload/Runner.app
+          (cd build/ios-packages/standard && zip -qry "$GITHUB_WORKSPACE/dist/haneoka-ios-unsigned.ipa" Payload)
+          ldid -Spackaging/ios-trollstore.entitlements build/ios-packages/trollstore/Payload/Runner.app/Runner
+          (cd build/ios-packages/trollstore && zip -qry "$GITHUB_WORKSPACE/dist/haneoka-ios-trollstore.tipa" Payload)
       - uses: actions/upload-artifact@v4
         with:
           name: apple
@@ -120,18 +285,38 @@ jobs:
 
   release:
     needs: [android, linux, windows, apple]
-    if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
+      - name: Verify prepared version
+        run: |
+          prepared=$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)
+          version="$prepared"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            [[ "$prepared" == "$version" ]] || { echo "::error::Tag and pubspec version differ"; exit 1; }
+          fi
+          echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+      - name: Distribution manifests
+        run: python3 scripts/release_metadata.py --dist dist --version "$APP_VERSION" --build-number "${{ github.run_number }}" --repository "$GITHUB_REPOSITORY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distribution-manifests
+          path: |
+            dist/SHA256SUMS
+            dist/altstore-source.json
+            dist/scoop-haneoka.json
+            dist/Haneoka.Haneoka*.yaml
+            dist/haneoka.rb
+            dist/*.appinstaller
       - name: Publish
+        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/* \
-            --repo "$GITHUB_REPOSITORY" \
-            --title "haneoka ${GITHUB_REF_NAME#v}" \
-            --generate-notes
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "haneoka ${GITHUB_REF_NAME#v}" --generate-notes

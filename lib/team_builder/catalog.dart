@@ -222,7 +222,7 @@ class TeamCatalog {
   Doc song(int id) => _row('songs', id);
   String songTitle(int id) => state.songTitle(song(id)['musicTitle']);
   String songJacket(int id) =>
-      asset(song(id)['jacketThumbUrl'] ?? song(id)['jacketUrl']);
+      asset(song(id)['jacketUrl'] ?? song(id)['jacketThumbUrl']);
   List<int> songBands(int id) {
     final row = song(id);
     final bands = row['bandIds'] is List

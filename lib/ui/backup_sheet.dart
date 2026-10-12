@@ -68,42 +68,39 @@ class _BackupSheetState extends State<_BackupSheet> {
       if (password == null) return;
     }
     if (!mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
     Navigator.pop(context);
     await widget.onRead((collector) async {
-      try {
-        if (await backup.scan(collector, password: password) == 0) {
-          messenger.showSnackBar(SnackBar(content: Text(t.noGameInBackup)));
-        }
-      } on BackupPasswordException {
-        messenger.showSnackBar(SnackBar(content: Text(t.wrongPassword)));
-      }
+      await backup.scan(collector, password: password);
     });
   }
 
-  Future<String?> _askPassword() {
+  Future<String?> _askPassword() async {
     final controller = TextEditingController();
-    return showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(t.backupPassword),
-        content: TextField(
-          controller: controller,
-          obscureText: true,
-          autofocus: true,
+    try {
+      return await showDialog<String>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(t.backupPassword),
+          content: TextField(
+            controller: controller,
+            obscureText: true,
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text),
+              child: Text(t.read),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(MaterialLocalizations.of(context).cancelButtonLabel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text),
-            child: Text(t.read),
-          ),
-        ],
-      ),
-    );
+      );
+    } finally {
+      controller.dispose();
+    }
   }
 
   @override

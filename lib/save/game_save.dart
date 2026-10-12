@@ -121,7 +121,8 @@ class SaveCollector {
       unreadable++;
       return false;
     }
-    final existing = _byProfile[id];
+    final identity = '${candidate.release?.server ?? "unknown"}:$id';
+    final existing = _byProfile[identity];
     final newer =
         existing == null ||
         (candidate.modifiedAt != null &&
@@ -129,16 +130,19 @@ class SaveCollector {
                 candidate.modifiedAt!.isAfter(existing.modifiedAt!)));
     if (newer) {
       final name = (player as Map<String, Object?>)['_name'];
-      _byProfile[id] = GameSave(
-        profileId: id,
-        name: name is String && name.trim().isNotEmpty ? name : null,
-        release: candidate.release ?? existing?.release,
-        source: candidate.source,
-      )..documents[SaveDocumentKind.cache] = document;
+      _byProfile[identity] =
+          GameSave(
+              profileId: id,
+              name: name is String && name.trim().isNotEmpty ? name : null,
+              release: candidate.release ?? existing?.release,
+              source: candidate.source,
+            )
+            ..documents.addAll(existing?.documents ?? const {})
+            ..documents[SaveDocumentKind.cache] = document;
     }
-    _profileOfGroup[group] = id;
+    _profileOfGroup[group] = identity;
     for (final orphan in _orphans.remove(group) ?? const <SaveDocument>[]) {
-      _place(_byProfile[id]!, orphan);
+      _place(_byProfile[identity]!, orphan);
     }
     return true;
   }

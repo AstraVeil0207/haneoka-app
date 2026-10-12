@@ -107,6 +107,38 @@ class HaneokaAccount extends ChangeNotifier {
 
   List<LinkedPlayer> get players => _players;
 
+  Future<void> changePassword(
+    String currentPassword,
+    String newPassword,
+  ) async {
+    final result = objectOf(
+      await request(
+        'POST',
+        '/api/auth/change-password',
+        body: {
+          'currentPassword': currentPassword,
+          'newPassword': newPassword,
+          'revokeOtherSessions': true,
+        },
+      ),
+    );
+    if (result['token'] case final String token when token.isNotEmpty) {
+      await _useSession(token);
+    } else {
+      await refresh();
+    }
+  }
+
+  Future<void> deleteAccount(String confirmation) async {
+    await request(
+      'DELETE',
+      '/api/v1/account/profile',
+      body: {'confirmation': confirmation},
+    );
+    await _forget();
+    notifyListeners();
+  }
+
   /// The bearer header for requests made outside [request] (uploads).
   Map<String, String> get authorization => {
     if (_token != null) 'Authorization': 'Bearer $_token',
@@ -444,7 +476,6 @@ class HaneokaAccount extends ChangeNotifier {
     return json;
   }
 
-  @visibleForTesting
   static String challengeOf(String verifier) => base64Url
       .encode(sha256.convert(ascii.encode(verifier)).bytes)
       .replaceAll('=', '');

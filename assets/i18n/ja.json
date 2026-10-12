@@ -4343,5 +4343,69 @@
       "showTestServerContent": "テストサーバーの内容を表示",
       "showTestServerContentHint": "図鑑と編成ツールにテストサーバーの内容を表示します。"
     }
+  },
+  "app": {
+    "updates": {
+      "automatic": "更新を自動的に確認",
+      "frequency": "アプリ起動時に1日1回確認します。",
+      "check": "更新を確認",
+      "checking": "確認中…",
+      "failed": "更新を確認できませんでした。もう一度お試しください。",
+      "upToDate": "最新バージョンです。",
+      "available": "新しいバージョン：{version}",
+      "later": "後で",
+      "releaseNotes": "リリースノート",
+      "download": "更新をダウンロード",
+      "openFailed": "ダウンロードリンクを開けませんでした。"
+    },
+    "import": {
+      "downloadShizuku": "Shizuku をダウンロード",
+      "setupGuide": "設定ガイド",
+      "downloadIMazing": "iMazing をダウンロード",
+      "exportGuide": "アプリのデータを書き出す",
+      "iosAccess": "Our Notes が「ファイル」アプリでセーブを公開している場合は、そこから選択できます。それ以外はパソコンでアプリのデータまたはローカルバックアップを書き出し、セーブ、ZIP、.imazingapp をこの端末へ転送してください。「共有 → Haneoka」でも開けます。",
+      "advancedTitle": "TrollStore / 脱獄済み端末",
+      "advancedSummary": "対応するファイル管理アプリでゲームのアカウントフォルダーを書き出します。",
+      "advancedSteps": "Filza または Apps Manager でバンドル ID から Our Notes を探し、データコンテナの Documents/<アカウント> をコピーして ZIP にまとめ、「ファイル」に保存します。下で ZIP を選ぶか Haneoka に共有してください。SFTP でも同じフォルダーをパソコンにコピーできます。端末と iOS の対応は各ツールの公式ページで確認してください。",
+      "readConnected": "接続済み端末から読み込む",
+      "chooseDevice": "端末を選択／無線ペア設定",
+      "iosDirectTitle": "この端末から直接読み込む",
+      "iosDirectSummary": "アプリコンテナへのアクセス権がある場合、Our Notes の Documents を直接読み込みます。",
+      "iosDirectSteps": "対応端末で専用 TrollStore 版、またはコンテナへのアクセスが許可された脱獄環境を使用します。「セーブを読み込む」で対象ゲームを自動検出します。ゲームファイルは保持されます。",
+      "iosDirectAvailable": "アプリコンテナにアクセスできます",
+      "iosDirectRestricted": "このインストールでは他アプリの非公開ファイルを読み込めません。「ファイル／共有」または書き出したバックアップを使用してください。",
+      "adbFailed": "端末を読み込めません。デバッグの許可と接続を確認してください。",
+      "deviceOffline": "端末がオフラインです。再接続して USB デバッグを許可してください。",
+      "pairFormat": "IP:ポート番号と6桁のペア設定コードを入力してください。",
+      "usbDriverGuide": "USB ドライバーの手順"
+    },
+    "storage": {
+      "title": "ストレージとキャッシュ",
+      "total": "ローカルアプリデータ：{size}",
+      "usedLimit": "キャッシュ：{used} / {limit}",
+      "clear": "削除",
+      "data": "図鑑とページデータのキャッシュ",
+      "images": "画像キャッシュ",
+      "memory": "メモリ内画像キャッシュ",
+      "accounts": "読み込んだセーブデータ",
+      "manageAccounts": "読み込んだセーブを管理",
+      "other": "設定とその他のローカルデータ",
+      "temporary": "読み込み用などの一時ファイル",
+      "automatic": "古いキャッシュを自動削除",
+      "limit": "キャッシュ上限",
+      "preserved": "読み込んだセーブ、ログイン状態、設定は保持されます。",
+      "clearAll": "全キャッシュを削除",
+      "cleared": "{size} を解放しました",
+      "unlimited": "無制限",
+      "noLimit": "無制限の場合は容量による削除を行いません。"
+    },
+    "distribution": {
+      "title": "インストーラーと導入手順",
+      "available": "リリースページに各OS・アーキテクチャで公開済みのファイルを表示します。",
+      "downloads": "ダウンロード一覧",
+      "guide": "導入手順",
+      "copySource": "AltStore / SideStore のソースURLをコピー",
+      "sourceCopied": "ソースURLをコピーしました。0.1.0 公開後、AltStore Classic または SideStore に追加してください。"
+    }
   }
 }

@@ -34,7 +34,7 @@ class _PlayerProfileScreenState extends State<PlayerProfileScreen> {
   }
 
   Future<(Map, CardCatalog)> _load() async {
-    final api = AppScope.of(context).api;
+    final api = AppScope.of(context).apiFor(_region == 'jp' ? 'jp' : 'intl');
     final (profile, cards) = await (
       api.live(
         '/api/v1/game/records/$_region/players/${Uri.encodeComponent(_id!)}',

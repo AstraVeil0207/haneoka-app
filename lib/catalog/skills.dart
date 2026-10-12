@@ -52,6 +52,7 @@ class SkillsScreen extends StatefulWidget {
 class _SkillsScreenState extends State<SkillsScreen> {
   Future<Map<String, Object?>>? _data;
   bool _unlinked = false;
+  Object? _entrySource;
   List<Entry>? _all;
   List<Entry>? _shown;
 
@@ -72,9 +73,11 @@ class _SkillsScreenState extends State<SkillsScreen> {
     return FutureBuilder(
       future: _data,
       builder: (context, snapshot) {
-        final entries = (snapshot.data?['entries'] as List?)
-            ?.whereType<Entry>()
-            .toList();
+        final source = snapshot.data?['entries'];
+        final entries = identical(source, _entrySource)
+            ? _all
+            : (source as List?)?.whereType<Entry>().toList();
+        _entrySource = source;
         if (entries != null && !identical(entries, _all)) {
           _all = entries;
           _shown = null;
@@ -97,6 +100,7 @@ class _SkillsScreenState extends State<SkillsScreen> {
               ),
             );
         return BrowseScreen(
+          onOpen: open,
           title: t('catalog.cards.fields.skills', 'Skills'),
           items: _shown,
           error: snapshot.error,

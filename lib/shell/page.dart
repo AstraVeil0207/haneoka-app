@@ -36,6 +36,7 @@ class BarAction {
     this.badge = 0,
     this.tonal = false,
     this.overflowFirst = false,
+    this.image,
   }) : options = const [];
 
   /// A segmented choice (view switch): one checkable menu entry per option.
@@ -45,7 +46,9 @@ class BarAction {
       selected = null,
       badge = 0,
       tonal = false,
-      overflowFirst = false;
+      overflowFirst = false,
+      image = null;
+  final Widget? image;
   final IconData icon;
   final String label;
   final VoidCallback? onPressed;
@@ -163,17 +166,19 @@ class _ShellPageState extends State<ShellPage> {
               right: compact ? 4 : ShellMetrics.paneGap,
             ),
             child: Stack(
+              fit: StackFit.expand,
               children: [
                 ListenableBuilder(
                   listenable:
                       AppScope.maybeOf(context)?.audio ?? const _Silent(),
                   builder: (context, _) => _bar(context, compact),
                 ),
-                if (compact && _searching && widget.search != null)
+                if (_searching && widget.search != null)
                   Positioned.fill(child: _compactSearch(context)),
               ],
             ),
           ),
+          const SizedBox(height: 4),
           Expanded(
             child: compact
                 ? pane
@@ -195,10 +200,50 @@ class _ShellPageState extends State<ShellPage> {
     );
   }
 
+  bool _detail(BuildContext context) {
+    final route = ModalRoute.of(context);
+    if (!(route?.canPop ?? false)) return false;
+    final name = route?.settings.name;
+    if (name == null) return true;
+    final parts = Uri.parse(name).pathSegments;
+    if (parts.length > 1 && parts.first == 'stories') return true;
+    if (parts.length > 2 &&
+        parts.first == 'community' &&
+        const {
+          'posts',
+          'users',
+          'playlists',
+          'songs-bestdori',
+        }.contains(parts[1])) {
+      return true;
+    }
+    if (parts.length > 2 && parts.first == 'catalog') {
+      return parts[1] != 'stories' ||
+          !const {
+            'event',
+            'band',
+            'link',
+            'birthday',
+            'home',
+            'afterlive',
+            'tutorial',
+          }.contains(parts[2]);
+    }
+    return false;
+  }
+
+  double _buttonExtent(BuildContext context) =>
+      const {
+        TargetPlatform.android,
+        TargetPlatform.iOS,
+      }.contains(Theme.of(context).platform)
+      ? 48
+      : 40;
+
   Widget _bar(BuildContext context, bool compact) {
     final shell = ShellScope.of(context);
     final theme = Theme.of(context);
-    final canPop = ModalRoute.of(context)?.canPop ?? false;
+    final canPop = _detail(context);
     final leading = canPop
         ? const BackButton()
         : compact && shell != null
@@ -210,50 +255,68 @@ class _ShellPageState extends State<ShellPage> {
         : null;
     // The title keeps up to 160 dp before actions start to overflow
     // (`TITLE_MAX_RESERVED`); everything else belongs to the actions.
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final lead = leading == null ? 12.0 : 52.0;
-        final title = (TextPainter(
-          text: TextSpan(text: widget.title, style: theme.textTheme.titleLarge),
-          textDirection: Directionality.of(context),
-          maxLines: 1,
-        )..layout()).width;
-        final budget =
-            (constraints.maxWidth -
-                    lead -
-                    title.clamp(0, 160) -
-                    (widget.marks == null ? 0 : widget.marksExtent + 8))
-                .clamp(48.0, constraints.maxWidth);
-        return Row(
-          children: [
-            ?leading,
-            SizedBox(width: leading == null ? 12 : 4),
-            Expanded(
-              child: Row(
-                children: [
-                  Flexible(
-                    child: Text(
-                      widget.title,
-                      locale: widget.titleLanguage,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleLarge,
-                    ),
-                  ),
-                  if (widget.marks != null)
+    return IconButtonTheme(
+      data: IconButtonThemeData(
+        style: ButtonStyle(
+          fixedSize: WidgetStatePropertyAll(
+            Size.square(_buttonExtent(context)),
+          ),
+          minimumSize: WidgetStatePropertyAll(
+            Size.square(_buttonExtent(context)),
+          ),
+          padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          visualDensity: VisualDensity.standard,
+        ),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final lead = leading == null ? 12.0 : _buttonExtent(context) + 12;
+          final title = (TextPainter(
+            text: TextSpan(
+              text: widget.title,
+              style: theme.textTheme.titleLarge,
+            ),
+            textDirection: Directionality.of(context),
+            maxLines: 1,
+          )..layout()).width;
+          final budget =
+              (constraints.maxWidth -
+                      lead -
+                      title.clamp(0, 160) -
+                      (widget.marks == null ? 0 : widget.marksExtent + 8))
+                  .clamp(48.0, constraints.maxWidth);
+          return Row(
+            children: [
+              ?leading,
+              SizedBox(width: leading == null ? 12 : 4),
+              Expanded(
+                child: Row(
+                  children: [
                     Flexible(
-                      child: Padding(
-                        padding: const EdgeInsets.only(left: 8),
-                        child: widget.marks!,
+                      child: Text(
+                        widget.title,
+                        locale: widget.titleLanguage,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.titleLarge,
                       ),
                     ),
-                ],
+                    if (widget.marks != null)
+                      Flexible(
+                        child: Padding(
+                          padding: const EdgeInsets.only(left: 8),
+                          child: widget.marks!,
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            _trailing(context, compact, budget),
-          ],
-        );
-      },
+              _trailing(context, compact, budget),
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -262,12 +325,13 @@ class _ShellPageState extends State<ShellPage> {
     final search = widget.search;
     final children = <Widget>[];
     var room = width;
+    final slot = _buttonExtent(context) + 2;
     if (compact && AppScope.maybeOf(context)?.audio.current != null) {
       children.add(const NowPlaying());
-      room -= 42;
+      room -= slot;
     }
     if (search != null) {
-      if (compact) {
+      if (compact || room < 260) {
         children.add(
           IconButton(
             tooltip: search.label,
@@ -275,7 +339,7 @@ class _ShellPageState extends State<ShellPage> {
             icon: const Icon(Symbols.search_rounded),
           ),
         );
-        room -= 42;
+        room -= slot;
       } else {
         final pill = (room * 0.5).clamp(160.0, 360.0);
         children.add(
@@ -296,7 +360,7 @@ class _ShellPageState extends State<ShellPage> {
     // Back keeps the navigation menu in the overflow.
     final actions = widget.actions;
     final shell = ShellScope.of(context);
-    final canPop = ModalRoute.of(context)?.canPop ?? false;
+    final canPop = _detail(context);
     final menu = compact && canPop && shell != null
         ? BarAction(
             icon: Symbols.menu_rounded,
@@ -310,8 +374,8 @@ class _ShellPageState extends State<ShellPage> {
     double used() =>
         actions
             .where((a) => !hidden.contains(a))
-            .fold<double>(0, (sum, a) => sum + a.slots * 42) +
-        (hidden.isNotEmpty || menu != null ? 42 : 0);
+            .fold<double>(0, (sum, a) => sum + a.slots * slot) +
+        (hidden.isNotEmpty || menu != null ? slot : 0);
     final order = [
       ...actions.where((a) => a.overflowFirst),
       ...actions.reversed.where((a) => !a.overflowFirst),
@@ -321,7 +385,14 @@ class _ShellPageState extends State<ShellPage> {
       hidden.add(action);
     }
     for (final action in actions) {
-      if (!hidden.contains(action)) children.addAll(_buttons(action));
+      if (!hidden.contains(action)) {
+        children.addAll(
+          _buttons(action).map(
+            (button) =>
+                Padding(padding: const EdgeInsets.only(left: 2), child: button),
+          ),
+        );
+      }
     }
     final overflowed = [
       for (final action in actions)
@@ -329,7 +400,12 @@ class _ShellPageState extends State<ShellPage> {
       ?menu,
     ];
     if (overflowed.isNotEmpty) {
-      children.add(_overflow(context, overflowed));
+      children.add(
+        Padding(
+          padding: const EdgeInsets.only(left: 2),
+          child: _overflow(context, overflowed),
+        ),
+      );
     }
     return Row(mainAxisSize: MainAxisSize.min, children: children);
   }
@@ -351,7 +427,7 @@ class _ShellPageState extends State<ShellPage> {
                 ),
       ];
     }
-    Widget icon = Icon(action.icon);
+    Widget icon = action.image ?? Icon(action.icon);
     if (action.badge > 0) {
       icon = Badge.count(count: action.badge, child: icon);
     }

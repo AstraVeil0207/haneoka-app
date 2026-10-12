@@ -181,6 +181,7 @@ class BrowseScreen extends StatefulWidget {
     required this.tile,
     required this.listRow,
     required this.columns,
+    this.onOpen,
     this.facets = const [],
     this.sorts = const [],
     this.defaultSort,
@@ -194,6 +195,7 @@ class BrowseScreen extends StatefulWidget {
     this.switches = const [],
   });
   final String title;
+  final void Function(BuildContext context, Entry item)? onOpen;
 
   /// Switches in the filter sheet; a switch that is on counts as a filter.
   final List<BrowseSwitch> switches;
@@ -242,10 +244,19 @@ class _BrowseScreenState extends State<BrowseScreen> {
   final Map<Entry, String> _search = {};
   List<Entry> _visible = const [];
   Object? _visibleKey;
+  Object? _indexKey;
 
   /// Facet values and search text are read once per entry, not per frame.
   void _index(List<Entry> items) {
-    if (identical(items, _source)) return;
+    final state = AppScope.of(context);
+    final key = (
+      items,
+      state.text.locale,
+      state.japaneseTitles,
+      state.difficultyEstimates,
+    );
+    if (key == _indexKey) return;
+    _indexKey = key;
     _source = items;
     _facetValues.clear();
     _search.clear();
@@ -343,7 +354,9 @@ class _BrowseScreenState extends State<BrowseScreen> {
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           child: Text(
-            items == null ? '' : number.format(visible.length),
+            items == null
+                ? ''
+                : '${number.format(visible.length)}${visible.length == items.length ? '' : ' / ${number.format(items.length)}'}',
             style: theme.textTheme.titleSmall,
           ),
         ),
@@ -396,11 +409,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
             )
           : items == null
           ? _skeleton(context)
-          : switch (_view) {
-              BrowseView.grid => _grid(context, visible),
-              BrowseView.list => _list(context, visible),
-              BrowseView.table => _table(context, visible),
-            },
+          : _layout(context, visible),
     );
   }
 
@@ -449,26 +458,67 @@ class _BrowseScreenState extends State<BrowseScreen> {
     },
   );
 
+  Widget _layout(BuildContext context, List<Entry> items) => LayoutBuilder(
+    builder: (context, constraints) {
+      final side =
+          widget.rail != null && MediaQuery.sizeOf(context).width >= 1200;
+      final results = switch (_view) {
+        BrowseView.grid => _grid(context, items),
+        BrowseView.list => _list(context, items),
+        BrowseView.table => _table(context, items),
+      };
+      if (!side) return results;
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 208,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
+                border: Border(
+                  right: BorderSide(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                ),
+              ),
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(8, 8, 8, 8),
+                children: [
+                  for (final item in widget.rail!.items)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: _railTile(context, item, width: 192),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          Expanded(child: results),
+        ],
+      );
+    },
+  );
+
   Widget _grid(BuildContext context, List<Entry> items) => LayoutBuilder(
     builder: (context, constraints) {
       final padding = pagePadding(context);
-      final side = widget.rail != null && constraints.maxWidth >= 840;
-      final width =
-          constraints.maxWidth - padding.horizontal - (side ? 216 : 0);
-      final scroll = Scrollbar(
+      return Scrollbar(
         child: CustomScrollView(
           slivers: [
-            ..._header(context, padding, side),
+            ..._header(
+              context,
+              padding,
+              widget.rail != null && MediaQuery.sizeOf(context).width >= 1200,
+            ),
             SliverPadding(
               padding: padding.copyWith(
-                top: widget.heading == null && (widget.rail == null || side)
-                    ? padding.top
-                    : 0,
+                top: widget.heading == null ? padding.top : 8,
               ),
               sliver: SliverGrid.builder(
                 gridDelegate: collectionGrid(
                   context,
-                  width,
+                  constraints.maxWidth - padding.horizontal,
                   minWidth: widget.grid.minWidth,
                   aspectRatio: widget.grid.aspectRatio,
                   small: widget.grid.small,
@@ -481,59 +531,32 @@ class _BrowseScreenState extends State<BrowseScreen> {
           ],
         ),
       );
-      if (!side) return scroll;
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            width: 200 + padding.left,
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(
-                padding.left,
-                padding.top,
-                0,
-                padding.bottom,
-              ),
-              children: [
-                for (final item in widget.rail!.items)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: _railTile(context, item, width: 200),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(child: scroll),
-        ],
-      );
     },
   );
 
-  /// The rail across the top on narrow windows, then the heading.
   List<Widget> _header(BuildContext context, EdgeInsets padding, bool side) => [
     if (widget.rail != null && !side)
       SliverToBoxAdapter(
         child: SizedBox(
-          height: 112,
+          height: 102,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding: EdgeInsets.fromLTRB(
-              padding.left,
-              padding.top,
-              padding.right,
-              0,
-            ),
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
             itemCount: widget.rail!.items.length,
             separatorBuilder: (_, _) => const SizedBox(width: 8),
             itemBuilder: (context, index) =>
-                _railTile(context, widget.rail!.items[index], width: 104),
+                _railTile(context, widget.rail!.items[index], width: 148),
           ),
         ),
       ),
     if (widget.heading != null)
       SliverPadding(
-        padding: EdgeInsets.fromLTRB(padding.left, 16, padding.right, 16),
+        padding: EdgeInsets.fromLTRB(
+          padding.left,
+          MediaQuery.sizeOf(context).width < 600 ? 12 : 16,
+          padding.right,
+          4,
+        ),
         sliver: SliverToBoxAdapter(child: widget.heading),
       ),
   ];
@@ -552,7 +575,9 @@ class _BrowseScreenState extends State<BrowseScreen> {
       child: Material(
         color: selected
             ? scheme.secondaryContainer
-            : scheme.surfaceContainerLow,
+            : MediaQuery.sizeOf(context).width < 1200
+            ? scheme.surfaceContainer
+            : Colors.transparent,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(Corner.medium),
         ),
@@ -591,14 +616,32 @@ class _BrowseScreenState extends State<BrowseScreen> {
     );
   }
 
-  Widget _list(BuildContext context, List<Entry> items) => Scrollbar(
-    child: ListView.builder(
-      padding: pagePadding(context),
-      itemExtent: 72,
-      itemCount: items.length,
-      itemBuilder: (context, index) => widget.listRow(context, items[index]),
-    ),
-  );
+  Widget _list(BuildContext context, List<Entry> items) {
+    final padding = pagePadding(context);
+    return Scrollbar(
+      child: CustomScrollView(
+        slivers: [
+          ..._header(
+            context,
+            padding,
+            widget.rail != null && MediaQuery.sizeOf(context).width >= 1200,
+          ),
+          SliverPadding(
+            padding: padding.copyWith(
+              top: widget.heading == null ? padding.top : 8,
+            ),
+            sliver: SliverFixedExtentList(
+              itemExtent: 72,
+              delegate: SliverChildBuilderDelegate(
+                (context, index) => widget.listRow(context, items[index]),
+                childCount: items.length,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _table(BuildContext context, List<Entry> items) {
     final theme = Theme.of(context);
@@ -631,7 +674,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
       ),
     );
     final width = 240.0 + 140 * (columns.length - 1);
-    return Scrollbar(
+    final table = Scrollbar(
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         padding: EdgeInsets.symmetric(horizontal: pagePadding(context).left),
@@ -643,10 +686,13 @@ class _BrowseScreenState extends State<BrowseScreen> {
               const Divider(height: 1),
               Expanded(
                 child: ListView.builder(
+                  primary: false,
                   itemExtent: 52,
                   itemCount: items.length,
                   itemBuilder: (context, index) => InkWell(
-                    onTap: () {},
+                    onTap: widget.onOpen == null
+                        ? null
+                        : () => widget.onOpen!(context, items[index]),
                     child: row([for (final c in columns) c.cell(items[index])]),
                   ),
                 ),
@@ -655,6 +701,17 @@ class _BrowseScreenState extends State<BrowseScreen> {
           ),
         ),
       ),
+    );
+    final padding = pagePadding(context);
+    return CustomScrollView(
+      slivers: [
+        ..._header(
+          context,
+          padding,
+          widget.rail != null && MediaQuery.sizeOf(context).width >= 1200,
+        ),
+        SliverFillRemaining(child: table),
+      ],
     );
   }
 
@@ -668,7 +725,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
       pageBuilder: (context, _, _) => Align(
         alignment: AlignmentDirectional.centerEnd,
         child: StatefulBuilder(
-          builder: (context, setSheet) => _FilterSheet(
+          builder: (context, setSheet) => BrowseFilterPanel(
             switches: [
               for (final s in widget.switches)
                 BrowseSwitch(s.label, _switchValue(s), (value) {
@@ -720,7 +777,11 @@ class _BrowseScreenState extends State<BrowseScreen> {
 
   /// How many entries each value would leave, given every other facet.
   Map<String, int> _counts(String facet) {
-    final counts = <String, int>{};
+    final counts = <String, int>{
+      for (final values
+          in _facetValues[facet]?.values ?? const <List<String>>[])
+        for (final value in values) value: 0,
+    };
     for (final item in _source ?? const <Entry>[]) {
       if (!_matches(item, facet)) continue;
       for (final value in _facetValues[facet]?[item] ?? const <String>[]) {
@@ -731,8 +792,9 @@ class _BrowseScreenState extends State<BrowseScreen> {
   }
 }
 
-class _FilterSheet extends StatelessWidget {
-  const _FilterSheet({
+class BrowseFilterPanel extends StatelessWidget {
+  const BrowseFilterPanel({
+    super.key,
     required this.switches,
     required this.facets,
     required this.sorts,
@@ -744,6 +806,7 @@ class _FilterSheet extends StatelessWidget {
     required this.onSort,
     required this.onOrder,
     required this.onReset,
+    this.fields = const [],
   });
   final List<BrowseSwitch> switches;
   final List<FacetSpec> facets;
@@ -756,6 +819,7 @@ class _FilterSheet extends StatelessWidget {
   final ValueChanged<String> onSort;
   final VoidCallback onOrder;
   final VoidCallback onReset;
+  final List<Widget> fields;
 
   @override
   Widget build(BuildContext context) {
@@ -827,6 +891,7 @@ class _FilterSheet extends StatelessWidget {
                         value: s.value,
                         onChanged: s.onChanged,
                       ),
+                    ...fields,
                     if (sorts.isNotEmpty) ...[
                       Padding(
                         padding: const EdgeInsets.fromLTRB(0, 16, 0, 8),
@@ -1005,4 +1070,124 @@ class BrowseSiblings extends InheritedWidget {
 
   @override
   bool updateShouldNotify(BrowseSiblings old) => !identical(old.items, items);
+}
+
+/// The website's pane rail shared by collections: a column above 1200 dp,
+/// a horizontal strip below it, with the selected group's heading in the scroll.
+class CollectionPane extends StatelessWidget {
+  const CollectionPane({
+    super.key,
+    this.rail,
+    this.heading,
+    required this.results,
+  });
+  final BrowseRail? rail;
+  final Widget? heading;
+  final Widget Function(BuildContext, List<Widget>) results;
+  @override
+  Widget build(BuildContext context) {
+    final padding = pagePadding(context);
+    final side = rail != null && MediaQuery.sizeOf(context).width >= 1200;
+    final headers = <Widget>[
+      if (rail != null && !side)
+        SliverToBoxAdapter(child: _PaneRail(rail: rail!, vertical: false)),
+      if (heading != null)
+        SliverPadding(
+          padding: EdgeInsets.fromLTRB(
+            padding.left,
+            MediaQuery.sizeOf(context).width < 600 ? 12 : 16,
+            padding.right,
+            4,
+          ),
+          sliver: SliverToBoxAdapter(child: heading),
+        ),
+    ];
+    final content = results(context, headers);
+    return side
+        ? Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                width: 208,
+                child: _PaneRail(rail: rail!, vertical: true),
+              ),
+              Expanded(child: content),
+            ],
+          )
+        : content;
+  }
+}
+
+class _PaneRail extends StatelessWidget {
+  const _PaneRail({required this.rail, required this.vertical});
+  final BrowseRail rail;
+  final bool vertical;
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final meta = rail.items.any((item) => item.meta != null);
+    Widget item(RailItem item) => SizedBox(
+      width: vertical ? 192 : 148,
+      child: Material(
+        color: item.value == rail.value
+            ? scheme.secondaryContainer
+            : vertical
+            ? Colors.transparent
+            : scheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(Corner.medium),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => rail.onSelect(item.value),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  height: 48,
+                  width: double.infinity,
+                  child: item.image == null
+                      ? null
+                      : AppImage(candidates: [item.image!]),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  item.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                if (item.meta != null)
+                  Text(
+                    item.meta!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    final view = ListView.separated(
+      scrollDirection: vertical ? Axis.vertical : Axis.horizontal,
+      padding: EdgeInsets.symmetric(horizontal: vertical ? 8 : 12, vertical: 8),
+      itemCount: rail.items.length,
+      separatorBuilder: (_, _) =>
+          vertical ? const SizedBox(height: 4) : const SizedBox(width: 8),
+      itemBuilder: (context, index) => item(rail.items[index]),
+    );
+    final box = DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerLow,
+        border: vertical
+            ? Border(right: BorderSide(color: scheme.outlineVariant))
+            : Border(bottom: BorderSide(color: scheme.outlineVariant)),
+      ),
+      child: view,
+    );
+    return vertical ? box : SizedBox(height: meta ? 120 : 102, child: box);
+  }
 }

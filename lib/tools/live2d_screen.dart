@@ -103,6 +103,7 @@ class _Live2DScreenState extends State<Live2DScreen> {
         final data = snapshot.data;
         final visuals = data?.$2;
         return BrowseScreen(
+          onOpen: (context, model) => open(model),
           title: t('navigation.live2d', 'Live2D'),
           items: data?.$1,
           error: snapshot.error,

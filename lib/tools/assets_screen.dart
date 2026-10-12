@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -6,7 +7,12 @@ import 'package:file_picker/file_picker.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../core/app_state.dart';
-import '../core/audio.dart';
+import '../core/api.dart';
+import '../core/voice.dart';
+
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
+
 import '../core/net.dart';
 import '../shell/page.dart';
 import '../ui/app_image.dart';
@@ -76,17 +82,24 @@ class AssetsScreen extends StatefulWidget {
   State<AssetsScreen> createState() => _AssetsScreenState();
 }
 
-Future<Map>? _tree;
+final _trees = <Object, Future<Map>>{};
 
 class _AssetsScreenState extends State<AssetsScreen> {
   String _query = '';
+  Future<Map>? _tree;
+  Future<Map> _load() {
+    final api = AppScope.of(context).api;
+    return cachedResource(
+      _trees,
+      api,
+      () async => (await api.catalog('sources/tree')) as Map,
+    );
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _tree ??= AppScope.of(context).api
-        .catalog('sources/tree')
-        .then((v) => v as Map);
+    _tree ??= _load();
   }
 
   Object? _node(Map tree, List<String> parts) {
@@ -129,7 +142,7 @@ class _AssetsScreenState extends State<AssetsScreen> {
             return Center(
               child: snapshot.hasError
                   ? FilledButton.tonal(
-                      onPressed: () => setState(() => _tree = null),
+                      onPressed: () => setState(() => _tree = _load()),
                       child: Text(t('common.actions.retry', 'Retry')),
                     )
                   : const CircularProgressIndicator(),
@@ -241,26 +254,43 @@ class _SourceScreenState extends State<_SourceScreen> {
 
   String _url(String file) {
     final server = AppScope.of(context).server;
-    final [root, ...parts] = file
-        .split('/')
-        .where((p) => p.isNotEmpty)
-        .toList();
+    final segments = file.split('/').where((p) => p.isNotEmpty).toList();
+    if (segments.isEmpty) return '';
+    final [root, ...parts] = segments;
     return const {'assets', 'runtime', 'objects'}.contains(root)
-        ? 'https://haneoka.org/$root/$server/${parts.map(Uri.encodeComponent).join('/')}'
+        ? AppScope.of(context).api
+              .asset(
+                '/$root/$server/${parts.map(Uri.encodeComponent).join('/')}',
+              )
+              .toString()
         : '';
   }
 
   /// Saves the file where the reader chooses.
   Future<void> _download(String file) async {
-    final response = await netClient.get(Uri.parse(_url(file)));
-    if (response.statusCode != 200) return;
-    final bytes = response.bodyBytes;
-    final path = await FilePicker.platform.saveFile(
-      fileName: file.split('/').last,
-      bytes: bytes,
-    );
-    if (path != null && !(Platform.isAndroid || Platform.isIOS)) {
-      await File(path).writeAsBytes(bytes);
+    try {
+      final url = _url(file);
+      if (url.isEmpty) return;
+      final response = await netClient
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 30));
+      if (response.statusCode != 200) {
+        throw StateError('HTTP ${response.statusCode}');
+      }
+      if (!mounted) return;
+      final bytes = response.bodyBytes;
+      final path = await FilePicker.platform.saveFile(
+        fileName: file.split('/').last,
+        bytes: bytes,
+      );
+      if (path != null && !(Platform.isAndroid || Platform.isIOS)) {
+        await File(path).writeAsBytes(bytes);
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
+      }
     }
   }
 
@@ -300,6 +330,7 @@ class _SourceScreenState extends State<_SourceScreen> {
             children: [
               if (selected != null)
                 _Preview(
+                  key: ValueKey(_url(selected)),
                   url: _url(selected),
                   kind: _kind(selected),
                   name: selected.split('/').last,
@@ -338,17 +369,95 @@ class _SourceScreenState extends State<_SourceScreen> {
   }
 }
 
-class _Preview extends StatelessWidget {
-  const _Preview({required this.url, required this.kind, required this.name});
-  final String url;
-  final String kind;
-  final String name;
+class _Preview extends StatefulWidget {
+  const _Preview({
+    super.key,
+    required this.url,
+    required this.kind,
+    required this.name,
+  });
+  final String url, kind, name;
+  @override
+  State<_Preview> createState() => _PreviewState();
+}
+
+class _PreviewState extends State<_Preview> {
+  late final _voice = VoicePlayback(
+    beforePlay: () => AppScope.of(context).audio.pause(),
+  );
+  Future<String>? _text;
+  Player? _player;
+  StreamSubscription<String>? _videoErrors;
+  VideoController? _video;
+  Object? _error;
+  @override
+  void initState() {
+    super.initState();
+    if (widget.kind == 'text') _text = _loadText();
+  }
+
+  Future<String> _loadText() async {
+    final response = await netClient
+        .get(Uri.parse(widget.url))
+        .timeout(const Duration(seconds: 30));
+    if (response.statusCode != 200) {
+      throw StateError('HTTP ${response.statusCode}');
+    }
+    return utf8
+        .decode(response.bodyBytes, allowMalformed: true)
+        .characters
+        .take(200000)
+        .toString();
+  }
+
+  Future<void> _playVideo() async {
+    if (_player != null) return;
+    final audio = AppScope.of(context).audio;
+    await audio.pause();
+    if (!mounted) return;
+    final player = Player();
+    _videoErrors = player.stream.error.listen((error) {
+      if (!mounted || !identical(_player, player)) return;
+      setState(() {
+        _error = error;
+        _player = null;
+        _video = null;
+      });
+      unawaited(player.dispose());
+    });
+    setState(() {
+      _player = player;
+      _video = VideoController(player);
+      _error = null;
+    });
+    try {
+      await player.open(Media(widget.url));
+    } catch (error) {
+      if (!mounted || !identical(_player, player)) return;
+      await player.dispose();
+      if (mounted) {
+        setState(() {
+          _player = null;
+          _video = null;
+          _error = error;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _voice.dispose();
+    _videoErrors?.cancel();
+    _player?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final audio = AppScope.of(context).audio;
-    if (url.isEmpty) return const SizedBox.shrink();
+    final t = AppScope.of(context).text;
+    if (widget.url.isEmpty) return const SizedBox.shrink();
     return Container(
       constraints: const BoxConstraints(minHeight: 160, maxHeight: 420),
       decoration: BoxDecoration(
@@ -357,40 +466,70 @@ class _Preview extends StatelessWidget {
       ),
       padding: const EdgeInsets.all(16),
       alignment: Alignment.center,
-      child: switch (kind) {
+      child: switch (widget.kind) {
         'image' => AppImage(
-          candidates: [url],
+          candidates: [widget.url],
           fit: BoxFit.contain,
           localized: false,
         ),
-        'audio' || 'video' => ListenableBuilder(
-          listenable: audio,
-          builder: (context, _) {
-            final track = Track(id: url, url: url, title: name);
-            final playing = audio.isPlaying(url);
-            return IconButton.filledTonal(
-              iconSize: 40,
-              onPressed: () => audio.toggle(track),
-              icon: Icon(
-                playing ? Symbols.pause_rounded : Symbols.play_arrow_rounded,
+        'video' => AspectRatio(
+          aspectRatio: 16 / 9,
+          child: _video != null
+              ? Video(controller: _video!)
+              : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (_error != null)
+                      Text(t('common.states.unavailable', 'Unavailable')),
+                    IconButton.filledTonal(
+                      iconSize: 40,
+                      onPressed: _playVideo,
+                      tooltip: t('common.actions.play', 'Play'),
+                      icon: const Icon(Symbols.play_arrow_rounded),
+                    ),
+                  ],
+                ),
+        ),
+        'audio' => ListenableBuilder(
+          listenable: _voice,
+          builder: (context, _) => Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton.filledTonal(
+                iconSize: 40,
+                tooltip: t('common.actions.play', 'Play'),
+                onPressed: () =>
+                    _voice.toggle(VoiceClip(id: widget.url, url: widget.url)),
+                icon: Icon(
+                  _voice.isPlaying(widget.url)
+                      ? Symbols.pause_rounded
+                      : Symbols.play_arrow_rounded,
+                ),
               ),
-            );
-          },
+              if (_voice.error != null)
+                Text(t('common.states.unavailable', 'Unavailable')),
+            ],
+          ),
         ),
         'text' => FutureBuilder(
-          future: netClient.get(Uri.parse(url)),
-          builder: (context, snapshot) => SingleChildScrollView(
-            child: SelectableText(
-              snapshot.data == null
-                  ? ''
-                  : utf8
-                        .decode(snapshot.data!.bodyBytes, allowMalformed: true)
-                        .characters
-                        .take(200000)
-                        .toString(),
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-            ),
-          ),
+          future: _text,
+          builder: (context, snapshot) => snapshot.hasError
+              ? FilledButton.tonalIcon(
+                  onPressed: () => setState(() => _text = _loadText()),
+                  icon: const Icon(Symbols.refresh_rounded),
+                  label: Text(t('common.actions.retry', 'Retry')),
+                )
+              : snapshot.data == null
+              ? const CircularProgressIndicator()
+              : SingleChildScrollView(
+                  child: SelectableText(
+                    snapshot.data!,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
         ),
         _ => Icon(
           Symbols.draft_rounded,

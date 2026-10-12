@@ -16,6 +16,8 @@ class AccountStore extends ChangeNotifier {
 
   final List<GameSave> _saves = [];
   bool _loaded = false;
+  Future<void>? _loading;
+  Future<void> _writes = Future.value();
   List<GameSave> get saves => List.unmodifiable(_saves);
 
   static String _key(GameSave save) =>
@@ -28,9 +30,12 @@ class AccountStore extends ChangeNotifier {
     return folder;
   }
 
-  Future<void> load() async {
-    if (_loaded) return;
-    _loaded = true;
+  Future<void> load() {
+    if (_loaded) return Future.value();
+    return _loading ??= _load().whenComplete(() => _loading = null);
+  }
+
+  Future<void> _load() async {
     final folder = await _folder();
     final files = await folder
         .list()
@@ -46,27 +51,50 @@ class AccountStore extends ChangeNotifier {
         // A damaged file is skipped; importing again replaces it.
       }
     }
+    _loaded = true;
     _sort();
     notifyListeners();
   }
 
-  Future<void> put(GameSave save) async {
+  Future<void> _exclusive(Future<void> Function() write) {
+    final result = _writes.then((_) async {
+      await load();
+      await write();
+    });
+    _writes = result.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    return result;
+  }
+
+  Future<void> put(GameSave save) => _exclusive(() async {
+    final folder = await _folder();
+    final json = encode(save);
+    final text = await Isolate.run(() => jsonEncode(json));
+    final target = File(
+      p.join(folder.path, '${Uri.encodeComponent(_key(save))}.json'),
+    );
+    final temporary = File(
+      '${target.path}.${DateTime.now().microsecondsSinceEpoch}.tmp',
+    );
+    try {
+      await temporary.writeAsString(text, flush: true);
+      await temporary.rename(target.path);
+    } finally {
+      if (await temporary.exists()) await temporary.delete();
+    }
     _saves.removeWhere((s) => _key(s) == _key(save));
     _saves.add(save);
     _sort();
     notifyListeners();
-    final folder = await _folder();
-    final json = encode(save);
-    final text = await Isolate.run(() => jsonEncode(json));
-    await File(p.join(folder.path, '${_key(save)}.json')).writeAsString(text);
-  }
+  });
 
-  Future<void> remove(GameSave save) async {
+  Future<void> remove(GameSave save) => _exclusive(() async {
+    final file = File(
+      p.join((await _folder()).path, '${Uri.encodeComponent(_key(save))}.json'),
+    );
+    if (await file.exists()) await file.delete();
     _saves.removeWhere((s) => _key(s) == _key(save));
     notifyListeners();
-    final file = File(p.join((await _folder()).path, '${_key(save)}.json'));
-    if (await file.exists()) await file.delete();
-  }
+  });
 
   void _sort() => _saves.sort(
     (a, b) =>

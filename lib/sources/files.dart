@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:archive/archive.dart';
+import 'package:archive/archive_io.dart';
 import 'package:path/path.dart' as p;
 
 import '../save/codec.dart';
@@ -72,26 +72,40 @@ class FileSaveSource {
 
   Future<void> _file(File file) async {
     final stat = await file.stat();
-    if (stat.size == 0 || stat.size > SaveCodec.maxFileBytes * 2) return;
-    final bytes = await file.readAsBytes();
-    if (_isZip(bytes)) {
-      _zip(bytes, file.path);
-    } else {
-      collector.offer(
-        SaveCandidate(
-          bytes: bytes,
-          source: file.path,
-          modifiedAt: stat.modified,
-          release: release,
-          group: p.dirname(file.path),
-        ),
-      );
+    if (stat.size == 0) return;
+    final handle = await file.open();
+    final Uint8List header;
+    try {
+      header = await handle.read(4);
+    } finally {
+      await handle.close();
     }
+    if (_isZip(header)) {
+      final stream = InputFileStream(file.path);
+      try {
+        _archive(ZipDecoder().decodeStream(stream), file.path);
+      } finally {
+        await stream.close();
+      }
+      return;
+    }
+    if (stat.size > SaveCodec.maxFileBytes) return;
+    collector.offer(
+      SaveCandidate(
+        bytes: await file.readAsBytes(),
+        source: file.path,
+        modifiedAt: stat.modified,
+        release: release,
+        group: p.dirname(file.path),
+      ),
+    );
   }
 
-  void _zip(Uint8List bytes, String name) {
-    final archive = ZipDecoder().decodeBytes(bytes);
-    final release = this.release ?? _appRelease(archive);
+  void _zip(Uint8List bytes, String name) =>
+      _archive(ZipDecoder().decodeBytes(bytes), name);
+
+  void _archive(Archive archive, String name) {
+    final release = _appRelease(archive) ?? this.release;
     for (final entry in archive.files) {
       if (!entry.isFile ||
           entry.size == 0 ||
@@ -99,7 +113,6 @@ class FileSaveSource {
         continue;
       }
       if (p.split(entry.name).any(skippedDirectories.contains)) continue;
-      // ZIP entries carry DOS date and time, local to the machine that packed them.
       final dos = entry.lastModDateTime;
       final modified = DateTime(
         dos.year,
@@ -118,14 +131,17 @@ class FileSaveSource {
           group: '$name!${p.dirname(entry.name)}',
         ),
       );
+      entry.clear();
     }
   }
 
   /// An app-container export (iMazing's `.imazingapp`) names its app in
   /// `iTunesMetadata.plist`.
   static GameRelease? _appRelease(Archive archive) {
-    final metadata = archive.findFile('iTunesMetadata.plist');
-    if (metadata == null) return null;
+    final metadata = archive.files
+        .where((file) => p.posix.basename(file.name) == 'iTunesMetadata.plist')
+        .firstOrNull;
+    if (metadata == null || metadata.size > SaveCodec.maxFileBytes) return null;
     try {
       final plist = parsePlist(metadata.content);
       return plist is Map
@@ -137,7 +153,7 @@ class FileSaveSource {
   }
 
   static bool _isZip(Uint8List bytes) =>
-      bytes.length > 4 &&
+      bytes.length >= 4 &&
       bytes[0] == 0x50 &&
       bytes[1] == 0x4b &&
       bytes[2] == 3 &&

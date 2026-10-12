@@ -120,14 +120,17 @@ class _CatalogScreenState extends State<CatalogScreen> {
         var items = snapshot.data?.$1;
         BrowseRail? rail;
         Widget? heading;
-        if (profile.presentation == Presentation.character &&
+        if ((profile.presentation == Presentation.character ||
+                profile.presentation == Presentation.bandItem) &&
             items != null &&
             visuals != null) {
           final bands = {
             for (final item in items)
               if (item['bandId'] case final num id) id.toInt(),
           }.toList()..sort();
-          final band = _band ?? '${bands.firstOrNull ?? ''}';
+          final band = bands.contains(int.tryParse(_band ?? ''))
+              ? _band!
+              : '${bands.firstOrNull ?? ''}';
           if (!identical(items, _railSource) || band != _railBand) {
             _railSource = items;
             _railBand = band;
@@ -177,11 +180,15 @@ class _CatalogScreenState extends State<CatalogScreen> {
             aspectRatio: profile.aspectRatio,
             // Portraits keep the full width and clip below the head
             // (`.tile--character` media: natural height, top anchored).
-            fit: profile.presentation == Presentation.character
+            fit:
+                profile.presentation == Presentation.character ||
+                    profile.presentation == Presentation.bandItem
                 ? BoxFit.fitWidth
                 : profile.fit,
             accent: kit.accent(item),
-            alignment: profile.presentation == Presentation.character
+            alignment:
+                profile.presentation == Presentation.character ||
+                    profile.presentation == Presentation.bandItem
                 ? Alignment.topCenter
                 : Alignment.center,
             media: profile.resource == 'events' && item['logo'] is String
@@ -215,6 +222,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
           defaultSort: profile.defaultSort,
           descending: profile.descending,
           itemId: kit.id,
+          onOpen: widget.onOpen,
         );
       },
     );
@@ -365,9 +373,6 @@ class CatalogKit {
   }
 
   List<String> adornments(Entry item) {
-    if (kind == Presentation.character || kind == Presentation.bandItem) {
-      return [?visuals?.bandIcon(item['bandId'])];
-    }
     if (const {
       Presentation.member,
       Presentation.support,
@@ -699,7 +704,7 @@ class CatalogKit {
       Presentation.stamp,
     };
     return [
-      if (characterKinds.contains(kind) || kind == Presentation.bandItem) bands,
+      if (characterKinds.contains(kind)) bands,
       if (characterKinds.contains(kind)) characters,
       if (cardKinds.contains(kind)) ...[
         FacetSpec(
@@ -766,13 +771,19 @@ class _BandHeading extends StatelessWidget {
     final theme = Theme.of(context);
     final icon = band['icon'];
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         if (icon is String)
           Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: SizedBox.square(
-              dimension: 40,
+            padding: EdgeInsets.only(
+              right: MediaQuery.sizeOf(context).width < 600 ? 10 : 14,
+            ),
+            child: SizedBox(
+              width: (MediaQuery.sizeOf(context).width * 0.16).clamp(
+                72.0,
+                132.0,
+              ),
+              height: 64,
               child: AppImage(candidates: [api.asset(icon).toString()]),
             ),
           ),
@@ -780,12 +791,20 @@ class _BandHeading extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(t.text(band['bandName']), style: theme.textTheme.titleLarge),
-              const SizedBox(height: 4),
               Text(
-                t.text(band['description']).replaceAll('\n', ''),
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+                t.text(band['bandName']),
+                style: MediaQuery.sizeOf(context).width < 600
+                    ? theme.textTheme.titleLarge
+                    : theme.textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 2),
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 60),
+                child: Text(
+                  t.text(band['description']),
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ],

@@ -46,6 +46,7 @@ class Tile extends StatelessWidget {
     this.titleLanguage,
     this.subtitle,
     this.adornments = const [],
+    this.adornmentPortraitStart = 0,
     this.aspectRatio = 1,
     this.fit = BoxFit.contain,
     this.marks = const [],
@@ -57,6 +58,7 @@ class Tile extends StatelessWidget {
     this.accent,
     this.alignment = Alignment.center,
     this.serverMark,
+    this.rail = false,
   });
 
   /// The one server an entity is on: its publisher's emblem and its label
@@ -69,6 +71,7 @@ class Tile extends StatelessWidget {
 
   /// Where the artwork sits in its box: characters are framed head-first.
   final Alignment alignment;
+  final bool rail;
   final String title;
 
   /// Drawn instead of [images]: a composed figure such as two faces.
@@ -84,6 +87,7 @@ class Tile extends StatelessWidget {
 
   /// 16 dp emblems before the subhead (band logo, attribute).
   final List<String> adornments;
+  final int adornmentPortraitStart;
   final List<String> images;
   final double aspectRatio;
   final BoxFit fit;
@@ -99,6 +103,7 @@ class Tile extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final compact = MediaQuery.sizeOf(context).width < ShellMetrics.compact;
+    final dense = compact && !rail;
     final card = Material(
       color: selected ? scheme.secondaryContainer : scheme.surfaceContainerLow,
       shape: RoundedRectangleBorder(
@@ -166,19 +171,25 @@ class Tile extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: EdgeInsets.all(compact ? 8 : 16),
+              padding: EdgeInsets.all(
+                dense
+                    ? 8
+                    : compact
+                    ? 12
+                    : 16,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   SizedBox(
-                    height: compact ? 40 : 48,
+                    height: dense ? 40 : 48,
                     child: Text(
                       title,
                       locale: titleLanguage,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: compact
+                      style: dense
                           ? theme.textTheme.titleSmall
                           : theme.textTheme.titleMedium,
                     ),
@@ -186,7 +197,7 @@ class Tile extends StatelessWidget {
                   if (subtitle != null) ...[
                     SizedBox(height: compact ? 4 : 8),
                     SizedBox(
-                      height: compact ? 18 : 20,
+                      height: dense ? 18 : 20,
                       child: Row(
                         children: [
                           // Several faces overlap as a stack
@@ -194,15 +205,22 @@ class Tile extends StatelessWidget {
                           for (final (index, emblem)
                               in adornments.take(5).indexed)
                             Align(
-                              widthFactor: index + 1 < adornments.take(5).length
+                              widthFactor:
+                                  index >= adornmentPortraitStart &&
+                                      index + 1 < adornments.take(5).length
                                   ? 0.7
                                   : 1,
-                              child: ClipOval(
-                                child: SizedBox.square(
-                                  dimension: 16,
-                                  child: AppImage(candidates: [emblem]),
-                                ),
-                              ),
+                              child: index < adornmentPortraitStart
+                                  ? SizedBox.square(
+                                      dimension: 16,
+                                      child: AppImage(candidates: [emblem]),
+                                    )
+                                  : ClipOval(
+                                      child: SizedBox.square(
+                                        dimension: 16,
+                                        child: AppImage(candidates: [emblem]),
+                                      ),
+                                    ),
                             ),
                           if (adornments.isNotEmpty) const SizedBox(width: 8),
                           Expanded(
@@ -212,10 +230,8 @@ class Tile extends StatelessWidget {
                               softWrap: false,
                               overflow: TextOverflow.ellipsis,
                               style:
-                                  (compact
-                                          ? theme.textTheme.bodySmall?.copyWith(
-                                              height: 18 / 12,
-                                            )
+                                  (dense
+                                          ? theme.textTheme.bodySmall
                                           : theme.textTheme.bodyMedium)
                                       ?.copyWith(
                                         color: scheme.onSurfaceVariant,
@@ -334,7 +350,8 @@ SliverGridDelegate collectionGrid(
   } else if (viewport < 840) {
     columns = 3;
   } else {
-    columns = ((width + gap) / (minWidth + gap)).floor().clamp(1, 99);
+    final preferred = (minWidth * 0.9).clamp(0.0, 200.0);
+    columns = ((width + gap) / (preferred + gap)).floor().clamp(1, 99);
   }
   final tile = (width - gap * (columns - 1)) / columns;
   final text = compact
@@ -351,9 +368,15 @@ SliverGridDelegate collectionGrid(
 /// An event's tile artwork (`eventArtwork`): its top image cropped from the
 /// left, the event logo over the right.
 class EventArtwork extends StatelessWidget {
-  const EventArtwork({super.key, required this.background, required this.logo});
+  const EventArtwork({
+    super.key,
+    required this.background,
+    required this.logo,
+    this.logoWidth = 0.42,
+  });
   final String background;
   final String logo;
+  final double logoWidth;
 
   @override
   Widget build(BuildContext context) => Stack(
@@ -366,7 +389,7 @@ class EventArtwork extends StatelessWidget {
       ),
       FractionallySizedBox(
         alignment: const Alignment(0.92, 0),
-        widthFactor: 0.42,
+        widthFactor: logoWidth,
         child: AppImage(candidates: [logo]),
       ),
     ],

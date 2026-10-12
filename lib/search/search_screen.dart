@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../catalog/catalog_screen.dart';
+import '../catalog/cross_server.dart';
 import '../catalog/profiles.dart';
 import '../catalog/visuals.dart';
 import '../core/app_state.dart';
@@ -103,10 +104,21 @@ class _SearchScreenState extends State<SearchScreen> {
     ];
     final documents = await Future.wait([
       for (final profile in resources)
-        api
-            .catalog(profile.resource)
+        (crossCatalogIds.containsKey(profile.resource)
+                ? crossServerCollection(
+                    resource: profile.resource,
+                    selected: state.server,
+                    apis: state.catalogApis,
+                    rowsPath: profile.document,
+                  )
+                : api.catalog(profile.resource))
             .then<Object?>((v) => v, onError: (_) => null),
-      api.catalog('stories').then<Object?>((v) => v, onError: (_) => null),
+      crossServerCollection(
+        resource: 'stories',
+        selected: state.server,
+        apis: state.catalogApis,
+        rowsPath: 'episodes',
+      ).then<Object?>((v) => v, onError: (_) => null),
       api.catalog('help').then<Object?>((v) => v, onError: (_) => null),
     ]);
     for (final (index, profile) in resources.indexed) {
@@ -118,7 +130,9 @@ class _SearchScreenState extends State<SearchScreen> {
         songTitles: state.songTitle,
       );
       Object? rows = documents[index];
-      if (profile.document != null) rows = readPath(rows, profile.document!);
+      if (profile.document != null && rows is! List) {
+        rows = readPath(rows, profile.document!);
+      }
       final items = switch (rows) {
         Map() => [
           for (final MapEntry(:key, :value) in rows.entries)
@@ -146,14 +160,20 @@ class _SearchScreenState extends State<SearchScreen> {
               for (final field in profile.title) _all(item[field]),
               title,
               subtitle,
+              kit.id(item),
             ].join(' ').toLowerCase(),
-            (context) => openEntity(context, profile, item),
+            (context) => openEntity(
+              context,
+              profile,
+              item,
+              api: state.apiFor('${item[serverKey] ?? state.server}'),
+            ),
           ),
         );
       }
     }
-    final stories = documents[resources.length] as Map?;
-    final episodes = switch (stories?['episodes']) {
+    final stories = documents[resources.length];
+    final episodes = switch (stories is Map ? stories['episodes'] : stories) {
       final Map map => map.values,
       final List list => list,
       _ => const [],
@@ -173,6 +193,7 @@ class _SearchScreenState extends State<SearchScreen> {
           (context) => Navigator.of(context).push(
             MaterialPageRoute<void>(
               builder: (_) => StoryReaderScreen(
+                api: state.apiFor('${episode[serverKey] ?? state.server}'),
                 episode: {
                   ...episode.cast<String, Object?>(),
                   'storyKey': episode['storyKey'] ?? episode['storyId'],
@@ -221,7 +242,9 @@ class _SearchScreenState extends State<SearchScreen> {
       'state': 'active',
       'limit': '12',
     });
-    final response = await netClient.get(uri);
+    final response = await netClient
+        .get(uri)
+        .timeout(const Duration(seconds: 30));
     if (response.statusCode != 200) return const [];
     final body = jsonDecode(utf8.decode(response.bodyBytes));
     return ((body as Map?)?['posts'] as List? ?? const [])

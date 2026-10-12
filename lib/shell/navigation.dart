@@ -11,6 +11,38 @@ class NavItem {
   final List<NavItem> children;
 }
 
+int routeMatch(String current, String candidate) {
+  var path = Uri.parse(current).path;
+  if (path.startsWith('/stories/')) {
+    final mode = Uri.parse(current).queryParameters['mode'];
+    path = mode == null ? '/catalog/stories' : '/catalog/stories/$mode';
+  }
+  return path == candidate || candidate != '/' && path.startsWith('$candidate/')
+      ? candidate.length
+      : -1;
+}
+
+NavItem? activeNavigationItem(String route) {
+  NavItem? best;
+  var score = -1;
+  void walk(List<NavItem> items) {
+    for (final item in items) {
+      final match = routeMatch(route, item.route);
+      if (match > score) {
+        best = item;
+        score = match;
+      }
+      walk(item.children);
+    }
+  }
+
+  for (final section in navSections) {
+    walk(section.items);
+  }
+  walk(utilityItems);
+  return best;
+}
+
 /// A headed group of pages inside a destination (`NavSection`); the
 /// archive mirrors fold behind their headline.
 class NavSection {

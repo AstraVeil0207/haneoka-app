@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:media_kit/media_kit.dart';
@@ -7,17 +9,37 @@ import 'l10n/app_localizations.dart';
 import 'shell/shell.dart';
 import 'ui/theme.dart';
 
-Future<void> main() async {
+Future<void> main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
   final state = await AppState.load(
     WidgetsBinding.instance.platformDispatcher.locale,
   );
-  runApp(AppScope(state: state, child: const HaneokaApp()));
+  Uri? initialAddress;
+  for (final argument in arguments) {
+    if (argument.startsWith('-')) continue;
+    final uri = Uri.tryParse(argument);
+    if (uri != null &&
+        const {'https', 'http', 'file', 'haneoka'}.contains(uri.scheme)) {
+      initialAddress = uri;
+      break;
+    }
+    if (FileSystemEntity.typeSync(argument) != FileSystemEntityType.notFound) {
+      initialAddress = Uri.file(argument, windows: Platform.isWindows);
+      break;
+    }
+  }
+  runApp(
+    AppScope(
+      state: state,
+      child: HaneokaApp(initialAddress: initialAddress),
+    ),
+  );
 }
 
 class HaneokaApp extends StatelessWidget {
-  const HaneokaApp({super.key});
+  const HaneokaApp({super.key, this.initialAddress});
+  final Uri? initialAddress;
 
   @override
   Widget build(BuildContext context) {
@@ -43,7 +65,7 @@ class HaneokaApp extends StatelessWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: AppLocalizations.supportedLocales,
-      home: const AppShell(),
+      home: AppShell(initialAddress: initialAddress),
     );
   }
 }

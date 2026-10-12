@@ -16,7 +16,7 @@ class CatalogVisuals {
   static final _loaded = <HaneokaApi, Future<CatalogVisuals>>{};
 
   static Future<CatalogVisuals> of(HaneokaApi api) =>
-      _loaded[api] ??= _load(api);
+      cachedResource(_loaded, api, () => _load(api));
 
   static Future<CatalogVisuals> _load(HaneokaApi api) async {
     // A provider has no game emblems; what it has still loads.

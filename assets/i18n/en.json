@@ -4343,5 +4343,69 @@
       "showTestServerContent": "Show test server content",
       "showTestServerContentHint": "Include test server entries in catalogs and the team builder."
     }
+  },
+  "app": {
+    "updates": {
+      "automatic": "Automatically check for updates",
+      "frequency": "Check once a day when the app opens.",
+      "check": "Check for updates",
+      "checking": "Checking…",
+      "failed": "Could not check for updates. Try again.",
+      "upToDate": "You have the latest version.",
+      "available": "Update available: {version}",
+      "later": "Later",
+      "releaseNotes": "Release notes",
+      "download": "Download update",
+      "openFailed": "Could not open the download link."
+    },
+    "import": {
+      "downloadShizuku": "Download Shizuku",
+      "setupGuide": "Setup guide",
+      "downloadIMazing": "Download iMazing",
+      "exportGuide": "Export app data",
+      "iosAccess": "If Our Notes exposes its files in the Files app, choose the save there. Otherwise export its app data or a local backup on a computer, then transfer the save files, ZIP, or .imazingapp to this device. You can also use Share → Haneoka.",
+      "advancedTitle": "TrollStore / jailbroken device",
+      "advancedSummary": "Export the game account folder using a compatible file manager.",
+      "advancedSteps": "In Filza or Apps Manager, find Our Notes by its bundle ID, open its data container, and copy Documents/<account> to a ZIP in Files. Then choose that ZIP below or share it to Haneoka. For SFTP, copy the same folder to your computer. Check each tool’s supported device and iOS versions on its official page.",
+      "readConnected": "Read connected device",
+      "chooseDevice": "Choose device / wireless pairing",
+      "iosDirectTitle": "Import from this device",
+      "iosDirectSummary": "Reads Our Notes Documents directly when this installation already has container access.",
+      "iosDirectSteps": "Use the dedicated TrollStore build on a supported device, or an already-authorized jailbreak installation. Tap Read save. Haneoka reads the matching game containers and keeps the game files intact.",
+      "iosDirectAvailable": "Container access available",
+      "iosDirectRestricted": "This installation cannot read another app’s private files. Use Files/Share or import an exported backup.",
+      "adbFailed": "Could not read devices. Check debugging authorization and reconnect.",
+      "deviceOffline": "Device offline. Reconnect it and allow USB debugging.",
+      "pairFormat": "Enter IP:port and a six-digit pairing code.",
+      "usbDriverGuide": "USB driver guide"
+    },
+    "storage": {
+      "title": "Storage and cache",
+      "total": "Local app data: {size}",
+      "usedLimit": "Cache: {used} / {limit}",
+      "clear": "Clear",
+      "data": "Catalogue data cache",
+      "images": "Image cache",
+      "memory": "Memory image cache",
+      "accounts": "Imported save data",
+      "manageAccounts": "Manage imported saves",
+      "other": "Settings and other local data",
+      "temporary": "Import and other temporary files",
+      "automatic": "Automatically remove older cache files",
+      "limit": "Cache limit",
+      "preserved": "Imported saves, sign-in and settings are retained.",
+      "clearAll": "Clear all cache",
+      "cleared": "Freed {size}",
+      "unlimited": "Unlimited",
+      "noLimit": "Capacity cleanup is inactive with an unlimited cache."
+    },
+    "distribution": {
+      "title": "Installers and installation guides",
+      "available": "The release page lists the files actually published for each system and architecture.",
+      "downloads": "All downloads",
+      "guide": "Installation guide",
+      "copySource": "Copy AltStore / SideStore source URL",
+      "sourceCopied": "Source URL copied. Add it in AltStore Classic or SideStore after release 0.1.0 is published."
+    }
   }
 }

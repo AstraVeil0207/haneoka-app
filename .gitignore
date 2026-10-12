@@ -49,3 +49,11 @@ app.*.map.json
 
 build/
 .dart_tool/
+
+/dist/
+**/__pycache__/
+
+# Signing material: public .cer certificates can be distributed.
+*.pfx
+*.p12
+*.key

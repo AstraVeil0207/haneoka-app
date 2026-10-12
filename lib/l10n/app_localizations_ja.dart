@@ -365,11 +365,11 @@ class AppLocalizationsJa extends AppLocalizations {
   String get methodAdbTitle => 'Android 端末 · USB または Wi-Fi';
 
   @override
-  String get methodAdbSummary => 'ADB でこのパソコンに接続した端末からセーブを読み込みます。';
+  String get methodAdbSummary => '同梱の ADB で、このパソコンに接続した Android 端末のセーブを読み込みます。';
 
   @override
   String get methodAdbSteps =>
-      '端末で開発者向けオプションと USB デバッグをオンにします。\nケーブルでつなぐか、Wi-Fi でペア設定します。\n「接続」を押して端末を選び、端末の確認を許可します。';
+      '端末で開発者向けオプションと USB デバッグをオンにします。\nケーブルで接続してこのパソコンを許可し、「接続済み端末から読み込む」を押します。\n複数の端末や Wi-Fi 接続は「端末を選択／無線ペア設定」を使用します。';
 
   @override
   String get iosNote => 'iOS では他のアプリのデータを読めないため、iPhone ではパソコンで書き出したコピーを使います。';

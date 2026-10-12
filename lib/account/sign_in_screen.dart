@@ -309,9 +309,9 @@ class _SignInScreenState extends State<SignInScreen> {
               ),
             ),
           ),
-          validator: (value) => (value?.length ?? 0) >= 12
-              ? null
-              : _t('passwordHint', 'Use at least 12 characters.'),
+          validator: (value) => value == null || value.isEmpty
+              ? _t('password', 'Password')
+              : null,
         ),
       ],
       const SizedBox(height: 8),

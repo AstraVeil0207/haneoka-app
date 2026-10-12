@@ -8,6 +8,7 @@ const crossCatalogIds = <String, List<String>>{
   'cards': ['cardId', 'id'],
   'support-cards': ['supportCardId', 'id'],
   'songs': ['musicId', 'songId', 'id'],
+  'stories': ['storyKey', 'storyId', 'id'],
   'characters': ['characterId', 'id'],
   'comics': ['comicId', 'id'],
   'stamps': ['stampId', 'id'],
@@ -25,7 +26,7 @@ const crossCatalogIds = <String, List<String>>{
   'missions': ['id'],
   'tgw-card': ['id'],
 };
-const _opaque = {'real-lives', 'passes', 'missions'};
+const _opaque = {'real-lives', 'passes', 'missions', 'stories'};
 const _nameFields = [
   'prefix',
   'cardName',
@@ -83,7 +84,7 @@ String? _signature(String resource, Map row, String id) {
 
 /// Fills the shown row's empty locale slots from the other server: names
 /// always, editorial text only when both carry the same Japanese edition.
-Map<String, Object?> _displayRow(Map row, Map? peer) {
+Map<String, Object?> displayCrossServerRow(Map row, Map? peer) {
   final out = Map<String, Object?>.of(row.cast<String, Object?>());
   if (peer == null) return out;
   void fill(String field) {
@@ -158,14 +159,17 @@ Future<List<Map<String, Object?>>> crossServerCollection({
   required String selected,
   required Map<String, HaneokaApi> apis,
   required String? rowsPath,
+  Map<String, Object?>? sourceDocuments,
 }) async {
   final servers = ['jp', 'intl'].where(apis.containsKey).toList();
-  final documents = await Future.wait([
-    for (final server in servers)
-      apis[server]!
-          .catalog(resource)
-          .then<Object?>((v) => v, onError: (_) => null),
-  ]);
+  final documents = sourceDocuments == null
+      ? await Future.wait([
+          for (final server in servers)
+            apis[server]!
+                .catalog(resource)
+                .then<Object?>((v) => v, onError: (_) => null),
+        ])
+      : [for (final server in servers) sourceDocuments[server]];
   final loaded = <String, Map<String, Map>>{
     for (final (index, server) in servers.indexed)
       if (documents[index] != null)
@@ -192,7 +196,7 @@ Future<List<Map<String, Object?>>> crossServerCollection({
         .where((e) => e.key != displayServer)
         .map((e) => e.value.$2)
         .firstOrNull;
-    final row = _displayRow(display.$2, peer);
+    final row = displayCrossServerRow(display.$2, peer);
     row[serversKey] = (complete && joinable)
         ? variants.keys.toList()
         : const <String>[];

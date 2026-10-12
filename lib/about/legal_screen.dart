@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../core/app_state.dart';
+import '../shell/page.dart';
 
 /// The privacy policy or terms of use (`legal.privacy`, `legal.terms`), as
 /// the website's legal pages show them: title, effective date, summary and
@@ -22,35 +23,41 @@ class LegalScreen extends StatelessWidget {
       sections.add((k('sections.$i.title'), k('sections.$i.body')));
     }
     final body = theme.textTheme.bodyLarge?.copyWith(height: 1.6);
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 48),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 760),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(k('title'), style: theme.textTheme.headlineMedium),
-              const SizedBox(height: 8),
-              Text(
-                k('updated'),
-                style: theme.textTheme.labelLarge?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-              const SizedBox(height: 16),
-              SelectableText(k('summary'), style: body),
-              for (final (index, (title, text)) in sections.indexed) ...[
-                const SizedBox(height: 32),
-                Text('${index + 1}. $title', style: theme.textTheme.titleLarge),
+    return ShellPage(
+      title: k('title'),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(16, 24, 16, 48),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 760),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(k('title'), style: theme.textTheme.headlineMedium),
                 const SizedBox(height: 8),
-                for (final paragraph in text.split('\n\n'))
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 12),
-                    child: SelectableText(paragraph, style: body),
+                Text(
+                  k('updated'),
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: scheme.onSurfaceVariant,
                   ),
+                ),
+                const SizedBox(height: 16),
+                SelectableText(k('summary'), style: body),
+                for (final (index, (title, text)) in sections.indexed) ...[
+                  const SizedBox(height: 32),
+                  Text(
+                    '${index + 1}. $title',
+                    style: theme.textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  for (final paragraph in text.split('\n\n'))
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: SelectableText(paragraph, style: body),
+                    ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),

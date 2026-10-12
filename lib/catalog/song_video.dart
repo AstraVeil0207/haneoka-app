@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:media_kit/media_kit.dart';
@@ -19,11 +21,13 @@ class SongVideos extends StatefulWidget {
   static List<Map> of(Map song) => switch (song['musicVideos']) {
     final Map videos when videos.isNotEmpty => [
       for (final video in videos.values.whereType<Map>())
-        if (video['playableUrl'] is String) video,
+        if (video['playableUrl'] case final String url when url.isNotEmpty)
+          video,
     ],
     final List videos when videos.isNotEmpty => [
       for (final video in videos.whereType<Map>())
-        if (video['playableUrl'] is String) video,
+        if (video['playableUrl'] case final String url when url.isNotEmpty)
+          video,
     ],
     _ => [
       if (song['mvUrl'] case final String url when url.isNotEmpty)
@@ -39,31 +43,61 @@ class _SongVideosState extends State<SongVideos> {
   int _index = 0;
   Player? _player;
   VideoController? _controller;
+  String? _error;
+  final _subscriptions = <StreamSubscription<dynamic>>[];
 
   @override
   void dispose() {
-    _player?.dispose();
+    _stop();
     super.dispose();
   }
 
   void _stop() {
+    for (final subscription in _subscriptions) {
+      subscription.cancel();
+    }
+    _subscriptions.clear();
     _player?.dispose();
     _player = null;
     _controller = null;
   }
 
-  void _play(String url) {
+  Future<void> _play(String url) async {
     final state = AppScope.of(context);
-    state.audio.stop();
+    final source = state.api.asset(url).toString();
+    await state.audio.pause();
+    if (!mounted) return;
+    _stop();
     final player = Player();
     setState(() {
       _player = player;
       _controller = VideoController(player);
+      _error = null;
     });
-    player.open(Media(state.api.asset(url).toString()));
-    player.stream.completed.listen((done) {
-      if (done && mounted && identical(_player, player)) setState(_stop);
-    });
+    _subscriptions.add(
+      player.stream.completed.listen((done) {
+        if (done && mounted && identical(_player, player)) setState(_stop);
+      }),
+    );
+    _subscriptions.add(
+      player.stream.error.listen((error) {
+        if (!mounted || !identical(_player, player)) return;
+        setState(() {
+          _stop();
+          _error = error;
+        });
+      }),
+    );
+    try {
+      await player.open(Media(source));
+    } catch (error) {
+      if (mounted && identical(_player, player)) {
+        setState(() {
+          _stop();
+          _error = '$error';
+        });
+      }
+    }
   }
 
   @override
@@ -83,6 +117,11 @@ class _SongVideosState extends State<SongVideos> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Text(t('common.states.unavailable', 'Unavailable')),
+            ),
           if (videos.length > 1)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),

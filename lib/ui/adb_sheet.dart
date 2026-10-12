@@ -1,9 +1,13 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../l10n/app_localizations.dart';
+import '../core/app_state.dart';
 import '../save/game_save.dart';
 import '../sources/adb.dart';
 
@@ -31,18 +35,36 @@ class _AdbSheetState extends State<_AdbSheet> {
   AdbSaveSource? _adb;
   List<AdbDevice>? _devices;
   bool _missing = false;
+  bool _refreshing = false;
+  Object? _error;
+  Timer? _poll;
 
   AppLocalizations get t => AppLocalizations.of(context);
 
   @override
   void initState() {
     super.initState();
-    AdbSaveSource.locate().then(
-      (path) => path == null ? setState(() => _missing = true) : _use(path),
-    );
+    _poll = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (mounted && _adb != null && !_refreshing) unawaited(_refresh());
+    });
+    AdbSaveSource.locate().then((path) {
+      if (!mounted) return;
+      if (path == null) {
+        setState(() => _missing = true);
+      } else {
+        _use(path);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    super.dispose();
   }
 
   Future<void> _use(String path) async {
+    if (!mounted) return;
     setState(() {
       _adb = AdbSaveSource(path);
       _missing = false;
@@ -51,8 +73,26 @@ class _AdbSheetState extends State<_AdbSheet> {
   }
 
   Future<void> _refresh() async {
-    final devices = await _adb!.devices().catchError((_) => <AdbDevice>[]);
-    if (mounted) setState(() => _devices = devices);
+    if (_refreshing || _adb == null || !mounted) return;
+    _refreshing = true;
+    try {
+      final devices = await _adb!.devices();
+      if (mounted) {
+        setState(() {
+          _devices = devices;
+          _error = null;
+        });
+      }
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _devices = const [];
+          _error = error;
+        });
+      }
+    } finally {
+      _refreshing = false;
+    }
   }
 
   Future<void> _chooseAdb() async {
@@ -99,10 +139,46 @@ class _AdbSheetState extends State<_AdbSheet> {
         ],
       ),
     );
+    final pairAddress = address.text.trim(),
+        pairCode = code.text.trim(),
+        connectAddress = connect.text.trim();
+    address.dispose();
+    code.dispose();
+    connect.dispose();
     if (ok != true || !mounted) return;
-    final paired = await _adb!.pair(address.text.trim(), code.text.trim());
-    if (paired && connect.text.trim().isNotEmpty) {
-      await _adb!.connect(connect.text.trim());
+    final validAddress = RegExp(
+      r'^(?:\[[0-9a-fA-F:]+\]|[A-Za-z0-9.-]+):[0-9]{1,5}$',
+    );
+    if (!validAddress.hasMatch(pairAddress) ||
+        !RegExp(r'^\d{6}$').hasMatch(pairCode) ||
+        (connectAddress.isNotEmpty && !validAddress.hasMatch(connectAddress))) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            AppScope.of(context).text(
+              'app.import.pairFormat',
+              'Enter IP:port and a six-digit pairing code.',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+    bool paired;
+    try {
+      paired = await _adb!.pair(pairAddress, pairCode);
+      if (paired && connectAddress.isNotEmpty) {
+        await _adb!.connect(connectAddress);
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
+      }
+      return;
+    }
+    if (paired && connectAddress.isNotEmpty) {
+      // The wireless connection is already established above.
     }
     if (!mounted) return;
     if (!paired) {
@@ -114,7 +190,16 @@ class _AdbSheetState extends State<_AdbSheet> {
 
   Future<void> _read(AdbDevice device) async {
     final adb = _adb!;
-    final installed = await adb.installed(device.serial);
+    final List<GameRelease> installed;
+    try {
+      installed = await adb.installed(device.serial);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
+      }
+      return;
+    }
     if (!mounted) return;
     if (installed.isEmpty) {
       ScaffoldMessenger.of(context)
@@ -179,7 +264,18 @@ class _AdbSheetState extends State<_AdbSheet> {
                 TextButton(onPressed: _chooseAdb, child: Text(t.chooseAdb)),
               ],
             ),
-          ] else if (devices == null)
+          ] else if (_error != null)
+            ListTile(
+              leading: const Icon(Symbols.error_rounded),
+              title: Text(
+                AppScope.of(context).text(
+                  'app.import.adbFailed',
+                  'Could not read devices. Check debugging authorization and reconnect.',
+                ),
+              ),
+              subtitle: Text('$_error'),
+            )
+          else if (devices == null)
             const Padding(
               padding: EdgeInsets.all(24),
               child: Center(child: CircularProgressIndicator()),
@@ -202,10 +298,29 @@ class _AdbSheetState extends State<_AdbSheet> {
                 ),
                 subtitle: device.ready
                     ? Text(device.serial)
-                    : Text(t.deviceUnauthorized),
+                    : Text(
+                        device.state == 'offline'
+                            ? AppScope.of(context).text(
+                                'app.import.deviceOffline',
+                                'Device offline. Reconnect it and allow USB debugging.',
+                              )
+                            : t.deviceUnauthorized,
+                      ),
                 enabled: device.ready,
                 onTap: () => _read(device),
               ),
+          if (Platform.isWindows)
+            TextButton.icon(
+              onPressed: () => launchUrl(
+                Uri.parse('https://developer.android.com/studio/run/oem-usb'),
+                mode: LaunchMode.externalApplication,
+              ),
+              icon: const Icon(Symbols.open_in_new_rounded),
+              label: Text(
+                AppScope.of(context)
+                    .text('app.import.usbDriverGuide', 'USB driver guide'),
+              ),
+            ),
           const SizedBox(height: 8),
         ],
       ),

@@ -306,19 +306,11 @@ Future<List<LibrarySong>> _loadBgm(
   return out;
 }
 
-final _libraries = <String, Future<SongLibrary>>{};
+final _libraries = <HaneokaApi, Future<SongLibrary>>{};
 
 /// Both catalogues once per Our Notes server (`loadSongLibrary`).
 Future<SongLibrary> loadSongLibrary(String server, HaneokaApi api) {
-  if (_libraries[server] case final existing?) return existing;
-  final future = _libraries[server] = _build(server, api);
-  future.then(
-    (_) {},
-    onError: (Object _) {
-      _libraries.remove(server);
-    },
-  );
-  return future;
+  return cachedResource(_libraries, api, () => _build(server, api));
 }
 
 Future<SongLibrary> _build(String server, HaneokaApi api) async {

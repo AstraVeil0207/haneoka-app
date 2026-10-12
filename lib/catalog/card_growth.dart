@@ -69,7 +69,7 @@ class CardGrowthData {
 
   static final _loaded = <(HaneokaApi, bool), Future<CardGrowthData>>{};
   static Future<CardGrowthData> of(HaneokaApi api, {required bool support}) =>
-      _loaded[(api, support)] ??= _load(api, support);
+      cachedResource(_loaded, (api, support), () => _load(api, support));
 
   static Future<CardGrowthData> _load(HaneokaApi api, bool support) async {
     final base = '/api/v1/servers/${api.server}/progression';

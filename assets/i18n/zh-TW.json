@@ -4343,5 +4343,69 @@
       "showTestServerContent": "顯示測試伺服器內容",
       "showTestServerContentHint": "在圖鑑與配隊工具中顯示測試伺服器內容。"
     }
+  },
+  "app": {
+    "updates": {
+      "automatic": "自動檢查更新",
+      "frequency": "開啟應用程式時檢查，每天一次。",
+      "check": "檢查更新",
+      "checking": "正在檢查…",
+      "failed": "檢查更新失敗，請重試。",
+      "upToDate": "已是最新版本。",
+      "available": "發現新版本：{version}",
+      "later": "稍後",
+      "releaseNotes": "更新說明",
+      "download": "下載更新",
+      "openFailed": "無法開啟下載連結。"
+    },
+    "import": {
+      "downloadShizuku": "下載 Shizuku",
+      "setupGuide": "設定指南",
+      "downloadIMazing": "下載 iMazing",
+      "exportGuide": "匯出應用程式資料",
+      "iosAccess": "如果 Our Notes 在「檔案」App 中公開了存檔，可以直接選擇。否則先在電腦上匯出遊戲應用程式資料或本機備份，再將存檔檔案、ZIP 或 .imazingapp 傳到本機匯入。也可以透過「分享 → Haneoka」開啟檔案。",
+      "advancedTitle": "TrollStore / 已越獄裝置",
+      "advancedSummary": "使用相容的檔案管理器匯出遊戲帳號目錄。",
+      "advancedSteps": "在 Filza 或 Apps Manager 中根據套件名稱找到 Our Notes，開啟資料容器，將 Documents/<帳號目錄> 複製並壓縮為 ZIP，儲存至「檔案」App。然後在下方選擇 ZIP，或分享給 Haneoka。透過 SFTP 也可將同一目錄複製到電腦。裝置及 iOS 版本相容性以各工具的官方說明為準。",
+      "readConnected": "讀取已連接裝置",
+      "chooseDevice": "選擇裝置／無線配對",
+      "iosDirectTitle": "從本機直接匯入",
+      "iosDirectSummary": "在此安裝已具備應用程式容器存取權限時，直接讀取 Our Notes 的 Documents。",
+      "iosDirectSteps": "在相容裝置使用專用 TrollStore 版本，或已授予容器存取權限的越獄安裝。點選「讀取存檔」，自動尋找對應遊戲的存檔；遊戲檔案保持原樣。",
+      "iosDirectAvailable": "已具備應用程式容器存取權限",
+      "iosDirectRestricted": "目前安裝無法讀取其他應用程式的私有檔案，請透過「檔案／分享」或匯出的備份匯入。",
+      "adbFailed": "無法讀取裝置，請檢查偵錯授權或重新連接。",
+      "deviceOffline": "裝置離線，請重新連接並允許 USB 偵錯。",
+      "pairFormat": "位址請填寫 IP:連接埠，配對碼為六位數字。",
+      "usbDriverGuide": "USB 驅動程式安裝指南"
+    },
+    "storage": {
+      "title": "儲存空間與快取",
+      "total": "本機應用程式資料：{size}",
+      "usedLimit": "快取：{used} / {limit}",
+      "clear": "清理",
+      "data": "圖鑑與頁面資料快取",
+      "images": "圖片快取",
+      "memory": "記憶體圖片快取",
+      "accounts": "已匯入的存檔資料",
+      "manageAccounts": "管理已匯入存檔",
+      "other": "設定與其他本機資料",
+      "temporary": "匯入及其他暫存檔",
+      "automatic": "自動清理較舊的快取檔案",
+      "limit": "快取上限",
+      "preserved": "已匯入的存檔、登入狀態與設定會保留。",
+      "clearAll": "清空所有快取",
+      "cleared": "已釋放 {size}",
+      "unlimited": "不限大小",
+      "noLimit": "不限大小時，不執行容量清理。"
+    },
+    "distribution": {
+      "title": "安裝包與安裝指南",
+      "available": "發布頁列出各系統、架構實際已發布的安裝包。",
+      "downloads": "全部下載",
+      "guide": "安裝指南",
+      "copySource": "複製 AltStore / SideStore 來源網址",
+      "sourceCopied": "來源網址已複製。0.1.0 發布後，在 AltStore Classic 或 SideStore 中新增此來源。"
+    }
   }
 }

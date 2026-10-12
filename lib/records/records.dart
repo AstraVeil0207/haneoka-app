@@ -90,7 +90,8 @@ class CardCatalog {
   final Map<String, int> memberLimits, supportLimits;
 
   static final _loaded = <HaneokaApi, Future<CardCatalog>>{};
-  static Future<CardCatalog> of(HaneokaApi api) => _loaded[api] ??= _load(api);
+  static Future<CardCatalog> of(HaneokaApi api) =>
+      cachedResource(_loaded, api, () => _load(api));
 
   static Future<CardCatalog> _load(HaneokaApi api) async {
     final s = api.server;
@@ -249,7 +250,8 @@ class RankingListState extends State<RankingList> {
   void refresh() => setState(() => _data = _load(fresh: true));
 
   Future<(Map, CardCatalog)> _load({bool fresh = false}) async {
-    final api = AppScope.of(context).api;
+    final api = AppScope.of(context)
+        .apiFor(widget.region == 'jp' ? 'jp' : 'intl');
     final response = await api.live(widget.endpoint);
     return (response as Map, await CardCatalog.of(api));
   }
@@ -584,9 +586,11 @@ class SongRankingScreen extends StatefulWidget {
     super.key,
     required this.songId,
     required this.title,
+    this.server,
   });
   final String songId;
   final String title;
+  final String? server;
 
   @override
   State<SongRankingScreen> createState() => _SongRankingScreenState();
@@ -600,7 +604,8 @@ class _SongRankingScreenState extends State<SongRankingScreen> {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final t = state.text;
-    final region = _region ?? defaultRecordRegion(state.server, t.locale);
+    final region =
+        _region ?? defaultRecordRegion(widget.server ?? state.server, t.locale);
     return ShellPage(
       title: widget.title,
       actions: [

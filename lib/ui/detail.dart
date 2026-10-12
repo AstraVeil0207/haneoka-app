@@ -371,10 +371,14 @@ class GalleryImage {
     this.label, {
     this.localized = true,
     this.player,
+    this.sourceSize,
+    this.bounds,
   });
   final String url;
   final String label;
   final bool localized;
+  final Size? sourceSize;
+  final Rect? bounds;
 
   /// A moving entry (the animated card's movie); [url] is its poster.
   final WidgetBuilder? player;
@@ -389,11 +393,13 @@ class ImageGallery extends StatefulWidget {
     this.entries,
     this.initial = 0,
     this.natural = false,
+    this.stageHeight,
   });
 
   /// Event and recruitment art: full bleed at the image's own shape
   /// (`image-gallery natural`).
   final bool natural;
+  final double? stageHeight;
   final List<String> images;
 
   /// Captioned entries (`image-gallery` items); [images] when null.
@@ -474,7 +480,8 @@ class _ImageGalleryState extends State<ImageGallery> {
         children: [
           AnimatedSize(
             duration: Durations.short4,
-            child: AspectRatio(
+            child: _GalleryStage(
+              height: widget.stageHeight,
               aspectRatio: widget.natural
                   ? _ratio(images[_index])
                   : widget.aspectRatio,
@@ -488,7 +495,7 @@ class _ImageGalleryState extends State<ImageGallery> {
                         GestureDetector(
                           onTap: () => _zoom(context),
                           child: Padding(
-                            padding: widget.natural
+                            padding: widget.natural || entry.bounds != null
                                 ? EdgeInsets.zero
                                 : const EdgeInsets.all(16),
                             child: ClipRRect(
@@ -501,12 +508,9 @@ class _ImageGalleryState extends State<ImageGallery> {
                                   : BorderRadius.zero,
                               child: entry.player != null
                                   ? entry.player!(context)
-                                  : AppImage(
-                                      candidates: [entry.url],
-                                      localized: entry.localized,
-                                      fit: widget.natural
-                                          ? BoxFit.cover
-                                          : BoxFit.contain,
+                                  : _GalleryPicture(
+                                      entry: entry,
+                                      natural: widget.natural,
                                     ),
                             ),
                           ),
@@ -588,10 +592,7 @@ class _ImageGalleryState extends State<ImageGallery> {
                       ),
                     ),
                     clipBehavior: Clip.antiAlias,
-                    child: AppImage(
-                      candidates: [entries[index].url],
-                      localized: entries[index].localized,
-                    ),
+                    child: _GalleryPicture(entry: entries[index]),
                   ),
                 ),
               ),
@@ -636,6 +637,64 @@ class _ZoomView extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _GalleryStage extends StatelessWidget {
+  const _GalleryStage({
+    required this.aspectRatio,
+    required this.child,
+    this.height,
+  });
+  final double aspectRatio;
+  final double? height;
+  final Widget child;
+  @override
+  Widget build(BuildContext context) => height == null
+      ? AspectRatio(aspectRatio: aspectRatio, child: child)
+      : SizedBox(height: height, child: child);
+}
+
+/// The website's SVG viewBox applied to the complete source raster.
+class _GalleryPicture extends StatelessWidget {
+  const _GalleryPicture({required this.entry, this.natural = false});
+  final GalleryImage entry;
+  final bool natural;
+  @override
+  Widget build(BuildContext context) {
+    final bounds = entry.bounds;
+    final size = entry.sourceSize;
+    if (bounds == null || size == null) {
+      return AppImage(
+        candidates: [entry.url],
+        localized: entry.localized,
+        fit: natural ? BoxFit.cover : BoxFit.contain,
+      );
+    }
+    return FittedBox(
+      fit: BoxFit.contain,
+      child: SizedBox(
+        width: bounds.width,
+        height: bounds.height,
+        child: ClipRect(
+          child: Stack(
+            children: [
+              Positioned(
+                left: -bounds.left,
+                top: -bounds.top,
+                width: size.width,
+                height: size.height,
+                child: AppImage(
+                  candidates: [entry.url],
+                  localized: false,
+                  fit: BoxFit.fill,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

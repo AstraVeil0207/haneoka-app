@@ -365,11 +365,12 @@ class AppLocalizationsKo extends AppLocalizations {
   String get methodAdbTitle => 'Android 휴대폰 · USB 또는 Wi-Fi';
 
   @override
-  String get methodAdbSummary => 'ADB로 이 컴퓨터에 연결한 휴대폰에서 세이브를 읽습니다.';
+  String get methodAdbSummary =>
+      '앱에 포함된 ADB로 이 컴퓨터에 연결한 Android 기기의 세이브를 읽습니다.';
 
   @override
   String get methodAdbSteps =>
-      '휴대폰에서 개발자 옵션과 USB 디버깅을 켭니다.\n케이블로 연결하거나 Wi-Fi로 페어링합니다.\n‘연결’을 누르고 휴대폰을 고른 뒤 휴대폰의 확인을 허용합니다.';
+      '기기에서 개발자 옵션과 USB 디버깅을 켭니다.\n케이블로 연결하고 컴퓨터를 승인한 뒤 연결된 기기에서 읽기를 누릅니다.\n여러 기기나 Wi-Fi 연결은 기기 선택 / 무선 페어링을 사용합니다.';
 
   @override
   String get iosNote =>

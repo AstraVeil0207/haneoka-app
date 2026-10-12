@@ -429,7 +429,7 @@ class _Row extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final compact = MediaQuery.sizeOf(context).width < 600;
-    final jacket = chart.song['jacketThumbUrl'] ?? chart.song['jacketUrl'];
+    final jacket = chart.song['jacketUrl'] ?? chart.song['jacketThumbUrl'];
     final color = difficultyColors[chart.difficulty.clamp(0, 4)];
     final song = InkWell(
       onTap: onOpen,

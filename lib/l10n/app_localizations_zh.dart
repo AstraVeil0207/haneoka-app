@@ -365,11 +365,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get methodAdbTitle => 'Android 手机 · USB 或 Wi-Fi';
 
   @override
-  String get methodAdbSummary => '通过 ADB 读取连接到这台电脑的手机上的存档。';
+  String get methodAdbSummary => '使用随应用附带的 ADB，读取连接到这台电脑的 Android 手机存档。';
 
   @override
   String get methodAdbSteps =>
-      '在手机上打开“开发者选项”和“USB 调试”。\n用数据线连接，或通过 Wi-Fi 配对。\n点击“连接”，选择手机，并在手机上允许提示。';
+      '在手机上开启开发者选项和 USB 调试。\n用数据线连接，在手机上授权这台电脑，然后点击“读取已连接设备”。\n多台手机或 Wi-Fi 连接使用“选择设备／无线配对”。';
 
   @override
   String get iosNote => 'iOS 不允许应用读取其他应用的数据，因此在 iPhone 上需要先在电脑上导出一份存档副本。';
@@ -906,11 +906,11 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
   String get methodAdbTitle => 'Android 手機 · USB 或 Wi-Fi';
 
   @override
-  String get methodAdbSummary => '透過 ADB 讀取連接到這台電腦的手機上的存檔。';
+  String get methodAdbSummary => '使用應用程式內附的 ADB，讀取連接到這台電腦的 Android 手機存檔。';
 
   @override
   String get methodAdbSteps =>
-      '在手機上開啟「開發人員選項」與「USB 偵錯」。\n用傳輸線連接，或透過 Wi-Fi 配對。\n點選「連接」，選擇手機，並在手機上允許提示。';
+      '在手機開啟開發人員選項與 USB 偵錯。\n用傳輸線連接，在手機授權這台電腦，然後點選「讀取已連接裝置」。\n多台手機或 Wi-Fi 連線使用「選擇裝置／無線配對」。';
 
   @override
   String get iosNote => 'iOS 不允許 App 讀取其他 App 的資料，因此在 iPhone 上需要先在電腦上匯出一份存檔副本。';

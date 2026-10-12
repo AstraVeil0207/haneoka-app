@@ -1,4 +1,7 @@
 import '../core/i18n.dart';
+
+import 'package:flutter/widgets.dart';
+
 import 'card_movie.dart';
 import '../ui/detail.dart';
 import 'character_art.g.dart';
@@ -33,15 +36,23 @@ const _languageNames = {
   String? str(Object? value) =>
       value is String && value.isNotEmpty ? value : null;
   if (kind == Presentation.character) {
-    final portraits = characterArt[(item['characterId'] as num?)?.toInt()];
+    final portraits =
+        characterPortraits[(item['characterId'] as num?)?.toInt()];
     if (portraits != null && portraits.isNotEmpty) {
       return (
         [
-          for (final (index, path) in portraits.indexed)
+          for (final (index, portrait) in portraits.indexed)
             GalleryImage(
-              asset(path),
+              asset(portrait.source),
               '${t('media.images.fields.portrait', 'Portrait')} ${(index + 1).toString().padLeft(2, '0')}',
               localized: false,
+              sourceSize: Size(portrait.width, portrait.height),
+              bounds: Rect.fromLTWH(
+                portrait.bounds[0],
+                portrait.bounds[1],
+                portrait.bounds[2],
+                portrait.bounds[3],
+              ),
             ),
         ],
         0,

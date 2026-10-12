@@ -3,7 +3,6 @@ import 'package:material_symbols_icons/symbols.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
-import '../core/app_state.dart';
 import '../ui/app_image.dart';
 
 typedef MovieClip = ({String url, bool loop, bool backdrop});
@@ -37,7 +36,6 @@ class _CardMovieState extends State<CardMovie> {
   }
 
   Future<void> _start() async {
-    AppScope.of(context).audio.stop();
     final player = Player();
     setState(() {
       _player = player;
@@ -48,6 +46,8 @@ class _CardMovieState extends State<CardMovie> {
       if (!done || !mounted || !identical(player, _player)) return;
       if (_index + 1 < widget.clips.length) _open(_index + 1);
     });
+    await player.setVolume(0);
+    if (!mounted || !identical(player, _player)) return;
     await _open(0);
   }
 

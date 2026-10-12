@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 
 import '../community/entity_comments.dart';
 import '../core/api.dart';
+import '../core/provider_api.dart';
 import '../core/app_state.dart';
 import '../core/audio.dart';
 import '../core/i18n.dart';
@@ -61,7 +62,9 @@ class _DetailScreenState extends State<DetailScreen> {
   Future<(Entry, CatalogVisuals, Entry?)>? _data;
   int? _difficulty;
 
-  void refresh(VoidCallback change) => setState(change);
+  void refresh(VoidCallback change) {
+    if (mounted) setState(change);
+  }
 
   @override
   void didChangeDependencies() {
@@ -84,7 +87,7 @@ class _DetailScreenState extends State<DetailScreen> {
           ),
       CatalogVisuals.of(api),
       // A provider has no built page; its songs join its own song-meta.
-      widget.api != null
+      api is ProviderApi
           ? (resource == 'songs'
                 ? api
                       .catalog('song-meta')
@@ -108,7 +111,7 @@ class _DetailScreenState extends State<DetailScreen> {
   /// GBP names its difficulties; the song page reads them by index, the
   /// name kept for labels (`easy` … `special`).
   Entry _providerRecord(Entry record) {
-    if (widget.api == null) return record;
+    if (widget.api is! ProviderApi) return record;
     const names = ['easy', 'normal', 'hard', 'expert', 'special'];
     return {
       ...record,
@@ -141,12 +144,16 @@ class _DetailScreenState extends State<DetailScreen> {
         overflowFirst: true,
         onPressed: () => Navigator.of(context).pushReplacement(
           PageRouteBuilder<void>(
+            settings: RouteSettings(
+              name:
+                  '/catalog/${widget.profile.resource == 'cards' ? 'member-cards' : widget.profile.resource}/${Uri.encodeComponent(kit.id(entry))}',
+            ),
             pageBuilder: (_, _, _) => DetailScreen(
               profile: widget.profile,
               id: kit.id(entry),
               summary: entry,
               siblings: list,
-              api: widget.api,
+              api: widget.api is ProviderApi ? widget.api : null,
             ),
             transitionDuration: Duration.zero,
           ),
@@ -180,7 +187,8 @@ class _DetailScreenState extends State<DetailScreen> {
         final kit = CatalogKit(
           widget.profile,
           t,
-          state.api,
+          widget.api ??
+              state.apiFor('${widget.summary[serverKey] ?? state.server}'),
           visuals,
           songTitles: state.songTitle,
         );
@@ -230,6 +238,11 @@ class _Page {
     final visuals = kit.visuals;
     if (visuals == null) return null;
     final children = <Widget>[
+      if (kind == Presentation.character && record['faceImage'] is String)
+        _emblem(
+          kit.api.asset(record['faceImage'] as String).toString(),
+          size: 34,
+        ),
       if (kind == Presentation.song) ...[
         for (final id in (record['bandIds'] as List? ?? [?record['bandId']]))
           if (visuals.bandLogo(id) case final logo?)
@@ -259,6 +272,9 @@ class _Page {
   double marksExtent() {
     final visuals = kit.visuals;
     if (visuals == null) return 0;
+    if (kind == Presentation.character && record['faceImage'] is String) {
+      return 40;
+    }
     if (kind == Presentation.song) {
       return 46.0 * (record['bandIds'] as List? ?? [?record['bandId']]).length +
           30;
@@ -274,9 +290,8 @@ class _Page {
   /// Sonolus.
   List<BarAction> actions() {
     if (kind != Presentation.song) return const [];
-    final state = AppScope.of(context);
     // Rankings and Sonolus are this game's; another game's song only plays.
-    final native = host.widget.api == null;
+    final native = kit.api is! ProviderApi;
     final actions = <BarAction>[
       if (native)
         BarAction(
@@ -287,6 +302,7 @@ class _Page {
               builder: (_) => SongRankingScreen(
                 songId: '${record['musicId'] ?? kit.id(record)}',
                 title: kit.title(record),
+                server: kit.api.server,
               ),
             ),
           ),
@@ -295,17 +311,19 @@ class _Page {
     if (record['musicUrl'] is String) {
       final track = Track(
         id: kit.id(record),
+        songKey:
+            '${kit.api is ProviderApi ? "gbp" : "our-notes"}:${record[serverKey] ?? kit.api.server}:${record["musicId"] ?? kit.id(record)}',
         url: kit.api.asset(record['musicUrl'] as String).toString(),
         title: kit.title(record),
         artwork: kit.images(record).firstOrNull,
       );
-      final playing = audio.isPlaying(track.id);
+      final playing = audio.isPlaying(track.id, track.url);
       actions.add(
         BarAction(
           icon: playing ? Symbols.pause_rounded : Symbols.play_arrow_rounded,
           label: t(playing ? 'common.actions.pause' : 'common.actions.play'),
           onPressed: () async {
-            await audio.toggle(track);
+            await audio.enqueueTrack(track);
             host.refresh(() {});
           },
         ),
@@ -337,7 +355,7 @@ class _Page {
           label: 'Sonolus',
           onPressed: () => openLink(
             context,
-            'https://open.sonolus.com/haneoka.org/levels/haneoka-${state.server}-$musicId-$difficulty',
+            'https://open.sonolus.com/haneoka.org/levels/haneoka-${kit.api.server}-$musicId-$difficulty',
           ),
         ),
       );
@@ -377,7 +395,7 @@ class _Page {
 
   List<Widget> sections() {
     // The site's discussion under every catalogue entry (`entity-comments`).
-    final target = host.widget.api != null
+    final target = kit.api is ProviderApi
         ? null
         : entityCommentTarget(
             host.widget.profile.resource,

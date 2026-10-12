@@ -7,6 +7,7 @@ import '../shell/page.dart';
 import '../ui/theme.dart';
 import '../ui/tile.dart';
 import 'haneoka_account.dart';
+import 'security_widgets.dart';
 
 /// The reader's haneoka profile and sign-in sessions (`account-workspace`):
 /// display name, handle and bio; every signed-in device, revocable.
@@ -129,7 +130,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                           ),
                         TextField(
                           controller: _name,
-                          maxLength: 40,
+                          maxLength: 80,
                           decoration: InputDecoration(
                             labelText: _label('displayName', 'Display name'),
                             border: const OutlineInputBorder(),
@@ -150,7 +151,7 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                           controller: _bio,
                           minLines: 3,
                           maxLines: 6,
-                          maxLength: 300,
+                          maxLength: 500,
                           decoration: InputDecoration(
                             labelText: _label('bio', 'Bio'),
                             border: const OutlineInputBorder(),
@@ -165,6 +166,10 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
+                  surface(const AccountAvatar()),
+                  const SizedBox(height: 16),
+                  surface(const AccountSecurity()),
+                  const SizedBox(height: 16),
                   surface(
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -178,6 +183,17 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                           future: _sessions,
                           builder: (context, snapshot) {
                             final sessions = snapshot.data;
+                            if (snapshot.hasError) {
+                              return FilledButton.tonalIcon(
+                                onPressed: () =>
+                                    setState(() => _sessions = _loadSessions()),
+                                icon: const Icon(Symbols.refresh_rounded),
+                                label: Text(
+                                  AppScope.of(context)
+                                      .text('common.actions.retry', 'Retry'),
+                                ),
+                              );
+                            }
                             if (sessions == null) {
                               return const Padding(
                                 padding: EdgeInsets.all(16),
@@ -225,6 +241,8 @@ class _AccountProfileScreenState extends State<AccountProfileScreen> {
                       ],
                     ),
                   ),
+                  const SizedBox(height: 16),
+                  surface(const DeleteAccount()),
                 ],
               ),
             ),

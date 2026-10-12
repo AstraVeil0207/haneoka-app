@@ -70,6 +70,20 @@ class SiteText {
   String textIn(Object? value, String locale) =>
       SiteText._(locale, _messages).text(value);
 
+  /// The locale supplying the body text also supplies its authored speaker names.
+  String textLocale(Object? value) {
+    final order = _fallbacks[locale] ?? const ['ja', 'en'];
+    for (final code in order) {
+      final text = value is List
+          ? value.elementAtOrNull(tupleOrder.indexOf(code))
+          : value is Map
+          ? value[code]
+          : null;
+      if (text is String && text.trim().isNotEmpty) return code;
+    }
+    return locale;
+  }
+
   /// Game text: a five-slot tuple, a locale map, or plain text.
   String text(Object? value) {
     if (value == null) return '';

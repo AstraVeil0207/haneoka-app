@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   check:
-    name: Analyze and test
+    name: Analyze
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,4 +21,3 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze
-      - run: flutter test

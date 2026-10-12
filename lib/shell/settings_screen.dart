@@ -6,6 +6,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../catalog/visuals.dart';
 import '../core/app_state.dart';
 import '../ui/schemes.g.dart';
+import '../ui/app_updates.dart';
+import '../ui/storage_settings.dart';
+import '../ui/distribution_settings.dart';
 import '../ui/theme.dart';
 import '../ui/tile.dart';
 import 'links.dart';
@@ -219,6 +222,9 @@ class SettingsScreen extends StatelessWidget {
                           ),
                         ],
                       ),
+                      const _Card(children: [StorageSettings()]),
+                      const _Card(children: [AppUpdateSettings()]),
+                      const _Card(children: [DistributionSettings()]),
                       const _About(),
                     ],
                   ),

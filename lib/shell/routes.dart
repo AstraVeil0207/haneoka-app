@@ -31,6 +31,7 @@ import '../catalog/songs.dart';
 import '../catalog/studio.dart';
 import '../core/api.dart';
 import '../core/app_state.dart';
+import '../core/provider_api.dart';
 import '../home/announcements.dart';
 import '../home/calendar.dart';
 import '../home/home_screen.dart';
@@ -74,8 +75,16 @@ void openEntity(
   HaneokaApi? api,
 }) {
   final list = siblings ?? BrowseSiblings.of(context);
+  final id = '${firstOf(item, profile.id) ?? item['_key']}';
+  final kind = profile.resource == 'cards' ? 'member-cards' : profile.resource;
+  final path = api is ProviderApi
+      ? api.provider == 'sekai'
+            ? '/community/sekai/songs'
+            : '/community/songs-bestdori'
+      : '/catalog/$kind';
   Navigator.of(context).push(
     MaterialPageRoute<void>(
+      settings: RouteSettings(name: '$path/${Uri.encodeComponent(id)}'),
       builder: (_) => DetailScreen(
         profile: profile,
         id: '${firstOf(item, profile.id) ?? item['_key']}',
@@ -99,6 +108,7 @@ const _communityFeeds = {
 
 /// The native screen for a website route, or null while it is being built.
 Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
+  route = Uri.parse(route).path;
   if (route == '/') return HomeScreen(onBrowse: navigate);
   if (route == '/settings') return const SettingsScreen();
   if (route == '/catalog') return CatalogHubScreen(navigate: navigate);
@@ -189,11 +199,19 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
       case final m?) {
     return CommunityUserScreen(uid: m[1]!);
   }
+  if (route.startsWith('/stories/')) {
+    return StoryReaderScreen(
+      episode: {
+        'storyKey': Uri.decodeComponent(route.substring('/stories/'.length)),
+      },
+    );
+  }
   if (route.startsWith('/catalog/stories/')) {
     final mode = route.substring('/catalog/stories/'.length);
     if (storyModes.contains(mode)) {
       return StoriesScreen(key: ValueKey(mode), mode: mode);
     }
+    return StoryReaderScreen(episode: {'storyKey': Uri.decodeComponent(mode)});
   }
   final slash = route.lastIndexOf('/');
   final parent = slash > '/catalog'.length
@@ -203,7 +221,7 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
     return DetailScreen(
       key: ValueKey(route),
       profile: catalogProfiles.firstWhere((p) => p.resource == resource),
-      id: route.substring(slash + 1),
+      id: Uri.decodeComponent(route.substring(slash + 1)),
       summary: const {},
     );
   }
