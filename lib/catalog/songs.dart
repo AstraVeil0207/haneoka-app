@@ -40,10 +40,57 @@ class SongsScreen extends StatefulWidget {
 class _SongsScreenState extends State<SongsScreen> {
   Future<(List<Entry>, CatalogVisuals)>? _data;
 
+  /// Each server's `song-meta`, for the chart metric sorts.
+  final _meta = <String, Map>{};
+  List<Entry>? _sorted;
+  List<Entry>? _source;
+  int _metaSeen = 0;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _data ??= _load();
+    if (_data == null) {
+      _data = _load();
+      _loadMeta();
+    }
+  }
+
+  Future<void> _loadMeta() async {
+    final state = AppScope.of(context);
+    final apis = widget.api == null
+        ? state.catalogApis
+        : {widget.api!.server: widget.api!};
+    await Future.wait([
+      for (final MapEntry(key: server, value: api) in apis.entries)
+        api.catalog('song-meta').then((value) {
+          if (value is Map && mounted) setState(() => _meta[server] = value);
+        }, onError: (_) {}),
+    ]);
+  }
+
+  /// `songMetaValue`: a chart metric of the song's Expert chart.
+  double _metric(Entry song, String key, String server) {
+    final rows = song['difficulty'] as List? ?? const [];
+    const names = ['easy', 'normal', 'hard', 'expert', 'special'];
+    final index = rows.indexed
+        .where(
+          (row) =>
+              row.$2 is Map &&
+              ((row.$2 as Map)['difficulty'] == 3 ||
+                  (row.$2 as Map)['difficulty'] == names[3]),
+        )
+        .firstOrNull
+        ?.$1;
+    final meta = _meta[song[serverKey] ?? server]?['${song['musicId']}'];
+    final difficulty = meta is Map && index != null ? meta['$index'] : null;
+    final chart = difficulty is Map ? difficulty['chart'] : null;
+    if (chart is! Map) return double.nan;
+    final value = switch (key) {
+      'bpm' => chart['firstBpm'] ?? chart['minBpm'] ?? chart['maxBpm'],
+      'n' => chart['n'] ?? chart['noteCount'] ?? chart['canonicalNoteCount'],
+      _ => chart[key],
+    };
+    return value is num ? value.toDouble() : double.nan;
   }
 
   Future<(List<Entry>, CatalogVisuals)> _load() async {
@@ -92,9 +139,19 @@ class _SongsScreenState extends State<SongsScreen> {
         final visuals = data?.$2;
         final api = widget.api ?? state.api;
         final song = _SongText(t, visuals, api, state.songTitle);
+        // A new list once the metrics arrive, so a metric sort reorders.
+        if (!identical(songs, _source) || _metaSeen != _meta.length) {
+          _source = songs;
+          _metaSeen = _meta.length;
+          _sorted = songs == null ? null : [...songs];
+        }
+        final items = _sorted;
+        String server(Entry song) => '${song[serverKey] ?? api.server}';
+        String text(Object? value) => t.text(value);
         return BrowseScreen(
           title: widget.title ?? t('navigation.songs', 'Songs'),
-          items: songs,
+          items: items,
+          itemId: (item) => '${item['musicId'] ?? item['_key'] ?? ''}',
           error: snapshot.error,
           onRetry: () => setState(() => _data = _load()),
           searchText: (item) => [
@@ -192,13 +249,18 @@ class _SongsScreenState extends State<SongsScreen> {
                     ),
                   ),
                 ],
+          // The website's song sort options (`sortOptions`, `sortValue`).
           sorts: [
             SortSpec(
               'order',
               t.label('order'),
-              (item) => item['sortOrder'] as num?,
+              (item) =>
+                  item['displayOrder'] ??
+                  item['order'] ??
+                  item['sortOrder'] ??
+                  item['musicId'],
             ),
-            SortSpec('id', t.label('id'), (item) => item['musicId'] as num?),
+            SortSpec('id', t.label('id'), (item) => item['musicId']),
             SortSpec(
               'title',
               t.label('title'),
@@ -207,11 +269,66 @@ class _SongsScreenState extends State<SongsScreen> {
             SortSpec(
               'musicType',
               t.label('musicType'),
-              (item) => item['musicType'] as num?,
+              (item) => item['musicType'] ?? 0,
             ),
             SortSpec('band', t.label('band'), song.artist),
-            SortSpec('level', t.label('level'), (item) => song.level(item, 3)),
-            SortSpec('release', t.label('release'), song.releasedAt),
+            SortSpec('level', t.label('level'), (item) {
+              final rows = item['difficulty'] as List? ?? const [];
+              final row = rows.length > 3 && rows[3] is Map
+                  ? rows[3] as Map
+                  : const {};
+              return row['sortLevel'] ??
+                  row['displayLevel'] ??
+                  row['playLevel'] ??
+                  -1;
+            }),
+            for (final (key, label) in const [
+              ('time', 'time'),
+              ('score', 'metaScoreFactor'),
+              ('eff', 'eff'),
+              ('bpm', 'bpm'),
+              ('n', 'n'),
+              ('nps', 'nps'),
+              ('sr', 'sr'),
+            ])
+              SortSpec(
+                key,
+                t.label(label),
+                (item) => _metric(item, key, server(item)),
+                missingLast: true,
+              ),
+            SortSpec('category', t.label('category'), (item) {
+              final categories = item['musicCategories'];
+              final first = categories is List && categories.isNotEmpty
+                  ? categories.first
+                  : 99;
+              return first is num && first != 0 ? first : 99;
+            }),
+            SortSpec(
+              'composer',
+              t.label('composer'),
+              (item) => text(item['composer']),
+            ),
+            SortSpec(
+              'lyrics',
+              t.label('lyrics'),
+              (item) => text(item['lyricist']),
+            ),
+            SortSpec(
+              'arrangement',
+              t.label('arrangement'),
+              (item) => text(item['arranger']),
+            ),
+            SortSpec('release', t.label('release'), (item) {
+              final value =
+                  item['releasedAt'] ??
+                  item['publishedAt'] ??
+                  item['publicStartAt'] ??
+                  item['startAt'];
+              return value is List
+                  ? value.whereType<num>().where((v) => v > 0).firstOrNull ?? 0
+                  : value ?? 0;
+            }),
           ],
           defaultSort: 'release',
           actions: (visible) => [

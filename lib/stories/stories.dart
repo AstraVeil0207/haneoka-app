@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+import '../catalog/browse.dart' show naturalCompare;
 import '../catalog/visuals.dart';
 import '../core/api.dart';
 import '../core/app_state.dart';
@@ -117,6 +118,16 @@ class StoriesScreen extends StatefulWidget {
 class _StoriesScreenState extends State<StoriesScreen> {
   Future<_StoryData>? _data;
   String? _rail;
+
+  /// `id`, `title`, `release` or `duration` (`defaultSort`).
+  String? _sort;
+  bool? _descending;
+  String get _defaultSort =>
+      const {'link', 'birthday', 'afterlive'}.contains(widget.mode)
+      ? 'release'
+      : 'id';
+  bool get _defaultDescending =>
+      widget.mode == 'card' || _defaultSort == 'release';
   String _query = '';
   final Set<int> _characters = {};
   final Set<int> _bands = {};
@@ -266,8 +277,29 @@ class _StoriesScreenState extends State<StoriesScreen> {
                 : sortOf(a).compareTo(sortOf(b)),
           );
         } else if (widget.mode == 'event') {
+          // Events run newest first (`relevantChapters`).
+          final starts = <String, num>{
+            for (final event
+                in (data?.document['storyEvents'] as List? ?? const [])
+                    .whereType<Map>())
+              '${event['chapterId']}': _releaseValue(event),
+          };
           keys.sort(
-            (a, b) => (int.tryParse(b) ?? 0).compareTo(int.tryParse(a) ?? 0),
+            (a, b) => (starts[b] ?? 0).compareTo(starts[a] ?? 0) != 0
+                ? (starts[b] ?? 0).compareTo(starts[a] ?? 0)
+                : (int.tryParse(b) ?? 0).compareTo(int.tryParse(a) ?? 0),
+          );
+        } else if (widget.mode == 'band') {
+          num sortOf(String key) =>
+              (data?.chapters[key] as Map?)?['chapterSort'] as num? ?? 0;
+          keys.sort((a, b) => sortOf(a).compareTo(sortOf(b)));
+        } else if (widget.mode == 'birthday') {
+          num release(String key) =>
+              _releaseValue(data?.chapters[key] as Map? ?? const {});
+          keys.sort(
+            (a, b) => release(b) != release(a)
+                ? release(b).compareTo(release(a))
+                : (int.tryParse(b) ?? 0).compareTo(int.tryParse(a) ?? 0),
           );
         } else {
           keys.sort(
@@ -296,17 +328,10 @@ class _StoriesScreenState extends State<StoriesScreen> {
             '${t.text(e['title'])} ${t.text(e['description'])} ${t.text(e['chapterName'])} ${e['episodeNumber'] ?? ''}'
                 .toLowerCase()
                 .contains(query);
-        final chosen =
-            [
-              for (final e in episodes)
-                if (filtering ? matches(e) : _railKey(e, data!) == rail) e,
-            ]..sort((a, b) {
-              final order = ((a['storySort'] ?? a['episodeNumber'] ?? 0) as num)
-                  .compareTo(
-                    (b['storySort'] ?? b['episodeNumber'] ?? 0) as num,
-                  );
-              return widget.mode == 'afterlive' ? -order : order;
-            });
+        final chosen = [
+          for (final e in episodes)
+            if (filtering ? matches(e) : _railKey(e, data!) == rail) e,
+        ]..sort(_compareEpisodes);
         final groups = <(String, List<Entry>)>[
           (
             widget.mode == 'band'
@@ -320,17 +345,17 @@ class _StoriesScreenState extends State<StoriesScreen> {
             ],
           ),
           (
-            t('story.labels.perspectiveStory', 'Perspective story'),
-            [
-              for (final e in chosen)
-                if (e['isAnotherEpisode'] == true) e,
-            ],
-          ),
-          (
             t('story.labels.extraStory', 'Extra story'),
             [
               for (final e in chosen)
                 if (e['isExtraEpisode'] == true) e,
+            ],
+          ),
+          (
+            t('story.labels.perspectiveStory', 'Perspective story'),
+            [
+              for (final e in chosen)
+                if (e['isAnotherEpisode'] == true) e,
             ],
           ),
         ].where((g) => g.$2.isNotEmpty).toList();
@@ -378,6 +403,64 @@ class _StoriesScreenState extends State<StoriesScreen> {
         );
       },
     );
+  }
+
+  static num _releaseValue(Map item) {
+    final value = item['releaseAt'] ?? item['publishedAt'] ?? item['startAt'];
+    final first = value is List ? value.firstOrNull : value;
+    return first is num ? first : num.tryParse('${first ?? ''}') ?? 0;
+  }
+
+  static num _number(Object? value) =>
+      value is num ? value : num.tryParse('${value ?? ''}') ?? 0;
+
+  static String _group(Map episode) => episode['isAnotherEpisode'] == true
+      ? 'perspectiveStory'
+      : episode['isExtraEpisode'] == true
+      ? 'extraStory'
+      : 'bandStory';
+
+  /// The website's episode order (`sorted` in `story-workspace.ts`).
+  int _compareEpisodes(Entry a, Entry b) {
+    final sort = _sort ?? _defaultSort;
+    final direction = (_descending ?? _defaultDescending) ? -1 : 1;
+    String id(Map e) => '${e['storyId'] ?? e['cardId'] ?? e['storyKey'] ?? ''}';
+    final provider = widget.api != null;
+    if (provider && widget.mode == 'event' && sort == 'id') {
+      final chapter = _number(b['chapterSort'])
+          .compareTo(_number(a['chapterSort']));
+      if (chapter != 0) return chapter;
+      final ids = _number(b['chapterId']).compareTo(_number(a['chapterId']));
+      if (ids != 0) return ids;
+      return direction *
+          _number(a['episodeNumber']).compareTo(_number(b['episodeNumber']));
+    }
+    const groups = ['bandStory', 'extraStory', 'perspectiveStory'];
+    final group = groups.indexOf(_group(a)) - groups.indexOf(_group(b));
+    if (!provider && widget.mode == 'event') {
+      var order = group;
+      if (order == 0) {
+        order = _number(a['episodeNumber'])
+            .compareTo(_number(b['episodeNumber']));
+      }
+      if (order == 0) order = naturalCompare(id(a), id(b));
+      return direction * order;
+    }
+    if (!provider && widget.mode == 'band' && group != 0) return group;
+    final t = AppScope.of(context).text;
+    var result = switch (sort) {
+      'title' => naturalCompare(t.text(a['title']), t.text(b['title'])),
+      'release' => _releaseValue(a).compareTo(_releaseValue(b)),
+      'duration' => _number(a['playTime']).compareTo(_number(b['playTime'])),
+      'level' => _number(
+        a['unlockCharacterFriendshipLevel'],
+      ).compareTo(_number(b['unlockCharacterFriendshipLevel'])),
+      _ => naturalCompare(id(a), id(b)),
+    };
+    if (result == 0) {
+      result = _number(a['storySort']).compareTo(_number(b['storySort']));
+    }
+    return direction * result;
   }
 
   /// The section's facets: characters and bands that appear in it
@@ -467,6 +550,50 @@ class _StoriesScreenState extends State<StoriesScreen> {
                 (id) => t.text(data.visuals.bands[id]?['bandName']),
                 (id) => data.visuals.bandIcon(id),
               ),
+              Text(
+                t('common.actions.sort', 'Sort'),
+                style: Theme.of(sheet).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 8),
+              SegmentedButton<String>(
+                showSelectedIcon: false,
+                segments: [
+                  for (final (value, key) in const [
+                    ('id', 'common.layout.order'),
+                    ('title', 'common.fields.title'),
+                    ('release', 'catalog.fields.release'),
+                    ('duration', 'common.fields.duration'),
+                  ])
+                    ButtonSegment(value: value, label: Text(t(key, value))),
+                ],
+                selected: {_sort ?? _defaultSort},
+                onSelectionChanged: (value) {
+                  setState(() => _sort = value.single);
+                  refresh(() {});
+                },
+              ),
+              const SizedBox(height: 8),
+              SegmentedButton<bool>(
+                showSelectedIcon: false,
+                segments: [
+                  ButtonSegment(
+                    value: false,
+                    icon: const Icon(Symbols.arrow_upward_rounded),
+                    tooltip: t('common.layout.ascending', 'Ascending'),
+                  ),
+                  ButtonSegment(
+                    value: true,
+                    icon: const Icon(Symbols.arrow_downward_rounded),
+                    tooltip: t('common.layout.descending', 'Descending'),
+                  ),
+                ],
+                selected: {_descending ?? _defaultDescending},
+                onSelectionChanged: (value) {
+                  setState(() => _descending = value.single);
+                  refresh(() {});
+                },
+              ),
+              const SizedBox(height: 16),
               if (_characters.isNotEmpty || _bands.isNotEmpty)
                 Align(
                   alignment: AlignmentDirectional.centerEnd,

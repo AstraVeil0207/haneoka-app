@@ -112,6 +112,37 @@ class _Live2DScreenState extends State<Live2DScreen> {
             subtitle(model),
             '${model['live2dKey'] ?? ''}',
           ].join(' '),
+          // `live2d-workspace` sorts: order (the model key), title, type,
+          // character and band, ascending.
+          itemId: (model) => '${model['live2dKey'] ?? model['assetId'] ?? ''}',
+          descending: false,
+          sorts: [
+            SortSpec(
+              'id',
+              t('common.layout.order', 'Order'),
+              (model) => '${model['live2dKey'] ?? model['assetId'] ?? ''}',
+            ),
+            SortSpec(
+              'title',
+              t('common.fields.title', 'Title'),
+              (model) => _title(t, model),
+            ),
+            SortSpec(
+              'type',
+              t('catalog.fields.type', 'Type'),
+              (model) => '${model['modelType'] ?? ''}',
+            ),
+            SortSpec(
+              'character',
+              t('catalog.fields.character', 'Character'),
+              (model) => model['characterId'] ?? 0,
+            ),
+            SortSpec(
+              'band',
+              t('catalog.fields.band', 'Band'),
+              (model) => model['bandId'] ?? 0,
+            ),
+          ],
           grid: const GridSpec(minWidth: 160),
           tile: (context, model) => Tile(
             title: _title(t, model),

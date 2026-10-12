@@ -284,7 +284,7 @@ const catalogProfiles = <CatalogProfile>[
 
     detail: ['description'],
     title: ['name', 'title'],
-    defaultSort: 'title',
+    defaultSort: 'id',
   ),
   CatalogProfile(
     resource: 'items',

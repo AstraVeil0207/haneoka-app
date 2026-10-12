@@ -83,6 +83,32 @@ class _SpineScreenState extends State<SpineScreen> {
         onRetry: () => setState(() => _models = _load()),
         searchText: (m) =>
             '${m['id'] ?? m['_key']} ${m['sourcePathKey'] ?? ''} ${m['family'] ?? ''}',
+        // `spine-workspace` sorts: order (the id), model, family and
+        // version, ascending.
+        itemId: (model) => '${model['id'] ?? ''}',
+        descending: false,
+        sorts: [
+          SortSpec(
+            'id',
+            t('common.layout.order', 'Order'),
+            (model) => '${model['id'] ?? ''}',
+          ),
+          SortSpec(
+            'source',
+            t('media.models.labels.model', 'Model'),
+            spineTitle,
+          ),
+          SortSpec(
+            'family',
+            t('media.models.labels.family', 'Category'),
+            (model) => '${model['family'] ?? ''}',
+          ),
+          SortSpec(
+            'version',
+            t('media.models.labels.version', 'Version'),
+            (model) => '${model['spineVersion'] ?? ''}',
+          ),
+        ],
         grid: const GridSpec(minWidth: 160),
         tile: (context, model) => Tile(
           title: spineTitle(model),

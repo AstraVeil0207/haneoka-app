@@ -34,10 +34,86 @@ class FacetSpec {
 }
 
 class SortSpec {
-  const SortSpec(this.key, this.label, this.value);
+  const SortSpec(
+    this.key,
+    this.label,
+    this.value, {
+    this.missingLast = false,
+    this.hidden = false,
+  });
   final String key;
   final String label;
-  final Comparable<Object?>? Function(Entry item) value;
+  final Object? Function(Entry item) value;
+
+  /// Song metrics: entries without the value go last in either order.
+  final bool missingLast;
+
+  /// A default order the sort menu does not offer.
+  final bool hidden;
+}
+
+/// JavaScript's `Number(value)` (an array reads its first entry).
+double jsNumber(Object? value) => switch (value) {
+  null => 0,
+  final num n => n.toDouble(),
+  final bool b => b ? 1 : 0,
+  final List list => list.isEmpty ? 0 : jsNumber(list.first),
+  final String text when text.trim().isEmpty => 0,
+  final String text => double.tryParse(text.trim()) ?? double.nan,
+  _ => double.nan,
+};
+
+final _chunks = RegExp(r'\d+|\D+');
+
+/// `localeCompare(…, { numeric: true, sensitivity: "base" })` for the
+/// scripts the catalogue uses: digit runs compare as numbers, letters
+/// without case or accents.
+int naturalCompare(String a, String b) {
+  String fold(String value) => value
+      .toLowerCase()
+      .replaceAll(RegExp('[àáâãäå]'), 'a')
+      .replaceAll(RegExp('[èéêë]'), 'e')
+      .replaceAll(RegExp('[ìíîï]'), 'i')
+      .replaceAll(RegExp('[òóôõö]'), 'o')
+      .replaceAll(RegExp('[ùúûü]'), 'u');
+  final x = _chunks.allMatches(fold(a)).map((m) => m[0]!).toList();
+  final y = _chunks.allMatches(fold(b)).map((m) => m[0]!).toList();
+  for (var i = 0; i < x.length && i < y.length; i++) {
+    final p = int.tryParse(x[i]), q = int.tryParse(y[i]);
+    final d = p != null && q != null ? p.compareTo(q) : x[i].compareTo(y[i]);
+    if (d != 0) return d;
+  }
+  return x.length.compareTo(y.length);
+}
+
+/// The website's collection order (`results` in `catalog-screen.ts`):
+/// numbers when both values are numbers, otherwise their text, ties by id;
+/// the whole comparison follows the chosen direction.
+int compareEntries(
+  Entry a,
+  Entry b,
+  SortSpec sort,
+  Object? x,
+  Object? y,
+  String Function(Entry) id,
+  bool descending,
+) {
+  final direction = descending ? -1 : 1;
+  final p = jsNumber(x), q = jsNumber(y);
+  if (sort.missingLast && p.isFinite != q.isFinite) return p.isFinite ? -1 : 1;
+  if (sort.missingLast && !p.isFinite && !q.isFinite) {
+    return naturalCompare(id(a), id(b)) * direction;
+  }
+  String text(Object? value) => switch (value) {
+    null => '',
+    final List list => list.join(', '),
+    _ => '$value',
+  };
+  final comparison = p.isFinite && q.isFinite
+      ? p.compareTo(q)
+      : naturalCompare(text(x), text(y));
+  return (comparison != 0 ? comparison : naturalCompare(id(a), id(b))) *
+      direction;
 }
 
 enum BrowseView { grid, list, table }
@@ -109,6 +185,7 @@ class BrowseScreen extends StatefulWidget {
     this.sorts = const [],
     this.defaultSort,
     this.descending = true,
+    this.itemId,
     this.actions = _noActions,
     this.error,
     this.onRetry,
@@ -138,6 +215,9 @@ class BrowseScreen extends StatefulWidget {
   final List<SortSpec> sorts;
   final String? defaultSort;
   final bool descending;
+
+  /// Breaks ties between equal sort values, as the website does.
+  final String Function(Entry item)? itemId;
 
   /// Page actions before the filter toggle (Play all).
   final List<BarAction> Function(List<Entry> visible) actions;
@@ -207,14 +287,11 @@ class _BrowseScreenState extends State<BrowseScreen> {
     final list = items.where(_matches).toList();
     if (sort != null) {
       final values = {for (final item in list) item: sort.value(item)};
-      list.sort((a, b) {
-        final x = values[a], y = values[b];
-        if (x == null && y == null) return 0;
-        if (x == null) return 1;
-        if (y == null) return -1;
-        final order = x.compareTo(y);
-        return _descending ? -order : order;
-      });
+      final id = widget.itemId ?? (Entry item) => '${item['id'] ?? ''}';
+      list.sort(
+        (a, b) =>
+            compareEntries(a, b, sort, values[a], values[b], id, _descending),
+      );
     }
     _visibleKey = key;
     return _visible = list;
@@ -273,7 +350,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
       ),
       actions: [
         ...widget.actions(visible),
-        if (widget.facets.isNotEmpty || widget.sorts.isNotEmpty)
+        if (widget.facets.isNotEmpty || widget.sorts.any((s) => !s.hidden))
           BarAction(
             icon: Symbols.filter_alt_rounded,
             label: t('common.actions.filter', 'Filter'),
@@ -601,7 +678,10 @@ class _BrowseScreenState extends State<BrowseScreen> {
                 }),
             ],
             facets: widget.facets,
-            sorts: widget.sorts,
+            sorts: [
+              for (final sort in widget.sorts)
+                if (!sort.hidden) sort,
+            ],
             sort: _sort,
             descending: _descending,
             selected: _selected,

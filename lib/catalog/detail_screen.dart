@@ -9,7 +9,6 @@ import '../core/audio.dart';
 import '../core/i18n.dart';
 import '../core/page_data.dart';
 import '../core/relative_time.dart';
-import '../l10n/app_localizations.dart';
 import '../shell/page.dart';
 import '../shell/links.dart';
 import '../records/records.dart';
@@ -391,7 +390,6 @@ class _Page {
         Presentation.member || Presentation.support => _card(),
         _ => _generic(),
       },
-      ..._rest(),
       if (target != null)
         Padding(
           padding: const EdgeInsets.only(top: 8),
@@ -817,30 +815,6 @@ class _Page {
           item: record,
           visuals: kit.visuals,
         ),
-    ];
-  }
-
-  /// Every remaining scalar under All fields, as the website's fold.
-  List<Widget> _rest() {
-    final format = ValueFormat(t);
-    final shown = {...kit.profile.detail, 'description', 'raw', 'evidence'};
-    final facts = [
-      for (final MapEntry(:key, :value) in record.entries)
-        if (!key.startsWith('_') &&
-            !shown.contains(key) &&
-            ValueFormat.isScalar(value))
-          if (format.format(key, value) case final text
-              when text.isNotEmpty && !text.startsWith('/'))
-            Fact(_named(key) ?? key, text),
-    ];
-    if (facts.isEmpty) return const [];
-    return [
-      DetailSection(
-        icon: Symbols.data_object_rounded,
-        title: AppLocalizations.of(context).allFields,
-        folded: true,
-        child: SpecList(facts: facts),
-      ),
     ];
   }
 

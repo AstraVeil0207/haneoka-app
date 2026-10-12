@@ -214,6 +214,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
           sorts: kit.sorts,
           defaultSort: profile.defaultSort,
           descending: profile.descending,
+          itemId: kit.id,
         );
       },
     );
@@ -613,7 +614,11 @@ class CatalogKit {
         release,
       ],
       Presentation.stamp => [idSort, titleSort, characters, release],
-      Presentation.background => [titleSort],
+      // The website defaults to id without offering it in the menu.
+      Presentation.background => [
+        SortSpec(idSort.key, idSort.label, idSort.value, hidden: true),
+        titleSort,
+      ],
       Presentation.bandItem => [
         order,
         idSort,
