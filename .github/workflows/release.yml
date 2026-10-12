@@ -276,7 +276,7 @@ jobs:
         run: |
           python3 scripts/bundle_adb.py --platform darwin --arch universal --dest build/macos/Build/Products/Release/haneoka.app/Contents/Resources/tools/adb
           codesign --force --deep --sign - build/macos/Build/Products/Release/haneoka.app
-          lipo -verify_arch x86_64 arm64 build/macos/Build/Products/Release/haneoka.app/Contents/MacOS/haneoka
+          lipo build/macos/Build/Products/Release/haneoka.app/Contents/MacOS/haneoka -verify_arch x86_64 arm64
       - name: Installers
         run: bash scripts/package_macos.sh build/macos/Build/Products/Release/haneoka.app "$APP_VERSION" dist
       - run: flutter build ios --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ github.run_number }}" --no-codesign
