@@ -156,6 +156,11 @@ def main():
                 raise SystemExit('--linuxdeploy is required for AppImage')
             appdir = temp / 'Haneoka.AppDir'
             shutil.copytree(stage, appdir, symlinks=True)
+            # linuxdeploy expects ELF executables in usr/bin. Keep the launcher
+            # script for native packages, and point AppImage's entry to its ELF.
+            entry = appdir / 'usr/bin/haneoka'
+            entry.unlink()
+            entry.symlink_to('../share/haneoka/haneoka')
             (appdir / 'AppRun').write_text('#!/bin/sh\nbase=$(dirname "$(readlink -f "$0")")\n'
                 'export LD_LIBRARY_PATH="$base/usr/lib:$base/usr/share/haneoka/lib:${LD_LIBRARY_PATH:-}"\n'
                 'exec "$base/usr/share/haneoka/haneoka" "$@"\n')
