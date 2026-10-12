@@ -3,6 +3,11 @@
 /// (`lit/team-builder/box-tab.ts`).
 library;
 
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
@@ -274,6 +279,11 @@ class _BoxTabState extends State<BoxTab> {
             onPressed: () => importFromSave(context, c),
             icon: const Icon(Symbols.upload_file_rounded),
             label: Text(c.tb('importBox', 'Import')),
+          ),
+          TextButton.icon(
+            onPressed: () => exportBox(c),
+            icon: const Icon(Symbols.download_rounded),
+            label: Text(c.state.text('common.actions.export', 'Export')),
           ),
         ]),
       ],
@@ -830,4 +840,65 @@ Future<void> importFromSave(
       ),
     ),
   );
+}
+
+/// Saves the box as the website's inventory document
+/// (`haneoka-team-inventory-v2`), which its import reads back.
+Future<void> exportBox(TeamBuilderController c) async {
+  final view = c.view, catalog = c.catalog;
+  if (view == null || catalog == null) return;
+  final identity = objectRow(catalog.data['identity']);
+  final document = {
+    'schema': 'haneoka-team-inventory-v2',
+    'server': identity['server'],
+    'releaseId': identity['releaseId'],
+    'members': [
+      for (final row in view.members.values)
+        if (catalog.has(true, row.cardId))
+          {
+            'instanceId': 'm${row.cardId}',
+            'cardId': row.cardId,
+            'level': row.level,
+            'training': row.awake,
+            'awakening': row.rank,
+            'liveSkillLevel': row.skill,
+            'gekisoSkillLevel': row.gekisoSkill,
+            'locked': row.lock,
+            'excluded': !row.use,
+          },
+    ],
+    'snapshots': [
+      for (final row in view.snaps.values)
+        if (catalog.has(false, row.cardId))
+          {
+            'instanceId': 's${row.cardId}',
+            'cardId': row.cardId,
+            'level': row.level,
+            'awakening': row.rank,
+            'locked': row.lock,
+            'excluded': !row.use,
+          },
+    ],
+    'bandItems': view.player.bandItems,
+    'characterRanks': view.player.characterRanks,
+    'bandRanks': view.bandRanks,
+    'playerModifiers': {
+      'characterTotalRank': view.player.characterTotalRank,
+      'vipRank': view.player.vipRank,
+      'musicMemoryPoints': view.player.musicMemory,
+      'characterMemoryPoints': view.player.characterMemory,
+    },
+  };
+  final bytes = Uint8List.fromList(
+    utf8.encode(const JsonEncoder.withIndent('  ').convert(document)),
+  );
+  final path = await FilePicker.platform.saveFile(
+    fileName: 'haneoka-team-box-${identity['server']}.json',
+    bytes: bytes,
+    type: FileType.custom,
+    allowedExtensions: const ['json'],
+  );
+  if (path != null && !Platform.isAndroid && !Platform.isIOS) {
+    await File(path).writeAsBytes(bytes);
+  }
 }

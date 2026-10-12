@@ -83,7 +83,18 @@ class ObjectiveAdapter<D> {
     this.leafBound,
     required this.interval,
     required this.exact,
+    this.evaluate,
   });
+
+  /// Optional exact evaluator that may stop (null) only after proving the
+  /// team cannot enter the retained Top-K.
+  final Exact<D>? Function(
+    Team team,
+    int power,
+    List<int> slotPowers,
+    ({double key, bool pruneEqual}) cutoff,
+  )?
+  evaluate;
 
   /// [pessimistic, optimistic] skill weight of a member with snap (-1 empty).
   final (double, double) Function(int member, int snap) skill;
@@ -607,9 +618,28 @@ SearchOutput<D> searchTeams<D>({
       (hit) => setKeyOf(hit.team) == candidate.setKey,
     );
     if (existing >= 0 && hits[existing].key >= candidate.high) return;
+    final local = math.max(
+      hits.length >= k ? hits[k - 1].key : -inf,
+      existing >= 0 ? hits[existing].key : -inf,
+    );
     final exact =
         evaluated ??
-        objective.exact(candidate.team, candidate.power, candidate.slotPowers);
+        (objective.evaluate != null
+            ? objective.evaluate!(
+                candidate.team,
+                candidate.power,
+                candidate.slotPowers,
+                (
+                  key: math.max(local, floorValue),
+                  pruneEqual: local >= floorValue && local.isFinite,
+                ),
+              )
+            : objective.exact(
+                candidate.team,
+                candidate.power,
+                candidate.slotPowers,
+              ));
+    if (exact == null) return;
     if (evaluated == null) stats.exact++;
     frontier.offer(candidate.setKey, exact.key);
     if (existing >= 0 && hits[existing].key >= exact.key) return;

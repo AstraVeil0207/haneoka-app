@@ -11,6 +11,7 @@ import 'chart.dart';
 import 'full/play.dart' show Accuracy;
 import 'gekiso.dart';
 import 'gekiso_objective.dart';
+import 'gekiso_rewards.dart';
 import 'live.dart';
 import 'master.dart';
 import 'num.dart';
@@ -967,6 +968,9 @@ Future<EngineResponse> runEngine(
     double? limitMs,
     double? floor,
   }) => searchTeams(
+    // Gekisou rewards also read support-skill effects the dominance
+    // values do not carry.
+    disableSnapDominance: ptTrial && goal.gekiso != null,
     master: master,
     player: player,
     members: members,
@@ -988,7 +992,12 @@ Future<EngineResponse> runEngine(
   );
   for (final (index, song) in songs.indexed) {
     if (ptTrial && song != null) {
-      validatePtChart(master, song, await charts.source(song));
+      final source = await charts.source(song);
+      validatePtChart(master, song, source);
+      if (goal.gekiso != null &&
+          (source.enumeration.isEmpty || source.feverMs.length != 3)) {
+        throw StateError('gekiso-chart-unsupported:${song.key}');
+      }
     }
     songsLeft = songs.length - index;
     onProgress?.call(index, songs.length);
@@ -1061,6 +1070,88 @@ Future<EngineResponse> runEngine(
                     hit.team,
                     members,
                   ),
+            ],
+          ),
+        );
+      case EventGoal(:final gekiso?):
+        if (!ptTrial ||
+            goal.route != RouteKind.live ||
+            song == null ||
+            chart == null) {
+          throw StateError('gekiso-reward-mode');
+        }
+        final route = eventRoute(
+          master,
+          goal.eventId,
+          RouteKind.live,
+          goal.consumption,
+        );
+        final points = goal.measure != 'items';
+        final exchange = goal.cpExchange;
+        final adapter = gekisoRewardObjective(
+          master: master,
+          members: members,
+          snaps: snaps,
+          chart: chart,
+          gekiso: await charts.gekiso(song, Accuracy(just: gekiso.just), 1),
+          route: route,
+          points: points,
+          luckSamples: gekiso.luckSamples,
+          exchange: exchange,
+        );
+        // Bonus-oriented seeds only improve traversal order.
+        final seeds = [
+          for (final hit in run(
+            eventBonusSurrogate(shared, route.effects, points),
+            music,
+            const [],
+            limitMs: 100,
+          ).hits)
+            hit.team,
+        ];
+        final out = run(
+          adapter,
+          music,
+          const [],
+          seeds: seeds,
+          floor: rewardCutoff,
+        );
+        results.add(
+          SongResult(
+            song: song,
+            proven: out.proven,
+            bound: out.bound,
+            stats: out.stats,
+            hits: [
+              for (final hit in out.hits)
+                () {
+                  final d = hit.detail.settlement;
+                  return toHit(song, hit)
+                    ..score = scoreSummary(
+                      hit.detail.scores,
+                      chart,
+                      hit.team,
+                      members,
+                      true,
+                    )
+                    ..event = HitEvent(
+                      mean: d.mean / (exchange?.denominator ?? 1),
+                      bonusPercent: hit.detail.bonus / 100,
+                      challengePoints: d.cpSum / d.observations,
+                      perPlayMin: d.directMin,
+                      perPlayMax: d.directMax,
+                      rewardSum: d.rewardSum,
+                      comparisonSum: d.comparisonSum,
+                      orders: d.observations,
+                      directMean: d.rewardSum / d.observations,
+                      convertedMean: exchange != null
+                          ? d.cpSum /
+                                d.observations *
+                                exchange.numerator /
+                                exchange.denominator
+                          : 0,
+                    );
+                }(),
             ],
           ),
         );
