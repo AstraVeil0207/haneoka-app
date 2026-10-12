@@ -49,7 +49,7 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 
 - [x] Event, band, link, birthday, home, afterlive, tutorial: browse with the website's rails and groups
 - [x] Transcript reader with locations, speakers and voices (3D player may wait)
-- [~] Story search (facets by character, band, kind and release still to port) · [ ] home spot scene
+- [~] Story search and character/band facets (kind, rarity, perspective and release range still to port) · [ ] home spot scene
 
 ## Tools
 

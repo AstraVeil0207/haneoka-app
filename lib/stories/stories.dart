@@ -118,6 +118,8 @@ class _StoriesScreenState extends State<StoriesScreen> {
   Future<_StoryData>? _data;
   String? _rail;
   String _query = '';
+  final Set<int> _characters = {};
+  final Set<int> _bands = {};
 
   @override
   void didChangeDependencies() {
@@ -277,15 +279,27 @@ class _StoriesScreenState extends State<StoriesScreen> {
         final rail = keys.contains(_rail) ? _rail! : keys.firstOrNull;
         // A search reads every episode of the section, not just the rail's.
         final query = _query.trim().toLowerCase();
+        List<int> ids(Object? value) => [
+          for (final v in value is List ? value : [?value])
+            if (v is num) v.toInt(),
+        ];
+        bool faceted(Entry e) =>
+            (_characters.isEmpty ||
+                ids(e['characterIds'] ?? e['characterId'])
+                    .any(_characters.contains)) &&
+            (_bands.isEmpty ||
+                ids(e['bandIds'] ?? e['bandId']).any(_bands.contains));
+        final filtering =
+            query.isNotEmpty || _characters.isNotEmpty || _bands.isNotEmpty;
         bool matches(Entry e) =>
+            faceted(e) &&
             '${t.text(e['title'])} ${t.text(e['description'])} ${t.text(e['chapterName'])} ${e['episodeNumber'] ?? ''}'
                 .toLowerCase()
                 .contains(query);
         final chosen =
             [
               for (final e in episodes)
-                if (query.isNotEmpty ? matches(e) : _railKey(e, data!) == rail)
-                  e,
+                if (filtering ? matches(e) : _railKey(e, data!) == rail) e,
             ]..sort((a, b) {
               final order = ((a['storySort'] ?? a['episodeNumber'] ?? 0) as num)
                   .compareTo(
@@ -326,6 +340,15 @@ class _StoriesScreenState extends State<StoriesScreen> {
             label: t('common.actions.search', 'Search'),
             onChanged: (value) => setState(() => _query = value),
           ),
+          actions: [
+            if (data != null)
+              BarAction(
+                icon: Symbols.filter_alt_rounded,
+                label: t('common.actions.filter', 'Filter'),
+                badge: _characters.length + _bands.length,
+                onPressed: () => _filters(context, data, episodes, ids),
+              ),
+          ],
           status: Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -347,8 +370,8 @@ class _StoriesScreenState extends State<StoriesScreen> {
               : _body(
                   context,
                   data,
-                  query.isEmpty ? keys : const [],
-                  query.isEmpty ? rail : null,
+                  filtering ? const [] : keys,
+                  filtering ? null : rail,
                   chosen,
                   groups,
                 ),
@@ -356,6 +379,114 @@ class _StoriesScreenState extends State<StoriesScreen> {
       },
     );
   }
+
+  /// The section's facets: characters and bands that appear in it
+  /// (`FACET_KEYS`), each with its count.
+  Future<void> _filters(
+    BuildContext context,
+    _StoryData data,
+    List<Entry> episodes,
+    List<int> Function(Object?) ids,
+  ) => showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (sheet) => StatefulBuilder(
+      builder: (sheet, refresh) {
+        final t = AppScope.of(context).text;
+        final api = widget.api ?? AppScope.of(context).api;
+        final characters = <int, int>{}, bands = <int, int>{};
+        for (final e in episodes) {
+          for (final id in ids(e['characterIds'] ?? e['characterId'])) {
+            characters[id] = (characters[id] ?? 0) + 1;
+          }
+          for (final id in ids(e['bandIds'] ?? e['bandId'])) {
+            bands[id] = (bands[id] ?? 0) + 1;
+          }
+        }
+        void toggle(Set<int> set, int id) {
+          setState(() => set.contains(id) ? set.remove(id) : set.add(id));
+          refresh(() {});
+        }
+
+        Widget group(
+          String title,
+          Map<int, int> counts,
+          Set<int> selected,
+          String Function(int) name,
+          String? Function(int) image,
+        ) => counts.isEmpty
+            ? const SizedBox.shrink()
+            : Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: Theme.of(sheet).textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final id in (counts.keys.toList()..sort()))
+                          FilterChip(
+                            avatar: switch (image(id)) {
+                              final url? => ClipOval(
+                                child: AppImage(candidates: [url]),
+                              ),
+                              null => null,
+                            },
+                            label: Text('${name(id)}  ${counts[id]}'),
+                            selected: selected.contains(id),
+                            onSelected: (_) => toggle(selected, id),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              );
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              group(
+                t.label('character', 'Character'),
+                characters,
+                _characters,
+                (id) => t.text(data.visuals.characters[id]?['characterName']),
+                (id) => switch (data.visuals.characters[id]?['faceImage']) {
+                  final String face => api.asset(face).toString(),
+                  _ => null,
+                },
+              ),
+              group(
+                t.label('band', 'Band'),
+                bands,
+                _bands,
+                (id) => t.text(data.visuals.bands[id]?['bandName']),
+                (id) => data.visuals.bandIcon(id),
+              ),
+              if (_characters.isNotEmpty || _bands.isNotEmpty)
+                Align(
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: TextButton(
+                    onPressed: () {
+                      setState(() {
+                        _characters.clear();
+                        _bands.clear();
+                      });
+                      refresh(() {});
+                    },
+                    child: Text(t('common.actions.reset', 'Reset')),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
 
   ({String title, String? image, String? description}) _railInfo(
     _StoryData data,
