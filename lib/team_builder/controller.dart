@@ -3,6 +3,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:isolate';
 
 import 'package:flutter/foundation.dart';
@@ -55,6 +56,11 @@ class TeamBuilderController extends ChangeNotifier {
 
   EngineResponse? results;
   BuildSettings? resultSettings;
+  bool activity = false;
+  BuildSettings get searchSettings =>
+      activity && settings.rewardMode != 'recommendation'
+      ? settings.copyWith({'goal': settings.rewardMode})
+      : settings;
   String resultsFor = '';
   bool running = false;
   (int, int)? progress;
@@ -190,7 +196,7 @@ class TeamBuilderController extends ChangeNotifier {
         );
 
   Goal? goal() {
-    final s = settings;
+    final s = searchSettings;
     final challengeId = s.challengeRules && s.eventId != null
         ? s.eventId
         : null;
@@ -221,6 +227,7 @@ class TeamBuilderController extends ChangeNotifier {
         if (s.eventId == null) return null;
         if (s.route != 'skip' && s.songs.isEmpty) return null;
         return EventGoal(
+          ranking: s.fullRanking ? null : 'primary',
           measure: s.measure,
           route: RouteKind.values.byName(s.route),
           eventId: s.eventId!,
@@ -292,7 +299,9 @@ class TeamBuilderController extends ChangeNotifier {
               ('m$member', snap == null ? null : 's$snap'),
         ],
         noSnaps: s.noSnaps,
-        minBonusPercent: s.minBonus,
+        minBonusPercent: goal is EventGoal || goal is PlanGoal
+            ? s.minBonus
+            : null,
       ),
       k: s.k,
       timeLimitMs: s.timeLimit != null && s.timeLimit! > 0
@@ -305,32 +314,59 @@ class TeamBuilderController extends ChangeNotifier {
   String _fingerprint() {
     final request = this.request();
     if (request == null) return '';
-    return [
-      settings.toJson(),
-      [for (final m in request.members) m.toJson()],
-      [for (final s in request.snaps) s.toJson()],
-      request.player.toJson(),
-    ].toString();
+    return jsonEncode([
+      store?.owner,
+      state.server,
+      catalog?.data['identity'],
+      catalog?.data['crossServer'],
+      request.toJson(),
+    ]);
   }
 
   bool get stale => results != null && resultsFor != _fingerprint();
 
-  Future<void> run() async {
-    final request = this.request();
+  Future<void> run({bool resume = false}) async {
+    var request = this.request();
     final engine = this.engine;
     if (request == null || engine == null || running) return;
-    final settings = this.settings;
+    final fingerprint = _fingerprint();
+    if (resume) {
+      request = request.copyWith(
+        deadline: double.infinity,
+        keepTimeLimit: false,
+      );
+    }
+    if (resume && results != null && !stale) {
+      request = request.copyWith(
+        seeds: [for (final r in results!.results) ...r.hits],
+        completed: results!.results.where((r) => r.proven).toList(),
+      );
+    }
+    final settings = searchSettings;
     running = true;
     error = null;
     progress = (0, 1);
     notifyListeners();
     try {
-      results = await engine.run(request, (done, total) {
-        progress = (done, total);
-        notifyListeners();
-      });
-      resultsFor = _fingerprint();
-      resultSettings = settings;
+      final response = await engine.run(
+        request.copyWith(contextKey: fingerprint),
+        (done, total) {
+          progress = (done, total);
+          notifyListeners();
+        },
+        (snapshot) {
+          if (fingerprint != _fingerprint()) return;
+          results = snapshot.response;
+          resultsFor = fingerprint;
+          resultSettings = settings;
+          notifyListeners();
+        },
+      );
+      if (fingerprint == _fingerprint()) {
+        results = response;
+        resultsFor = fingerprint;
+        resultSettings = settings;
+      }
     } on EngineCancelled {
       // Cancelled by the reader.
     } catch (failure) {
@@ -344,7 +380,10 @@ class TeamBuilderController extends ChangeNotifier {
     }
   }
 
-  void cancel() => engine?.cancel();
+  void cancel() {
+    pt.stop();
+    engine?.cancel();
+  }
 
   /// Repaints after a change made outside the controller's own methods.
   void changed() => notifyListeners();

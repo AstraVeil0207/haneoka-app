@@ -76,8 +76,24 @@ class LuckAction {
   final double chance;
 }
 
+final _recordedFrames = <String, LuckFrame>{};
+var _nextRecordedFrame = 0;
+
 class LuckFrame {
-  LuckFrame(this.states, this.updates, this.playing);
+  factory LuckFrame(List<int> states, List<int> updates, int playing) {
+    final key = '${states.join(',')}/${updates.join(',')}/$playing';
+    final known = _recordedFrames[key];
+    if (known != null) return known;
+    if (_recordedFrames.length >= 4096) _recordedFrames.clear();
+    return _recordedFrames[key] = LuckFrame._(
+      List.unmodifiable(states),
+      List.unmodifiable(updates),
+      playing,
+      _nextRecordedFrame++,
+    );
+  }
+  LuckFrame._(this.states, this.updates, this.playing, this.id);
+  final int id;
   final List<int> states;
   final List<int> updates;
   final int playing;
@@ -315,7 +331,12 @@ class LiveModel {
     int seed = 0,
     LuckRecord? record,
   }) : _record = record,
-       _fired = List.filled(_events.length, false),
+       _byTime = List.generate(_events.length, (i) => i)
+         ..sort(
+           (a, b) => _events[a].$2 != _events[b].$2
+               ? _events[a].$2 - _events[b].$2
+               : a - b,
+         ),
        _random = LiveRandom(seed) {
     for (final n in notes) {
       _notes[n.id] = n;
@@ -559,7 +580,7 @@ class LiveModel {
   }
 
   final _notes = <int, LiveNote>{};
-  final List<bool> _fired;
+  final List<int> _byTime;
   final LiveRandom _random;
   late final LifeController life;
   final _combo = ComboCounter();
@@ -613,14 +634,15 @@ class LiveModel {
       );
     }
     _frameEvents.clear();
-    if (_firedCount < _events.length) {
-      for (var i = 0; i < _events.length; i++) {
-        final (index, evT) = _events[i];
-        if (!_fired[i] && evT <= t) {
-          _fired[i] = true;
-          _firedCount++;
-          _frameEvents.add((index, evT));
-        }
+    if (_firedCount < _events.length && _events[_byTime[_firedCount]].$2 <= t) {
+      final due = <int>[];
+      while (_firedCount < _events.length &&
+          _events[_byTime[_firedCount]].$2 <= t) {
+        due.add(_byTime[_firedCount++]);
+      }
+      if (due.length > 1) due.sort();
+      for (final i in due) {
+        _frameEvents.add(_events[i]);
       }
     }
     _judged.clear();

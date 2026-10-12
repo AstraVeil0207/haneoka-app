@@ -9,10 +9,18 @@ import 'engine/num.dart';
 enum GoalKind { score, gekiso, event, plan, power, potential }
 
 class BuildSettings {
-  BuildSettings(Doc json) : _json = {..._defaults, ...json};
+  BuildSettings(Doc json) : _json = {..._defaults, ...json} {
+    if (_json['goal'] == 'event' || _json['goal'] == 'plan') {
+      _json['rewardMode'] = _json['goal'];
+      _json['goal'] = 'score';
+    }
+  }
   final Doc _json;
 
   static const _defaults = <String, Object?>{
+    'rewardMode': 'recommendation',
+    'fullRanking': false,
+    'ptCycle': false,
     'ptMode': 'solo',
     'ptJust': 25,
     'ptLuckSamples': 32,
@@ -36,7 +44,7 @@ class BuildSettings {
     'planBoostsPerLive': 3,
     'planStartingCp': 0,
     'planChallengeSongs': <Object?>[],
-    'k': 5,
+    'k': 1,
     'unknownPolicy': 'max',
     'scope': 'box',
     'leader': null,
@@ -85,6 +93,9 @@ class BuildSettings {
   int get planBoostsPerLive => _int('planBoostsPerLive');
   int get planStartingCp => _int('planStartingCp');
   List<SongRef> get planChallengeSongs => _songs('planChallengeSongs');
+  String get rewardMode => '${_json['rewardMode']}';
+  bool get fullRanking => _json['fullRanking'] == true;
+  bool get ptCycle => _json['ptCycle'] == true;
   int get k => _int('k');
   String get unknownPolicy => _json['unknownPolicy'] == 'min' ? 'min' : 'max';
   bool get theoretical => _json['scope'] == 'theoretical';

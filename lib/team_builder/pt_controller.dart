@@ -74,7 +74,7 @@ class PtController {
     final view = host.view, master = host.catalog?.master;
     if (view == null || master == null) return null;
     final s = host.settings;
-    final cards = view.engineInputs();
+    final cards = host.engineCards();
     int bySong(SongRef a, SongRef b) => a.songId != b.songId
         ? a.songId - b.songId
         : a.difficulty - b.difficulty;
@@ -93,7 +93,7 @@ class PtController {
       unknownPolicy: UnknownPolicy.min,
       goal: EventGoal(
         ptOnly: true,
-        measure: 'points',
+        measure: measure,
         route: RouteKind.live,
         eventId: s.eventId ?? -1,
         songs: [...s.songs]..sort(bySong),
@@ -121,20 +121,23 @@ class PtController {
         minBonusPercent: s.minBonus,
       ),
       k: 1,
+      timeLimitMs: 3000,
     );
   }
 
-  PtCycle cycle() => PtCycle(
-    [...host.settings.planChallengeSongs]..sort(
-      (a, b) => a.songId != b.songId
-          ? a.songId - b.songId
-          : a.difficulty - b.difficulty,
-    ),
-    host.settings.challengePoints,
-  );
+  PtCycle? cycle() => host.settings.ptCycle
+      ? PtCycle(
+          [...host.settings.planChallengeSongs]..sort(
+            (a, b) => a.songId != b.songId
+                ? a.songId - b.songId
+                : a.difficulty - b.difficulty,
+          ),
+          host.settings.challengePoints,
+        )
+      : null;
 
   String _inputSignature() =>
-      canonical([request()?.toJson(), cycle().toJson()]);
+      canonical([request()?.toJson(), cycle()?.toJson()]);
 
   /// Recomputes the unmet inputs when the request changed.
   void sync() {
@@ -147,8 +150,11 @@ class PtController {
     if (request == null || master == null) return;
     final goal = request.goal as EventGoal;
     final found = <PtIssue>[];
-    for (final route in const [RouteKind.live, RouteKind.challenge]) {
-      for (final measure in const ['points', 'items']) {
+    for (final route in [
+      RouteKind.live,
+      if (cycle() != null) RouteKind.challenge,
+    ]) {
+      for (final measure in [goal.measure]) {
         final variant = route == RouteKind.live
             ? goal.copyWith(
                 route: route,
@@ -158,8 +164,8 @@ class PtController {
             : goal.copyWith(
                 route: route,
                 measure: measure,
-                songs: cycle().songs,
-                consumption: cycle().consumption,
+                songs: cycle()!.songs,
+                consumption: cycle()!.consumption,
                 dropGekiso: true,
               );
         found.addAll(
@@ -167,7 +173,7 @@ class PtController {
         );
       }
     }
-    if (cycle().songs.isEmpty) {
+    if (cycle() != null && cycle()!.songs.isEmpty) {
       found.add(const PtIssue('chart', 'challenge-selection'));
     }
     issues = {for (final issue in found) issue.key: issue}.values.toList();
@@ -266,7 +272,7 @@ class PtController {
           }
         },
       );
-      await runner.start(current, topFive: topFive);
+      await runner.start(current, topFive: topFive, deadline: double.infinity);
     } on EngineCancelled {
       // Stopped by the reader.
     } catch (failure) {

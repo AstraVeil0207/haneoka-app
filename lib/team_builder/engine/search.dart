@@ -81,6 +81,8 @@ class ObjectiveAdapter<D> {
     this.jointTargets,
     this.preferSnap,
     this.leafBound,
+    this.memberBound,
+    this.preferMember,
     required this.interval,
     required this.exact,
     this.evaluate,
@@ -122,6 +124,9 @@ class ObjectiveAdapter<D> {
 
   /// The bounds are loose for this objective (life-draining plays).
   final bool hard;
+  final double Function(List<int> members, Totals totals, int left)?
+  memberBound;
+  final double Function(int member)? preferMember;
 
   /// Joint bonus/product requirements a team must meet to reach a key.
   final List<JointTarget> Function(double limit)? jointTargets;
@@ -182,6 +187,14 @@ class SearchHit<D> {
 }
 
 class SearchStats {
+  SearchStats();
+  factory SearchStats.fromJson(Map<String, Object?> json) => SearchStats()
+    ..leaders = intOf(json['leaders'])
+    ..memberNodes = intOf(json['memberNodes'])
+    ..snapNodes = intOf(json['snapNodes'])
+    ..candidates = intOf(json['candidates'])
+    ..exact = intOf(json['exact'])
+    ..elapsedMs = numOf(json['elapsedMs']);
   int leaders = 0;
   int memberNodes = 0;
   int snapNodes = 0;
@@ -436,6 +449,9 @@ SearchOutput<D> searchTeams<D>({
   List<Team>? seeds,
   ({int index, int count})? shard,
   double? floor,
+  bool floorExclusive = false,
+  bool Function(List<int> members)? owns,
+  void Function(List<SearchHit<D>> hits)? onCandidate,
   int Function(MemberState member)? memberPowerPercent,
   int Function(SnapState snap)? snapPowerPercent,
   bool disableSnapDominance = false,
@@ -598,7 +614,7 @@ SearchOutput<D> searchTeams<D>({
   final floorValue = floor ?? -inf;
   var timedOut = false;
   var unexploredBound = -inf;
-  final deadline = timeLimitMs != null && timeLimitMs > 0 ? timeLimitMs : inf;
+  final deadline = timeLimitMs ?? inf;
   bool pastDeadline() => now() > deadline || (cancelled?.call() ?? false);
 
   String setKeyOf(Team team) =>
@@ -606,6 +622,7 @@ SearchOutput<D> searchTeams<D>({
 
   // Equality is prunable only after k distinct legal teams have been evaluated exactly.
   bool cannotImprove(double upper) =>
+      (floorExclusive && upper <= floorValue) ||
       hits.length >= k && upper <= hits[k - 1].key;
   void retain(_Candidate candidate, [Exact<D>? evaluated]) {
     if (evaluated == null && hits.length >= k && pastDeadline()) {
@@ -631,7 +648,8 @@ SearchOutput<D> searchTeams<D>({
                 candidate.slotPowers,
                 (
                   key: math.max(local, floorValue),
-                  pruneEqual: local >= floorValue && local.isFinite,
+                  pruneEqual:
+                      floorExclusive || local >= floorValue && local.isFinite,
                 ),
               )
             : objective.exact(
@@ -659,6 +677,7 @@ SearchOutput<D> searchTeams<D>({
     hits.insert(index, hit);
     retainedKeys[candidate.setKey] = exact.key;
     if (hits.length > k) retainedKeys.remove(setKeyOf(hits.removeLast().team));
+    onCandidate?.call(List.unmodifiable(hits));
   }
 
   final leaders = [
@@ -669,9 +688,14 @@ SearchOutput<D> searchTeams<D>({
   ];
   // Leader order: strongest optimistic slot first, so the threshold rises early.
   double memberScore(int i) => bases[i].fixedPoints + best[i].power;
+  int preference(int a, int b) => objective.preferMember == null
+      ? 0
+      : (objective.preferMember!(b) - objective.preferMember!(a)).sign.toInt();
   final orderedLeaders = _stableSorted(
     leaders,
-    (a, b) => (memberScore(b) - memberScore(a)).sign.toInt(),
+    (a, b) => preference(a, b) != 0
+        ? preference(a, b)
+        : (memberScore(b) - memberScore(a)).sign.toInt(),
   );
   // Interleaved over the strength order, so every shard holds a balanced mix.
   final myLeaders = shard != null && shard.count > 1
@@ -772,6 +796,7 @@ SearchOutput<D> searchTeams<D>({
   }
 
   for (final seed in seeds ?? const <Team>[]) {
+    if (pastDeadline()) break;
     if (seedValid(seed)) evaluateSeed(seed);
   }
 
@@ -1245,21 +1270,24 @@ SearchOutput<D> searchTeams<D>({
       }
       final ordered = _stableSorted(
         must.isNotEmpty ? must : list,
-        (a, b) =>
-            (slotPower(b) + best[b].power - (slotPower(a) + best[a].power)).sign
-                .toInt(),
+        (a, b) => preference(a, b) != 0
+            ? preference(a, b)
+            : (slotPower(b) + best[b].power - (slotPower(a) + best[a].power))
+                  .sign
+                  .toInt(),
       );
       (must.isNotEmpty ? forced : free).add(ordered);
     }
     if (conflict || groups.isEmpty || forced.length > 4) continue;
     final freeSorted = _stableSorted(
       free,
-      (a, b) =>
-          (slotPower(b[0]) +
-                  best[b[0]].power -
-                  (slotPower(a[0]) + best[a[0]].power))
-              .sign
-              .toInt(),
+      (a, b) => preference(a[0], b[0]) != 0
+          ? preference(a[0], b[0])
+          : (slotPower(b[0]) +
+                    best[b[0]].power -
+                    (slotPower(a[0]) + best[a[0]].power))
+                .sign
+                .toInt(),
     );
     final characters = [...forced, ...freeSorted];
     final forcedCount = forced.length;
@@ -1308,7 +1336,17 @@ SearchOutput<D> searchTeams<D>({
     final leaderPower = slotPower(leader) + best[leader].power;
     final leaderWeight = best[leader].weight;
     final leaderBonus = memberBonus[leader] + best[leader].bonus;
-    final leaderBound = objective.bound(
+    double memberSetBound(List<int> chosen, Totals totals, int left) {
+      final plain = objective.bound(totals);
+      if (objective.memberBound == null ||
+          plain < math.max(frontier.threshold, floorValue)) {
+        return plain;
+      }
+      return math.min(plain, objective.memberBound!(chosen, totals, left));
+    }
+
+    final leaderBound = memberSetBound(
+      [leader],
       Totals(
         power: leaderPower + topSum(topsPower, 0, 4),
         skill: leaderWeight + topSum(topsSkill, 0, 4),
@@ -1317,6 +1355,7 @@ SearchOutput<D> searchTeams<D>({
           memberOnlyBound(memberBonus[leader].toDouble(), 0, 4),
         ),
       ),
+      4,
     );
     if (leaderBound < math.max(frontier.threshold, floorValue) ||
         cannotImprove(leaderBound)) {
@@ -1357,7 +1396,9 @@ SearchOutput<D> searchTeams<D>({
       }
       stats.memberNodes++;
       if (left == 0) {
-        assignSnaps(leader, [...chosen]);
+        if (owns == null || owns([leader, ...chosen])) {
+          assignSnaps(leader, [...chosen]);
+        }
         return;
       }
       if (characters.length - index < left) return;
@@ -1375,7 +1416,8 @@ SearchOutput<D> searchTeams<D>({
         }
         return;
       }
-      final nodeBound = objective.bound(
+      final nodeBound = memberSetBound(
+        [leader, ...chosen],
         Totals(
           power: power + topSum(topsPower, index, left),
           skill: weight + topSum(topsSkill, index, left),
@@ -1384,6 +1426,7 @@ SearchOutput<D> searchTeams<D>({
             memberOnlyBound(memberPart, index, left),
           ),
         ),
+        left,
       );
       if (nodeBound < math.max(frontier.threshold, floorValue) ||
           cannotImprove(nodeBound)) {

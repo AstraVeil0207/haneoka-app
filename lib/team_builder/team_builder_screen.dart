@@ -156,7 +156,10 @@ class _TeamBuilderScreenState extends State<TeamBuilderScreen> {
             child: PillTabs<_Tab>(
               value: _tab,
               tabs: tabs,
-              onSelected: (tab) => setState(() => _tab = tab),
+              onSelected: (tab) => setState(() {
+                _tab = tab;
+                c.activity = tab == _Tab.pt;
+              }),
             ),
           ),
           Expanded(

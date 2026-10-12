@@ -17,8 +17,6 @@ import 'widgets.dart';
 const _goals = [
   (GoalKind.score, Symbols.music_note_rounded),
   (GoalKind.gekiso, Symbols.local_fire_department_rounded),
-  (GoalKind.event, Symbols.emoji_events_rounded),
-  (GoalKind.plan, Symbols.cycle_rounded),
   (GoalKind.power, Symbols.bolt_rounded),
   (GoalKind.potential, Symbols.auto_awesome_rounded),
 ];
@@ -144,7 +142,7 @@ class BuildTab extends StatelessWidget {
 
   Widget _run(BuildContext context) {
     final c = controller;
-    final s = c.settings;
+    final s = c.searchSettings;
     final cards = c.engineCards();
     final missing = cards.members.isEmpty
         ? c.tb(
@@ -199,7 +197,7 @@ class BuildTab extends StatelessWidget {
 
   List<Widget> _settings(BuildContext context) {
     final c = controller;
-    final s = c.settings;
+    final s = c.searchSettings;
     void set(Map<String, Object?> patch) => c.updateSettings(patch);
     final scored = s.goal == GoalKind.score || s.goal == GoalKind.gekiso;
     final needsSongs =
@@ -214,14 +212,22 @@ class BuildTab extends StatelessWidget {
         icon: Symbols.flag_rounded,
         title: c.tb('goal', 'Goal'),
         children: [
-          _GoalGrid(
-            goals: [
-              for (final (goal, icon) in _goals)
-                (goal, icon, goalText(c, goal)),
-            ],
-            selected: s.goal,
-            onSelected: (goal) => set({'goal': goal.name}),
-          ),
+          if (!c.activity)
+            _GoalGrid(
+              goals: [
+                for (final (goal, icon) in _goals)
+                  (goal, icon, goalText(c, goal)),
+              ],
+              selected: s.goal,
+              onSelected: (goal) => set({'goal': goal.name}),
+            ),
+          if (s.goal == GoalKind.event)
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              value: s.fullRanking,
+              title: Text(c.tb('fullRanking', 'Full reward ranking')),
+              onChanged: (value) => set({'fullRanking': value == true}),
+            ),
           if (scored) ...[
             _WrappingSegments(
               value: s.criterion,
@@ -469,7 +475,7 @@ class BuildTab extends StatelessWidget {
 
   List<Widget> _eventSection(BuildContext context) {
     final c = controller;
-    final s = c.settings;
+    final s = c.searchSettings;
     final catalog = c.catalog!;
     final events = catalog.events();
     if (events.isEmpty) {
@@ -597,7 +603,7 @@ class BuildTab extends StatelessWidget {
 
   List<Widget> _playSection(BuildContext context) {
     final c = controller;
-    final s = c.settings;
+    final s = c.searchSettings;
     Widget slider(String label, String key, int value, int max) => ToolField(
       label: label,
       value: '$value%',
@@ -705,7 +711,7 @@ class _Candidates extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = controller;
-    final s = c.settings;
+    final s = c.searchSettings;
     final catalog = c.catalog!;
     final view = c.view!;
     final t = catalog.t;

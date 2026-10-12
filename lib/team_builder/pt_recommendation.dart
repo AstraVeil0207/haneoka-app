@@ -6,6 +6,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -14,10 +15,11 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'engine/api.dart';
+import 'engine/execution.dart';
 import 'engine/num.dart';
 import 'engine/objectives.dart' show CpExchange, RouteKind;
 
-const ptVersion = 'solo-cp-rewards-v2';
+const ptVersion = 'reward-deadline-v3';
 
 class PtCycle {
   PtCycle(this.songs, this.consumption);
@@ -65,18 +67,16 @@ class PtTask {
   bool get complete =>
       (status == 'complete' || status == 'empty') && result?.proven == true;
 
-  bool excluded(double? cutoff) {
-    final below = result?.excludedBelow;
-    return route == RouteKind.live &&
+  bool excluded(RewardCutoff? cutoff) {
+    final proof = result?.exclusion;
+    return cutoff != null &&
+        proof != null &&
         status == 'pruned' &&
-        below != null &&
-        below.isFinite &&
-        cutoff != null &&
-        // The proof bound is the cutoff the task ran under plus its tie
-        // margin (see [PtRunner]): compare with the same margin.
-        below <= cutoffWithMargin(cutoff) &&
-        (result?.hits.isEmpty ?? false) &&
-        result?.proven == false;
+        proof.contextKey == cutoff.contextKey &&
+        proof.ranking == cutoff.ranking &&
+        (proof.key < cutoff.key ||
+            (proof.key == cutoff.key &&
+                (proof.comparison == 'gte' || cutoff.comparison == 'gt')));
   }
 }
 
@@ -90,7 +90,7 @@ class PtJob {
     required this.request,
     required this.cycle,
     required this.tasks,
-    this.topFive = true,
+    this.scope = 'top-one',
     int? createdAt,
     int? updatedAt,
   }) : createdAt = createdAt ?? DateTime.now().millisecondsSinceEpoch,
@@ -109,7 +109,7 @@ class PtJob {
       for (final task in json['tasks'] as List? ?? const [])
         PtTask.fromJson(objectRow(task)),
     ],
-    topFive: json['scope'] != 'all',
+    scope: '${json['scope'] ?? 'top-one'}',
     createdAt: intOf(json['createdAt']),
     updatedAt: intOf(json['updatedAt']),
   );
@@ -123,7 +123,9 @@ class PtJob {
   final List<PtTask> tasks;
 
   /// The scope: the top five songs, or every song to proof.
-  bool topFive;
+  String scope;
+  bool get topFive => scope != 'all';
+  set topFive(bool value) => scope = value ? 'top-five' : 'all';
   final int createdAt;
   int updatedAt;
   Map<String, Object?> toJson() => {
@@ -135,7 +137,7 @@ class PtJob {
     'server': server,
     'request': request.toJson(),
     'cycle': cycle?.toJson(),
-    'scope': topFive ? 'top-five' : 'all',
+    'scope': scope,
     'createdAt': createdAt,
     'updatedAt': updatedAt,
     'tasks': [for (final task in tasks) task.toJson()],
@@ -193,12 +195,8 @@ PtJob createPtJob(
   final tasks = <PtTask>[
     if (cycle != null)
       for (final song in cycle.songs)
-        for (final measure in const ['points', 'items'])
-          PtTask(RouteKind.challenge, measure, song),
-    for (final song in goal.songs)
-      for (final measure
-          in cycle != null ? const ['points', 'items'] : [goal.measure])
-        PtTask(RouteKind.live, measure, song),
+        PtTask(RouteKind.challenge, goal.measure, song),
+    for (final song in goal.songs) PtTask(RouteKind.live, goal.measure, song),
   ];
   return PtJob(
     id: '${DateTime.now().microsecondsSinceEpoch}-${math.Random().nextInt(1 << 32)}',
@@ -231,9 +229,7 @@ List<EngineHit> ptSongRanking(
 ]) {
   final songs = <int, EngineHit>{};
   for (final task in job.tasks) {
-    if (task.status != 'complete' ||
-        task.measure != measure ||
-        task.route != route) {
+    if (task.measure != measure || task.route != route) {
       continue;
     }
     for (final hit in task.result?.hits ?? const <EngineHit>[]) {
@@ -258,26 +254,32 @@ EngineHit? ptChallengeBest(PtJob job, String measure) {
   return ptSongRanking(job, measure, RouteKind.challenge).firstOrNull;
 }
 
-/// A threshold only exists after five different songs have exact, legal solutions.
 double? ptCutoff(PtJob job, String measure) {
-  final ranking = ptSongRanking(job, measure);
-  return ranking.length >= 5 ? ranking[4].key : null;
+  final ranking = ptSongRanking(job, measure),
+      count = job.scope == 'top-one' ? 1 : 5;
+  return ranking.length >= count ? ranking[count - 1].key : null;
+}
+
+RewardCutoff? ptTaskCutoff(PtJob job, PtTask task) {
+  if (job.scope == 'all' || task.route != RouteKind.live) return null;
+  final ranking = ptSongRanking(job, task.measure),
+      count = job.scope == 'top-one' ? 1 : 5;
+  if (ranking.length < count) return null;
+  final last = ranking[count - 1];
+  final later =
+      task.song.songId > last.song!.songId ||
+      (task.song.songId == last.song!.songId &&
+          task.song.difficulty >= last.song!.difficulty);
+  return RewardCutoff(last.key, later ? 'gt' : 'gte', job.fingerprint);
 }
 
 bool ptAllComplete(PtJob job) =>
     job.tasks.isNotEmpty && job.tasks.every((task) => task.complete);
-
-bool ptComplete(PtJob job) {
-  if (job.tasks.isEmpty) return false;
-  final cutoffs = {
-    'points': ptCutoff(job, 'points'),
-    'items': ptCutoff(job, 'items'),
-  };
-  return job.tasks.every(
-    (task) =>
-        task.complete || (job.topFive && task.excluded(cutoffs[task.measure])),
-  );
-}
+bool ptComplete(PtJob job) =>
+    job.tasks.isNotEmpty &&
+    job.tasks.every(
+      (task) => task.complete || task.excluded(ptTaskCutoff(job, task)),
+    );
 
 /// One CP's long-run reward value as a reduced fraction (`cpExchange`).
 CpExchange cpExchangeOf(double rewardSum, int orders, int consumption) {
@@ -295,11 +297,11 @@ CpExchange cpExchangeOf(double rewardSum, int orders, int consumption) {
   return CpExchange(sum ~/ a, denominator ~/ a);
 }
 
-/// The cutoff a later song must strictly beat: equal rewards rank by song.
-double cutoffWithMargin(double cutoff) =>
-    cutoff + math.max(1, cutoff.abs()) * 1e-9;
-
-typedef PtEngineRun = Future<EngineResponse> Function(EngineRequest request);
+typedef PtEngineRun = Future<EngineResponse> Function(
+  EngineRequest request, [
+  void Function(int, int)? progress,
+  void Function(EngineSnapshot)? snapshot,
+]);
 
 class PtRunner {
   PtRunner({
@@ -320,18 +322,29 @@ class PtRunner {
     cancel();
   }
 
-  Future<void> start(PtJob job, {bool? topFive}) async {
+  Future<void> start(
+    PtJob job, {
+    bool? topFive,
+    String? scope,
+    double? deadline,
+  }) async {
+    deadline ??= executionClock() + 3000;
     if (running) throw StateError('pt-busy');
     running = true;
     _stopped = false;
-    job.topFive = topFive ?? job.topFive;
-    final scopeTopFive = job.topFive;
+    job.scope =
+        scope ??
+        (topFive == null
+            ? job.scope
+            : topFive
+            ? 'top-five'
+            : 'all');
     // The page redraws at most four times a second and the checkpoint is
     // written at most once a second; both once more at the end.
     var savedAt = 0, shownAt = 0;
     Future<void> publish([bool force = false]) async {
       job.updatedAt = DateTime.now().millisecondsSinceEpoch;
-      if (force || job.updatedAt - shownAt >= 250) {
+      if (force || job.updatedAt - shownAt >= 100) {
         shownAt = job.updatedAt;
         changed(job);
       }
@@ -341,16 +354,10 @@ class PtRunner {
     }
 
     try {
-      final cutoffs = {
-        'points': ptCutoff(job, 'points'),
-        'items': ptCutoff(job, 'items'),
-      };
       for (final task in job.tasks) {
-        if (!task.complete &&
-            !(scopeTopFive && task.excluded(cutoffs[task.measure]))) {
+        if (!task.complete && !task.excluded(ptTaskCutoff(job, task))) {
           task
             ..status = 'queued'
-            ..result = null
             ..error = '';
         }
       }
@@ -368,8 +375,8 @@ class PtRunner {
       });
       final base = job.request.goal as EventGoal;
       for (final task in tasks) {
-        if (_stopped) break;
-        if (task.complete || (scopeTopFive && task.status == 'pruned')) {
+        if (_stopped || remaining(deadline) == 0) break;
+        if (task.complete || task.excluded(ptTaskCutoff(job, task))) {
           continue;
         }
         final cycle = job.cycle;
@@ -388,9 +395,7 @@ class PtRunner {
           break;
         }
         try {
-          final cutoff = scopeTopFive && task.route == RouteKind.live
-              ? ptCutoff(job, task.measure)
-              : null;
+          final cutoff = ptTaskCutoff(job, task);
           final isChallenge = task.route == RouteKind.challenge;
           final goal = EventGoal(
             measure: task.measure,
@@ -409,34 +414,56 @@ class PtRunner {
                 : null,
             gekiso: isChallenge ? null : base.gekiso,
           );
-          // Tasks run in song order and equal rewards rank by song, so a
-          // later song only enters the top five by beating the fifth reward.
-          final response = await run(
-            job.request.withGoal(
-              goal,
-              null,
-              rewardCutoff: cutoff == null ? null : cutoffWithMargin(cutoff),
-            ),
-          );
-          if (_stopped) {
-            task.status = 'queued';
-            break;
+          final previous = task.result?.hits ?? <EngineHit>[];
+          void accept(EngineResponse response) {
+            final result = response.results
+                .where((r) => r.song == task.song)
+                .firstOrNull;
+            if (result == null) return;
+            if (result.hits.isEmpty && !result.proven) {
+              result.hits = task.result?.hits.isNotEmpty == true
+                  ? task.result!.hits
+                  : previous;
+            }
+            if (result.exclusion != null &&
+                result.hits.isNotEmpty &&
+                result.hits.first.key >= result.exclusion!.key) {
+              result.proven = true;
+              result.bound = null;
+              result.exclusion = null;
+            }
+            task.result = result;
+            if (response.stopReason == 'error') {
+              task.status = 'failed';
+              task.error = response.error ?? 'engine-error';
+              return;
+            }
+            task.status = result.exclusion != null
+                ? 'pruned'
+                : result.proven
+                ? (result.hits.isNotEmpty ? 'complete' : 'empty')
+                : 'partial';
           }
-          final result = response.results
-              .where((r) => r.song == task.song)
-              .firstOrNull;
-          if (result == null) throw StateError('pt-incomplete');
-          if (result.excludedBelow != null) {
-            task
-              ..result = result
-              ..status = 'pruned';
-            await publish();
-            continue;
-          }
-          if (!result.proven) throw StateError('pt-incomplete');
-          task
-            ..result = result
-            ..status = result.hits.isNotEmpty ? 'complete' : 'empty';
+
+          final request = job.request
+              .withGoal(goal, null)
+              .copyWith(
+                cutoff: cutoff,
+                deadline: deadline,
+                contextKey: job.fingerprint,
+                seeds: previous,
+              );
+          final response = await run(request, null, (snapshot) {
+            if (snapshot.contextKey != job.fingerprint) return;
+            final first =
+                !job.tasks.any(
+                  (entry) => entry.result?.hits.isNotEmpty == true,
+                ) &&
+                snapshot.response.overall.isNotEmpty;
+            accept(snapshot.response);
+            publish(first).ignore();
+          });
+          accept(response);
         } catch (error) {
           if (_stopped) {
             task.status = 'queued';
@@ -471,12 +498,18 @@ class PtCheckpoint {
     );
   }
 
-  Future<void> save(PtJob job) async {
-    final file = await _file(job.server, job.owner);
-    await file.parent.create(recursive: true);
-    final temp = File('${file.path}.tmp');
-    await temp.writeAsString(jsonEncode(job.toJson()));
-    await temp.rename(file.path);
+  Future<void> _writes = Future.value();
+  Future<void> save(PtJob job) {
+    final payload = jsonEncode(job.toJson());
+    final pending = _writes.then((_) async {
+      final file = await _file(job.server, job.owner);
+      await file.parent.create(recursive: true);
+      final temp = File('${file.path}.tmp');
+      await temp.writeAsString(payload, flush: true);
+      await temp.rename(file.path);
+    });
+    _writes = pending.then<void>((_) {}, onError: (Object _, StackTrace _) {});
+    return pending;
   }
 
   Future<PtJob?> latest(String server, String owner) async {

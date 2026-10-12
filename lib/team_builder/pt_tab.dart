@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import 'box_tab.dart' show showCardEditor;
-import 'build_tab.dart' show sticky;
+import 'build_tab.dart' show sticky, BuildTab;
 import 'controller.dart';
 import 'engine/api.dart';
 import 'engine/num.dart';
@@ -32,8 +32,31 @@ class PtTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final modes = Segmented<String>(
+      value: c.settings.rewardMode,
+      options: [
+        Choice('recommendation', c.tb('recommendation', 'Recommendation')),
+        Choice('event', c.tb('rewardSearch', 'Reward team search')),
+        Choice('plan', c.tb('goalPlan', 'Event resource plan')),
+      ],
+      onSelected: (value) {
+        c.cancel();
+        pt.showIssues = false;
+        c.updateSettings({'rewardMode': value});
+      },
+    );
+    if (c.settings.rewardMode != 'recommendation') {
+      return Column(
+        children: [
+          Padding(padding: const EdgeInsets.all(16), child: modes),
+          Expanded(child: BuildTab(controller: c)),
+        ],
+      );
+    }
     pt.sync();
     final settings = [
+      modes,
+      const SizedBox(height: 16),
       ..._setup(context),
       if (pt.showIssues && pt.issues.isNotEmpty) ...[
         const SizedBox(height: 16),
@@ -142,6 +165,24 @@ class PtTab extends StatelessWidget {
             onSelected: (value) =>
                 c.updateSettings({'ptMode': value ? 'gekiso' : 'solo'}),
           ),
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            value: s.ptCycle,
+            title: Text(c.tb('cpCycle', 'Long-term CP conversion')),
+            onChanged: (value) => c.updateSettings({'ptCycle': value == true}),
+          ),
+          Segmented<String>(
+            value: pt.measure,
+            options: [
+              Choice('points', c.tb('measurePoints', 'Event points')),
+              Choice('items', c.tb('measureItems', 'Shop items')),
+            ],
+            onSelected: (value) {
+              pt.measure = value;
+              pt.sync();
+              c.changed();
+            },
+          ),
           field(
             'event',
             DropdownMenu<int>(
@@ -221,52 +262,56 @@ class PtTab extends StatelessWidget {
                 },
               ),
             ),
-            field(
-              'challenge-selection',
-              songButton(
-                t('chooseChallenge', 'Challenge songs'),
-                Symbols.swords_rounded,
-                s.planChallengeSongs.length,
-                s.eventId == null
-                    ? null
-                    : () async {
-                        final picked = await pickSongs(
-                          context,
-                          catalog,
-                          s.planChallengeSongs,
-                          allowed: [
-                            for (final row in master.challengeMusics)
-                              if (row.eventId == s.eventId) row.liveMusicId,
-                          ],
-                        );
-                        if (picked != null) {
-                          c.updateSettings({
-                            'planChallengeSongs': [
-                              for (final song in picked) song.toJson(),
+            if (s.ptCycle)
+              field(
+                'challenge-selection',
+                songButton(
+                  t('chooseChallenge', 'Challenge songs'),
+                  Symbols.swords_rounded,
+                  s.planChallengeSongs.length,
+                  s.eventId == null
+                      ? null
+                      : () async {
+                          final picked = await pickSongs(
+                            context,
+                            catalog,
+                            s.planChallengeSongs,
+                            allowed: [
+                              for (final row in master.challengeMusics)
+                                if (row.eventId == s.eventId) row.liveMusicId,
                             ],
-                          });
-                        }
-                      },
+                          );
+                          if (picked != null) {
+                            c.updateSettings({
+                              'planChallengeSongs': [
+                                for (final song in picked) song.toJson(),
+                              ],
+                            });
+                          }
+                        },
+                ),
+              ),
+          ],
+          if (s.ptCycle)
+            field(
+              'challenge-consumption',
+              DropdownMenu<int>(
+                expandedInsets: EdgeInsets.zero,
+                label: Text(t('challengeCost', 'CP per challenge')),
+                initialSelection: challengeCosts.contains(s.challengePoints)
+                    ? s.challengePoints
+                    : null,
+                onSelected: (value) {
+                  if (value != null) {
+                    c.updateSettings({'challengePoints': value});
+                  }
+                },
+                dropdownMenuEntries: [
+                  for (final cost in challengeCosts)
+                    DropdownMenuEntry(value: cost, label: '$cost CP'),
+                ],
               ),
             ),
-          ],
-          field(
-            'challenge-consumption',
-            DropdownMenu<int>(
-              expandedInsets: EdgeInsets.zero,
-              label: Text(t('challengeCost', 'CP per challenge')),
-              initialSelection: challengeCosts.contains(s.challengePoints)
-                  ? s.challengePoints
-                  : null,
-              onSelected: (value) {
-                if (value != null) c.updateSettings({'challengePoints': value});
-              },
-              dropdownMenuEntries: [
-                for (final cost in challengeCosts)
-                  DropdownMenuEntry(value: cost, label: '$cost CP'),
-              ],
-            ),
-          ),
         ],
       ),
       const SizedBox(height: 16),
@@ -500,7 +545,9 @@ class PtTab extends StatelessWidget {
             ),
             onPressed: blocked ? null : () => pt.start(resume: true),
             icon: const Icon(Symbols.play_arrow_rounded),
-            label: Text(t('resume', 'Continue')),
+            label: Text(
+              c.tb('continueOptimal', 'Continue verifying optimality'),
+            ),
           ),
         ],
         if (pt.storageError)
@@ -555,7 +602,9 @@ class PtTab extends StatelessWidget {
     final locale = c.state.text.locale;
     final ranking = ptSongRanking(job, pt.measure);
     final challenge = ptChallengeBest(job, pt.measure);
-    final shown = pt.showAll ? ranking : ranking.take(5).toList();
+    final shown = pt.showAll
+        ? ranking
+        : ranking.take(job.scope == 'top-one' ? 1 : 5).toList();
     final currency = pt.measure == 'points'
         ? t('points', 'Event PT')
         : t('items', 'Shop medals');
@@ -709,7 +758,7 @@ class PtTab extends StatelessWidget {
             }),
           ),
         ],
-        if (ranking.length > 5)
+        if (ranking.length > (job.scope == 'top-one' ? 1 : 5))
           Align(
             alignment: Alignment.centerLeft,
             child: TextButton(
@@ -719,7 +768,9 @@ class PtTab extends StatelessWidget {
               },
               child: Text(
                 pt.showAll
-                    ? t('topFive', 'Top five')
+                    ? (job.scope == 'top-one'
+                          ? t('topOne', 'Top song')
+                          : t('topFive', 'Top five'))
                     : t('showAll', 'All {count} songs', {
                         'count': ranking.length,
                       }),

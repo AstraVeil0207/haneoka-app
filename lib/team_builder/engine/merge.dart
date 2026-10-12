@@ -7,6 +7,7 @@ library;
 import 'dart:math' as math;
 
 import 'api.dart';
+import 'execution.dart';
 import 'num.dart';
 import 'search.dart' show SearchStats;
 
@@ -40,18 +41,32 @@ EngineResponse mergeShardResponses(
         final hits = _topDistinct([for (final part in parts) ...part.hits], k);
         final exclusions = [for (final part in parts) ?part.excludedBelow];
         final exhausted = parts.every(
-          (part) => part.proven || part.excludedBelow != null,
+          (part) =>
+              part.proven ||
+              part.excludedBelow != null ||
+              part.exclusion != null,
         );
         final excludedBelow = exhausted && hits.isEmpty && exclusions.isNotEmpty
             ? exclusions.reduce(math.max)
             : null;
+        final exclusion = exhausted && hits.isEmpty
+            ? parts
+                  .map((part) => part.exclusion)
+                  .whereType<RewardCutoff>()
+                  .firstOrNull
+            : null;
         final proven =
+            exclusion == null &&
             exhausted &&
             excludedBelow == null &&
             parts.every(
               (part) =>
-                  part.excludedBelow == null ||
-                  (hits.length >= k && hits[k - 1].key >= part.excludedBelow!),
+                  (part.exclusion == null ||
+                      (hits.length >= k &&
+                          hits[k - 1].key >= part.exclusion!.key)) &&
+                  (part.excludedBelow == null ||
+                      (hits.length >= k &&
+                          hits[k - 1].key >= part.excludedBelow!)),
             );
         final stats = SearchStats();
         for (final part in parts) {
@@ -66,6 +81,7 @@ EngineResponse mergeShardResponses(
           bound: proven || bounds.isEmpty ? null : bounds.reduce(math.max),
           stats: stats,
           excludedBelow: excludedBelow,
+          exclusion: exclusion,
           floor: floors.isEmpty ? null : floors.reduce(math.max),
         );
       }(),
@@ -74,7 +90,7 @@ EngineResponse mergeShardResponses(
     results: results,
     overall: stableSorted([
       for (final result in results) ...result.hits,
-    ], compareHits).take(math.max(k, 3)).toList(),
+    ], compareHits).take(k).toList(),
     unknownCards: first.unknownCards,
     elapsedMs: elapsedMs,
   );

@@ -68,12 +68,15 @@ class GekisoChart {
   /// Frame indices [first, end) spanning every range from standby to finish.
   final (int, int) span;
 
-  final _luckCurves = <String, LuckCurve>{};
+  final _luckCurves = <String, _RecordedLuck>{};
+  List<PlayFrame>? _simulatedFrames;
 
   /// Per-isolate caches of the Gekisou search on this chart: contexts by
   /// level tag and lottery seeds, then deck; and its seeding phase.
   final contexts = <String, Map<String, GekisoContext>>{};
   int contextBytes = 0;
+  final performerIds = <String, int>{};
+  final performerJson = <String>[];
   final seeded = <String, Object>{};
 }
 
@@ -186,7 +189,17 @@ GekisoChart gekisoChart(
 }
 
 class GekisoContext {
-  GekisoContext(this.judgement, this.gk, this.up, this.luck, this.seeds);
+  GekisoContext(
+    this.judgement,
+    this.gk,
+    this.up,
+    this.luck,
+    this.seeds, {
+    this.draws,
+    this.nominal,
+  });
+  final Iterable<GekisoContext> Function()? draws;
+  final GekisoNominal? nominal;
 
   /// Simulate judgement of each note after Gekisou conversions.
   final Int8List judgement;
@@ -202,6 +215,34 @@ class GekisoContext {
 
   /// Lottery runs averaged: 1 deterministic, 0 the exact nominal expectation.
   final int seeds;
+}
+
+class GekisoNominal {
+  GekisoNominal(
+    this.probabilities,
+    this.noteUp,
+    this.rushUp,
+    this.rushFactor,
+    this.rankRemainder,
+  );
+  final List<Float64List> probabilities;
+  final Float32List noteUp;
+  final double rushUp;
+  final double rushFactor;
+  final double Function(
+    int range,
+    Float64List outcomes,
+    Map<String, double> cache,
+  )
+  rankRemainder;
+}
+
+class _RecordedLuck {
+  _RecordedLuck(this.curve, this.record, this.frames, this.misses);
+  final LuckCurve curve;
+  final LuckRecord record;
+  final List<PlayFrame> frames;
+  final List<MissRule> misses;
 }
 
 /// Rush-reading score-ups (sum of their factors) and Miss-triggered gauge
@@ -317,7 +358,20 @@ GekisoContext gekisoContext(
     up[i] /= runs.length;
     luck[i] /= runs.length;
   }
-  return GekisoContext(judgement, gk, up, luck, runs.length);
+  return GekisoContext(
+    judgement,
+    gk,
+    up,
+    luck,
+    runs.length,
+    draws: runs.length > 1
+        ? () sync* {
+            for (final seed in runs) {
+              yield gekisoContext(master, chart, deck, [seed]);
+            }
+          }
+        : null,
+  );
 }
 
 /// The exact nominal luck expectation: one lottery-free run records the
@@ -351,7 +405,10 @@ GekisoContext _expectedContext(
     noteUp[i] = note;
   };
   // The record is indexed from the first simulated frame.
-  final simulated = chart.play.frames.sublist(chart.span.$1, chart.span.$2);
+  final simulated = chart._simulatedFrames ??= chart.play.frames.sublist(
+    chart.span.$1,
+    chart.span.$2,
+  );
   for (var k = 0; k < simulated.length; k++) {
     model.frame(
       simulated[k].timeMs,
@@ -377,18 +434,29 @@ GekisoContext _expectedContext(
     for (final note in record.notes)
       '${note.frame},${note.judgement},${note.speed},${note.buff}',
     '|',
-    for (final frame in record.frames) '${frame.states.join()}${frame.playing}',
+    for (final frame in record.frames) '${frame.id}',
   ].join(';');
-  final curve = chart._luckCurves[signature] ??= luckCurve(
-    master.live.gekiso,
+  var recorded = chart._luckCurves[signature];
+  if (recorded == null && chart._luckCurves.length >= 1024) {
+    chart._luckCurves.clear();
+  }
+  recorded ??= chart._luckCurves[signature] = _RecordedLuck(
+    luckCurve(
+      master.live.gekiso,
+      record,
+      simulated,
+      luckRanges,
+      readers.misses,
+    ),
     record,
     simulated,
-    luckRanges,
     readers.misses,
   );
+  final lottery = recorded;
+  final curve = lottery.curve;
   final bonus = math.min(100 + master.live.gekiso.rushPercent, 200) / 100 - 1;
-  final up = Float64List(n);
-  final luck = Float64List(n);
+  final up = Float64List(n), luck = Float64List(n);
+  final probabilities = List.generate(4, (_) => Float64List(n));
   for (var i = 0; i < n; i++) {
     final id = chart.notes[i].id;
     final pr = curve.rush[id] ?? 0,
@@ -396,9 +464,122 @@ GekisoContext _expectedContext(
         both = curve.both[id] ?? 0;
     luck[i] = 1 + bonus * pr;
     up[i] = noteUp[i] * luck[i] + readers.rush * (ps + bonus * both);
+    probabilities[0][i] = math.max(0, 1 - pr - ps + both);
+    probabilities[1][i] = math.max(0, pr - both);
+    probabilities[2][i] = math.max(0, ps - both);
+    probabilities[3][i] = math.max(0, both);
   }
-  return GekisoContext(judgement, gk, up, luck, 0);
+  double rankRemainder(
+    int range,
+    Float64List outcomes,
+    Map<String, double> cache,
+  ) {
+    final percent = chart.rangePercent[range];
+    var divisor = 100, numerator = percent;
+    while (numerator != 0) {
+      final next = divisor.remainder(numerator);
+      divisor = numerator;
+      numerator = next;
+    }
+    final modulus = 100 ~/ divisor;
+    if (modulus == 1) return 0;
+    final first = lottery.record.frames.indexWhere(
+      (frame) => frame.states[range] == 3,
+    );
+    var last = -1;
+    for (var k = first + 1; k < lottery.record.frames.length; k++) {
+      if (lottery.record.frames[k].states[range] == 8) {
+        last = k;
+        break;
+      }
+    }
+    if (last < 0) last = lottery.record.frames.length - 1;
+    final observed = {
+      for (final frame in lottery.frames.sublist(first, last + 1))
+        for (final note in frame.judged) note.noteId,
+    };
+    var initial = 0;
+    final signature = <num>[range];
+    for (var i = 0; i < chart.notes.length; i++) {
+      if (chart.rangeOf[i] != range) continue;
+      if (!observed.contains(chart.notes[i].id)) {
+        initial = (initial + outcomes[4 * i].toInt()).remainder(modulus);
+      }
+      for (var mask = 0; mask < 4; mask++) {
+        signature.add(outcomes[4 * i + mask].remainder(modulus));
+      }
+    }
+    final key = signature.join(',');
+    final known = cache[key];
+    if (known != null) return known;
+    final residues = Float64List(modulus);
+    luckCurve(
+      master.live.gekiso,
+      lottery.record,
+      lottery.frames,
+      [range],
+      lottery.misses,
+      LuckSettlement(
+        modulus: modulus,
+        initial: initial,
+        residues: residues,
+        noteScore: (id, running, reading) {
+          final i = index[id];
+          return i != null && chart.rangeOf[i] == range
+              ? outcomes[4 * i + (running ? 1 : 0) + (reading ? 2 : 0)].toInt()
+              : 0;
+        },
+      ),
+    );
+    var value = 0.0;
+    for (var residue = 0; residue < residues.length; residue++) {
+      value += residues[residue] * (residue * percent).remainder(100) / 100;
+    }
+    return cache[key] = value;
+  }
+
+  return GekisoContext(
+    judgement,
+    gk,
+    up,
+    luck,
+    0,
+    nominal: GekisoNominal(
+      probabilities,
+      noteUp,
+      readers.rush,
+      f(1 + bonus),
+      rankRemainder,
+    ),
+  );
 }
+
+/// A rush-reading support that leaves the lottery trajectory unchanged.
+double? rushOnlyFactor(EngineMaster master, Performer performer) {
+  for (final (id, level) in performer.gekisouSupportSkills) {
+    final skill = master.gekisoSupportSkills[id];
+    if (skill == null ||
+        (skill.missionType != missionLuck && skill.missionType != 4)) {
+      continue;
+    }
+    for (final row in skill.effects) {
+      if (row.level == level && row.type != 2000) return null;
+    }
+  }
+  final readers = _luckReaders(master, [
+    performer.withMissionOnly(
+      performer.missionOnly == null || performer.missionOnly == 0
+          ? 1
+          : performer.missionOnly,
+    ),
+  ]);
+  return readers.misses.isNotEmpty ? null : readers.rush;
+}
+
+int settleSlack(GekisoChart chart) => [
+  for (var range = 0; range < chart.rangePercent.length; range++)
+    if (chart.setup.missions[range] == missionLuck) range,
+].length;
 
 class _Active {
   _Active(this.end, this.channel, this.delta);
@@ -414,8 +595,33 @@ OrderScores scoreOrdersGekiso(
   GekisoChart chart,
   GekisoContext ctx,
   int power,
-  List<SlotSkill> slots,
-) {
+  List<SlotSkill> slots, {
+  bool settle = true,
+  void Function(int order, int note, double score, double live)? debug,
+}) {
+  if (ctx.draws != null) {
+    final scores = Float64List(orders.length);
+    for (final draw in ctx.draws!()) {
+      final result = scoreOrdersGekiso(
+        master,
+        chart,
+        draw,
+        power,
+        slots,
+        settle: settle,
+        debug: debug,
+      );
+      for (var order = 0; order < scores.length; order++) {
+        scores[order] += result.scores[order] / ctx.seeds;
+      }
+    }
+    return _summarizeOrders(power, scores);
+  }
+  if (ctx.seeds != 1 && ctx.nominal == null) {
+    throw StateError(
+      'Gekisou expectation requires outcome probabilities or individual draws',
+    );
+  }
   final n = chart.notes.length;
   final t = f(f(master.live.adjustment * power) * chart.difficultyFactor);
   final count = chart.full.convertedCount;
@@ -434,11 +640,13 @@ OrderScores scoreOrdersGekiso(
     noteA[i] = f(chart.noteFrac[i] * t);
     comboFactor[i] = f(ctx.gk[i] * chart.comboFactor[i]);
   }
-  final deterministic = ctx.seeds == 1;
+  final nominal = ctx.nominal;
+  final outcomes = nominal == null ? null : Float64List(n * 4);
+  final remainders = <String, double>{};
   final ranges = chart.rangePercent.length;
   final scores = Float64List(orders.length);
   final rangeScore = Float64List(ranges);
-  final plan = skillOrderPlan(slots);
+  final plan = debug != null ? fullSkillOrderPlan : skillOrderPlan(slots);
   for (final orderIndex in plan.representatives) {
     final order = orders[orderIndex];
     var life = master.live.lifeBase;
@@ -516,14 +724,25 @@ OrderScores scoreOrdersGekiso(
       }
       final c = f(f(chart.judgeFrac[judgement] * noteA[i]) * comboFactor[i]);
       final live = f(factor + channel[judgement]);
-      double x;
-      if (deterministic) {
+      var x = 0.0;
+      if (nominal != null && outcomes != null) {
+        for (var mask = 0; mask < 4; mask++) {
+          final up = f(
+            f(nominal.noteUp[i] + (mask & 2 != 0 ? nominal.rushUp : 0)) + live,
+          );
+          var value = f(
+            f(f(mask & 1 != 0 ? nominal.rushFactor : 1) * f(c * up)) / count,
+          ).floorToDouble();
+          if (life <= 0) value = f(onus * value).floorToDouble();
+          outcomes[4 * i + mask] = value;
+          x += nominal.probabilities[mask][i] * value;
+        }
+      } else {
         final up = f(f(ctx.up[i] / ctx.luck[i]) + live);
         x = f(f(f(ctx.luck[i]) * f(c * up)) / count).floorToDouble();
-      } else {
-        x = (c * (ctx.up[i] + ctx.luck[i] * live) / count).floorToDouble();
+        if (life <= 0) x = f(onus * x).floorToDouble();
       }
-      if (life <= 0) x = f(onus * x).floorToDouble();
+      debug?.call(orderIndex, i, x, live);
       score += x;
       final r = chart.rangeOf[i];
       if (r >= 0) rangeScore[r] += x;
@@ -532,11 +751,23 @@ OrderScores scoreOrdersGekiso(
       }
     }
     for (var r = 0; r < ranges; r++) {
-      score += (rangeScore[r] * chart.rangePercent[r] / 100).floorToDouble();
+      if (nominal != null &&
+          outcomes != null &&
+          chart.setup.missions[r] == missionLuck) {
+        score +=
+            rangeScore[r] * chart.rangePercent[r] / 100 -
+            (settle ? nominal.rankRemainder(r, outcomes, remainders) : 0);
+      } else {
+        score += (rangeScore[r] * chart.rangePercent[r] / 100).floorToDouble();
+      }
     }
     scores[orderIndex] = score;
   }
   restoreOrderScores(scores, plan);
+  return _summarizeOrders(power, scores);
+}
+
+OrderScores _summarizeOrders(int power, Float64List scores) {
   var min = inf, max = -inf;
   var minOrder = 0, maxOrder = 0;
   var total = 0.0;
@@ -563,4 +794,40 @@ OrderScores scoreOrdersGekiso(
     minOrder,
     maxOrder,
   );
+}
+
+/// The full native live decides close, lottery-free finalists' ranking.
+OrderScores fullOrdersGekiso(
+  EngineMaster master,
+  GekisoChart chart,
+  List<Performer> deck,
+  int power,
+  int skillTargetMusicType,
+) {
+  if (chart.luck) {
+    throw StateError('full Gekisou scores need a lottery-free chart');
+  }
+  final scores = Float64List(orders.length);
+  final params = LiveParams(
+    power: power,
+    skillTargetMusicType: skillTargetMusicType,
+    level: chart.full.level,
+    convertedCount: chart.full.convertedCount,
+    musicLengthMs: chart.musicLengthMs,
+  );
+  for (final (index, order) in orders.indexed) {
+    final model = LiveModel(
+      master,
+      [for (final slot in order) deck[slot]],
+      chart.full.notes,
+      chart.full.events,
+      params,
+      chart.setup,
+    );
+    for (final (k, frame) in chart.play.frames.indexed) {
+      model.frame(frame.timeMs, frame.judged, chart.play.dt[k]);
+    }
+    scores[index] = model.score.score.toDouble();
+  }
+  return _summarizeOrders(power, scores);
 }

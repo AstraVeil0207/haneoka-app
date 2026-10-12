@@ -583,6 +583,7 @@ ObjectiveAdapter<EventDetail> eventObjective(
   double challengePointWeight = 0,
   double scoreCap = inf,
   bool ptOnly = false,
+  bool primaryOnly = false,
   CpExchange? exchange,
 }) {
   final bonusType = pointsMeasure ? 0 : 1;
@@ -604,7 +605,7 @@ ObjectiveAdapter<EventDetail> eventObjective(
       snapEventPercent(route.effects, context.snaps[j], bonusType);
   // Equal rewards prefer more of the other reward, weighted below the
   // reward's smallest step.
-  final tie = ptOnly ? 0.0 : 1 / 16777216;
+  final tie = (ptOnly || primaryOnly) ? 0.0 : 1 / 16777216;
   final otherType = 1 - bonusType;
   double other(num bonus, int rank) => pointsMeasure
       ? eventItems(route, bonus, rank)
@@ -672,7 +673,7 @@ ObjectiveAdapter<EventDetail> eventObjective(
       return value(totals.bonus, rank) + tie * other(bonus, rank);
     };
   };
-  final maxBonus = ptOnly
+  final maxBonus = (ptOnly || primaryOnly)
       ? _topFive([
               for (var i = 0; i < context.members.length; i++) memberBonus(i),
             ]) +

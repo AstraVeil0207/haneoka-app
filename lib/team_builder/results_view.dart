@@ -17,6 +17,7 @@ import 'box.dart';
 import 'build_tab.dart';
 import 'controller.dart';
 import 'engine/api.dart';
+import 'engine/execution.dart';
 import 'engine/live.dart' show orders;
 import 'engine_client.dart';
 import 'result_image.dart';
@@ -45,7 +46,10 @@ class _ResultsViewState extends State<ResultsView> {
 
   @override
   Widget build(BuildContext context) {
-    final results = c.results;
+    final activityResult =
+        c.resultSettings?.goal == GoalKind.event ||
+        c.resultSettings?.goal == GoalKind.plan;
+    final results = activityResult == c.activity ? c.results : null;
     final theme = Theme.of(context);
     final locale = c.state.text.locale;
     if (!identical(results, _shown)) {
@@ -91,17 +95,11 @@ class _ResultsViewState extends State<ResultsView> {
           ]
         : results.results;
     final proven = groups.isNotEmpty && groups.every((r) => r.proven);
+    final gap = proven ? null : improvementPercent(groups);
     final exact = results.results.fold(0, (sum, r) => sum + r.stats.exact);
-    final criterion = scoreGoals[settings.criterion] ?? scoreGoals['mean']!;
-    final proof =
-        settings.goal == GoalKind.score || settings.goal == GoalKind.gekiso
-        ? c.tb(
-            proven ? criterion.proven.$1 : criterion.unproven.$1,
-            proven ? criterion.proven.$2 : criterion.unproven.$2,
-          )
-        : proven
+    final proof = proven
         ? c.tb('proven', 'Proven optimal')
-        : c.tb('unproven', 'Time limit reached: best found so far');
+        : c.tb('recommendation', 'Recommendation');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -124,7 +122,14 @@ class _ResultsViewState extends State<ResultsView> {
                       : theme.colorScheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: 6),
-                Flexible(child: Text(proof, style: theme.textTheme.labelLarge)),
+                Flexible(
+                  child: Text(
+                    gap == null
+                        ? proof
+                        : '$proof · ${c.tb('improvementBound', 'Up to {percent}% improvement', {'percent': gap})}',
+                    style: theme.textTheme.labelLarge,
+                  ),
+                ),
               ],
             ),
             if (c.stale)
@@ -148,6 +153,17 @@ class _ResultsViewState extends State<ResultsView> {
                 ),
               ),
           ],
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: FilledButton.tonal(
+            onPressed: proven || c.stale || c.running
+                ? null
+                : () => c.run(resume: true),
+            child: Text(
+              c.tb('continueOptimal', 'Continue verifying optimality'),
+            ),
+          ),
         ),
         if (results.unknownCards.isNotEmpty) ...[
           const SizedBox(height: 8),
@@ -572,21 +588,25 @@ class _HitCardState extends State<_HitCard> {
                 ),
                 IconButton(
                   tooltip: c.tb('saveTeam', 'Save team'),
-                  onPressed: () {
-                    c.saveTeam(
-                      [for (final key in hit.members) cardIdOf(key)],
-                      [
-                        for (final key in hit.snaps)
-                          key == null ? null : cardIdOf(key),
-                      ],
-                      hit.song,
-                    );
-                    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                      SnackBar(
-                        content: Text(c.tb('savedTeam', 'Saved to Teams')),
-                      ),
-                    );
-                  },
+                  onPressed: c.stale
+                      ? null
+                      : () {
+                          c.saveTeam(
+                            [for (final key in hit.members) cardIdOf(key)],
+                            [
+                              for (final key in hit.snaps)
+                                key == null ? null : cardIdOf(key),
+                            ],
+                            hit.song,
+                          );
+                          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                c.tb('savedTeam', 'Saved to Teams'),
+                              ),
+                            ),
+                          );
+                        },
                   icon: const Icon(Symbols.bookmark_add_rounded),
                 ),
                 IconButton(

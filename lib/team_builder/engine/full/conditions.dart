@@ -874,6 +874,21 @@ class Performer {
        liveSkillCategories = const [],
        gekisouSkillCategories = const [];
 
+  Performer withMissionOnly(int? value) => Performer(
+    liveSkill: liveSkill,
+    supportSkills: supportSkills,
+    bandId: bandId,
+    characterId: characterId,
+    cardType: cardType,
+    tagIds: tagIds,
+    liveSkillCategories: liveSkillCategories,
+    gekisouSkillCategories: gekisouSkillCategories,
+    gekisouMissionType: gekisouMissionType,
+    gekisouSkill: gekisouSkill,
+    gekisouSupportSkills: gekisouSupportSkills,
+    missionOnly: value,
+  );
+
   /// This performer with another band and Gekisou support skills.
   Performer withSupport(int bandId, List<(int, int)> supports) => Performer(
     liveSkill: liveSkill,
