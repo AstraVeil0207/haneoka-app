@@ -11,6 +11,7 @@ import '../ui/app_image.dart';
 import '../ui/shapes.dart';
 import '../ui/theme.dart';
 import 'haneoka_account.dart';
+import 'profile_screen.dart';
 
 void _say(BuildContext context, String text) =>
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
@@ -149,6 +150,15 @@ class _HaneokaAccountCardState extends State<HaneokaAccountCard> {
                       icon: const Icon(Symbols.account_circle_rounded),
                       label: Text(t.openProfile),
                     ),
+                  FilledButton.tonalIcon(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const AccountProfileScreen(),
+                      ),
+                    ),
+                    icon: const Icon(Symbols.manage_accounts_rounded),
+                    label: Text(site('account.page.profile', 'Profile')),
+                  ),
                   OutlinedButton.icon(
                     onPressed: _busy ? null : () => _run(account.signOut),
                     icon: const Icon(Symbols.logout_rounded),

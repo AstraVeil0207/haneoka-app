@@ -73,6 +73,38 @@ class HaneokaAccount extends ChangeNotifier {
 
   bool get signedIn => _token != null && _user != null;
   Map<String, Object?>? get user => _user;
+
+  /// The haneoka profile (`/api/v1/account/profile`): display name, handle,
+  /// bio, public UID and its version.
+  Map<String, Object?>? profile;
+
+  /// Saves the profile's display name, handle and bio.
+  Future<void> updateProfile({
+    required String displayName,
+    String? handle,
+    String? bio,
+  }) async {
+    final body = await request(
+      'PATCH',
+      '/api/v1/account/profile',
+      body: {
+        'displayName': displayName.trim(),
+        'handle': (handle?.trim().isEmpty ?? true) ? null : handle!.trim(),
+        'bio': (bio?.trim().isEmpty ?? true) ? null : bio!.trim(),
+        'version': profile?['version'],
+      },
+    );
+    if ((body as Map?)?['profile'] case final Map updated) {
+      profile = updated.cast<String, Object?>();
+      _user = {
+        ...?_user,
+        if (updated['displayName'] case final String name when name.isNotEmpty)
+          'name': name,
+      };
+      notifyListeners();
+    }
+  }
+
   List<LinkedPlayer> get players => _players;
 
   /// The bearer header for requests made outside [request] (uploads).
@@ -116,6 +148,7 @@ class HaneokaAccount extends ChangeNotifier {
           '/api/v1/account/profile',
         ) as Map?)?['profile'];
         if (profile is Map) {
+          this.profile = profile.cast<String, Object?>();
           _user = {
             ..._user!,
             'uid': profile['publicUid'],
@@ -309,6 +342,7 @@ class HaneokaAccount extends ChangeNotifier {
   Future<void> _forget() async {
     _token = null;
     _user = null;
+    profile = null;
     _players = const [];
     try {
       await _storage.delete(key: _tokenKey);

@@ -20,7 +20,7 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 - [x] Website links open their native page (`openLink`)
 - [x] Global search (catalogue, stories, help in every language; community posts)
 - [x] About
-- [x] Account: imported game accounts kept on the device with a player profile · [x] haneoka sign-in through the website (every provider, PKCE handoff, bearer session in secure storage) · [ ] profile editing and account lifecycle in the app
+- [x] Account: imported game accounts kept on the device with a player profile · [x] haneoka sign-in through the website (every provider, PKCE handoff, bearer session in secure storage) · [x] profile (display name, handle, bio) and sign-in sessions with revoke · [ ] avatar upload and account deletion stay on the website's account page
 - [x] Game account binding: link an imported player to the haneoka account (public or private), update its summary, unlink; stored in `community_game_account` with a summary snapshot; the website's public profile shows server, player ID, rank and rating
 - [x] haneoka.org links open in the app on Android (verified App Links)
 
