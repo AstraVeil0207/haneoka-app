@@ -98,7 +98,7 @@ if(NOT LIBMPV_SRC_VALID)
   message(STATUS "Extracting ${LIBMPV}...")
   make_directory("${LIBMPV_SRC}")
   add_custom_target("${PROJECT_NAME}_LIBMPV_EXTRACT" ALL)
-  
+
   if(SEVENZ_EXECUTABLE)
     message(STATUS "Using 7zip for extraction: ${SEVENZ_EXECUTABLE}")
     add_custom_command(
@@ -150,7 +150,7 @@ if(NOT ANGLE_SRC_VALID)
   message(STATUS "Extracting ${ANGLE}...")
   make_directory("${ANGLE_SRC}")
   add_custom_target("${PROJECT_NAME}_ANGLE_EXTRACT" ALL)
-  
+
   if(SEVENZ_EXECUTABLE)
     message(STATUS "Using 7zip for extraction: ${SEVENZ_EXECUTABLE}")
     add_custom_command(

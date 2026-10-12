@@ -99,7 +99,7 @@ def main():
         ET.SubElement(settings, f'{{{namespace}}}OnLaunch', HoursBetweenUpdateChecks='24', ShowPrompt='true', UpdateBlocksActivation='false')
         ET.SubElement(settings, f'{{{namespace}}}AutomaticBackgroundTask')
         ET.ElementTree(installer).write(folder / f'haneoka-windows-{arch}.appinstaller', encoding='utf-8', xml_declaration=True)
-    dmg = 'haneoka-macos.dmg' 
+    dmg = 'haneoka-macos.dmg'
     if dmg in files:
         (folder / 'haneoka.rb').write_text(f'''cask "haneoka" do
   version "{args.version}"
