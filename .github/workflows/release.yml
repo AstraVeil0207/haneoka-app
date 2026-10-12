@@ -9,7 +9,7 @@ on:
         description: Platform to build
         type: choice
         default: all
-        options: [all, android, linux, windows, apple]
+        options: [all, android, linux, windows, apple, macos, ios]
 
 permissions:
   contents: write
@@ -256,20 +256,10 @@ jobs:
           path: dist/*
 
   apple:
-    if: github.event_name != 'workflow_dispatch' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'apple'
+    if: github.event_name != 'workflow_dispatch' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'apple' || github.event.inputs.platform == 'macos' || github.event.inputs.platform == 'ios'
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - kind: macos
-            arch: x64
-            runner: macos-26-intel
-          - kind: macos
-            arch: arm64
-            runner: macos-26
-          - kind: ios
-            arch: arm64
-            runner: macos-26
+      matrix: ${{ fromJSON(github.event.inputs.platform == 'ios' && '{"include":[{"kind":"ios","arch":"arm64","runner":"macos-26"}]}' || github.event.inputs.platform == 'macos' && '{"include":[{"kind":"macos","arch":"x64","runner":"macos-26-intel"},{"kind":"macos","arch":"arm64","runner":"macos-26"}]}' || '{"include":[{"kind":"macos","arch":"x64","runner":"macos-26-intel"},{"kind":"macos","arch":"arm64","runner":"macos-26"},{"kind":"ios","arch":"arm64","runner":"macos-26"}]}') }}
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -308,7 +298,7 @@ jobs:
         if: matrix.kind == 'ios'
         run: |
           brew install ldid
-          mkdir -p build/ios-packages/standard/Payload build/ios-packages/trollstore/Payload
+          mkdir -p dist build/ios-packages/standard/Payload build/ios-packages/trollstore/Payload
           ditto build/ios/iphoneos/Runner.app build/ios-packages/standard/Payload/Runner.app
           ditto build/ios/iphoneos/Runner.app build/ios-packages/trollstore/Payload/Runner.app
           (cd build/ios-packages/standard && zip -qry "$GITHUB_WORKSPACE/dist/haneoka-ios-unsigned.ipa" Payload)

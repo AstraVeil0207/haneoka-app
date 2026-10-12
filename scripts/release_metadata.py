@@ -42,7 +42,7 @@ def main():
                   'apps': [{'name': 'Haneoka', 'bundleIdentifier': info['CFBundleIdentifier'],
                             'developerName': 'Haneoka contributors', 'category': 'utilities',
                             'appPermissions': permissions,
-                            'localizedDescription': 'Our Notes catalogue, community and local save reader. Standard iOS installs import files or exported archives. Private game containers require the separate privileged build.',
+                            'localizedDescription': 'Our Notes catalogue, community and local save reader. Standard iOS installs import saves or backups exported on a computer. Private game containers require the separate privileged build.',
                             'iconURL': f'https://raw.githubusercontent.com/{args.repository}/v{args.version}/assets/brand/android-chrome-512x512.png',
                             'versions': [{'version': args.version, 'buildVersion': args.build_number,
                                           'date': datetime.now(timezone.utc).isoformat(),
