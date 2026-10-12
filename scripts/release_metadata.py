@@ -99,12 +99,14 @@ def main():
         ET.SubElement(settings, f'{{{namespace}}}OnLaunch', HoursBetweenUpdateChecks='24', ShowPrompt='true', UpdateBlocksActivation='false')
         ET.SubElement(settings, f'{{{namespace}}}AutomaticBackgroundTask')
         ET.ElementTree(installer).write(folder / f'haneoka-windows-{arch}.appinstaller', encoding='utf-8', xml_declaration=True)
-    dmg = 'haneoka-macos.dmg'
-    if dmg in files:
+    mac_arm = 'haneoka-macos-arm64.dmg'
+    mac_intel = 'haneoka-macos-x64.dmg'
+    if mac_arm in files and mac_intel in files:
         (folder / 'haneoka.rb').write_text(f'''cask "haneoka" do
+  arch arm: "arm64", intel: "x64"
   version "{args.version}"
-  sha256 "{hashes[dmg]}"
-  url "{base}{dmg}"
+  sha256 arm: "{hashes[mac_arm]}", intel: "{hashes[mac_intel]}"
+  url "{base}haneoka-macos-#{{arch}}.dmg"
   name "Haneoka"
   desc "Our Notes catalogue and save reader"
   homepage "https://haneoka.org"

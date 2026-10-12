@@ -16,7 +16,7 @@ claim that its installer has already been published or verified on a device.
 | --- | --- | --- |
 | Android 8+ | ARM32, ARM64, x86-64 | universal APK, APK per ABI, AAB |
 | Windows 10+ | x64, ARM64 | EXE installer, MSI installer, portable ZIP, MSIX |
-| macOS 12+ | Intel and Apple Silicon | universal app ZIP, DMG, PKG |
+| macOS 12+ | Intel x64 and Apple Silicon ARM64 | separate ZIP, DMG, PKG for each architecture |
 | Linux with glibc | x64, ARM64 | DEB, RPM, Arch package, AppImage, Snap, Flatpak, tar.gz |
 | iOS 15+ | ARM64 iPhone/iPad | standard unsigned IPA; separate TrollStore TIPA |
 

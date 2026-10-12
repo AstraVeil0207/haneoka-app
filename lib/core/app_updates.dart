@@ -105,6 +105,9 @@ class AppUpdates extends ChangeNotifier {
               'haneoka-windows-$arch.zip',
             ],
             'macos' => [
+              'haneoka-macos-$arch.dmg',
+              'haneoka-macos-$arch.pkg',
+              'haneoka-macos-$arch.zip',
               'haneoka-macos.dmg',
               'haneoka-macos.pkg',
               'haneoka-macos.zip',

@@ -257,13 +257,27 @@ jobs:
 
   apple:
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'apple'
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - kind: macos
+            arch: x64
+            runner: macos-26-intel
+          - kind: macos
+            arch: arm64
+            runner: macos-26
+          - kind: ios
+            arch: arm64
+            runner: macos-26
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
+          architecture: ${{ matrix.arch }}
           cache: true
       - name: Version
         shell: bash
@@ -271,16 +285,27 @@ jobs:
           version=$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; fi
           echo "APP_VERSION=$version" >> "$GITHUB_ENV"
-      - run: flutter build macos --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ github.run_number }}"
-      - name: Bundle ADB
+      - name: Configure native macOS architecture
+        if: matrix.kind == 'macos'
         run: |
-          python3 scripts/bundle_adb.py --platform darwin --arch universal --dest build/macos/Build/Products/Release/haneoka.app/Contents/Resources/tools/adb
-          codesign --force --deep --sign - build/macos/Build/Products/Release/haneoka.app
-          lipo build/macos/Build/Products/Release/haneoka.app/Contents/MacOS/haneoka -verify_arch x86_64 arm64
+          if [[ "${{ matrix.arch }}" == "arm64" ]]; then
+            flutter config --enable-macos-arm64-only
+          else
+            printf '\nARCHS = x86_64\nEXCLUDED_ARCHS = arm64\n' >> macos/Runner/Configs/Release.xcconfig
+          fi
+      - if: matrix.kind == 'macos'
+        run: flutter build macos --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ github.run_number }}"
+      - name: Bundle ADB
+        if: matrix.kind == 'macos'
+        run: |
+          python3 scripts/bundle_adb.py --platform darwin --arch ${{ matrix.arch }} --dest build/macos/Build/Products/Release/haneoka.app/Contents/Resources/tools/adb
       - name: Installers
-        run: bash scripts/package_macos.sh build/macos/Build/Products/Release/haneoka.app "$APP_VERSION" dist
-      - run: flutter build ios --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ github.run_number }}" --no-codesign
+        if: matrix.kind == 'macos'
+        run: bash scripts/package_macos.sh build/macos/Build/Products/Release/haneoka.app "$APP_VERSION" ${{ matrix.arch }} dist
+      - if: matrix.kind == 'ios'
+        run: flutter build ios --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ github.run_number }}" --no-codesign
       - name: iOS standard and privileged packages
+        if: matrix.kind == 'ios'
         run: |
           brew install ldid
           mkdir -p build/ios-packages/standard/Payload build/ios-packages/trollstore/Payload
@@ -291,7 +316,7 @@ jobs:
           (cd build/ios-packages/trollstore && zip -qry "$GITHUB_WORKSPACE/dist/haneoka-ios-trollstore.tipa" Payload)
       - uses: actions/upload-artifact@v4
         with:
-          name: apple
+          name: apple-${{ matrix.kind }}-${{ matrix.arch }}
           path: dist/*
 
   release:
