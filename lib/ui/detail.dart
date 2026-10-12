@@ -366,10 +366,18 @@ class DifficultyChips extends StatelessWidget {
 /// One gallery entry: its address, its caption, and whether the reading
 /// locale's own variant is tried first.
 class GalleryImage {
-  const GalleryImage(this.url, this.label, {this.localized = true});
+  const GalleryImage(
+    this.url,
+    this.label, {
+    this.localized = true,
+    this.player,
+  });
   final String url;
   final String label;
   final bool localized;
+
+  /// A moving entry (the animated card's movie); [url] is its poster.
+  final WidgetBuilder? player;
 }
 
 class ImageGallery extends StatefulWidget {
@@ -491,13 +499,15 @@ class _ImageGalleryState extends State<ImageGallery> {
                                       ),
                                     )
                                   : BorderRadius.zero,
-                              child: AppImage(
-                                candidates: [entry.url],
-                                localized: entry.localized,
-                                fit: widget.natural
-                                    ? BoxFit.cover
-                                    : BoxFit.contain,
-                              ),
+                              child: entry.player != null
+                                  ? entry.player!(context)
+                                  : AppImage(
+                                      candidates: [entry.url],
+                                      localized: entry.localized,
+                                      fit: widget.natural
+                                          ? BoxFit.cover
+                                          : BoxFit.contain,
+                                    ),
                             ),
                           ),
                         ),

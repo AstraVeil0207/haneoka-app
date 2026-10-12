@@ -1,4 +1,5 @@
 import '../core/i18n.dart';
+import 'card_movie.dart';
 import '../ui/detail.dart';
 import 'character_art.g.dart';
 import 'profiles.dart';
@@ -61,6 +62,37 @@ const _languageNames = {
     return preferred ?? tileImage;
   }
 
+  // The animated card's gacha movie, directly left of the default still
+  // (`cardMovieGalleryEntries`).
+  final movies = (item['movies'] as Map?) ?? const {};
+  String? clip(String key) => str((movies[key] as Map?)?['playableUrl']);
+  final clips = [
+    if (clip('gacha') case final url?)
+      (url: asset(url), loop: false, backdrop: false),
+    if (clip('showcase') case final url?)
+      (url: asset(url), loop: false, backdrop: false),
+    if (clip('gachaIntro') case final url?)
+      (url: asset(url), loop: false, backdrop: true),
+    if (clip('showcaseLoop') case final url?)
+      (url: asset(url), loop: true, backdrop: true),
+  ];
+  final poster = str(images['thumbnail']) ?? str(images['full']);
+  final movie =
+      kind == Presentation.member && clips.length >= 2 && poster != null
+      ? GalleryImage(
+          asset(poster),
+          t('catalog.cards.fields.cardMovieGacha', 'Gacha movie'),
+          localized: false,
+          player: (_) => CardMovie(
+            clips: clips,
+            background: switch (str(images['background'])) {
+              final path? => asset(path),
+              null => null,
+            },
+            poster: asset(poster),
+          ),
+        )
+      : null;
   final entries = <(String id, String label, String? source)>[
     ...switch (kind) {
       Presentation.member => [
@@ -138,9 +170,11 @@ const _languageNames = {
       out.add((id, GalleryImage(asset(source), label)));
     }
   }
+  if (movie != null) out.insert(0, ('movie:gacha', movie));
   // The full art leads in the reading locale, else in Japanese.
   var active = out.indexWhere((e) => e.$1 == 'full:$localeTag');
   if (active < 0) active = out.indexWhere((e) => e.$1 == 'full:ja');
+  if (active < 0) active = out.indexWhere((e) => e.$1 == 'full');
   if (active < 0) active = 0;
   return ([for (final (_, image) in out) image], active);
 }
