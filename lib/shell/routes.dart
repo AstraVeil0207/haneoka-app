@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../about/about_screen.dart';
+import '../about/legal_screen.dart';
 import '../games/song_guess.dart';
 import '../games/song_puzzle.dart';
 import '../games/sonolus_screen.dart';
@@ -116,6 +117,8 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
     return StoredPlayerScreen(server: m[1]!, profileId: m[2]!);
   }
   if (route == '/about') return const AboutScreen();
+  if (route == '/privacy') return const LegalScreen('privacy');
+  if (route == '/terms') return const LegalScreen('terms');
   if (route == '/song-progress') return const SongProgressScreen();
   if (route == '/catalog/help') return const HelpScreen();
   if (route == '/search') return const SearchScreen();

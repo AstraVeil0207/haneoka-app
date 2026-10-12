@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../catalog/visuals.dart';
 import '../core/app_state.dart';
 import '../ui/schemes.g.dart';
 import '../ui/theme.dart';
 import '../ui/tile.dart';
+import 'links.dart';
 import 'page.dart';
 
 /// One choice in a settings group (`SettingsOption.astro`): a 56 dp face with
@@ -502,16 +502,6 @@ class _About extends StatelessWidget {
           future: PackageInfo.fromPlatform(),
           builder: (context, snapshot) {
             final version = snapshot.data;
-            Widget link(IconData icon, String label, String url) => ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(icon),
-              title: Text(label),
-              trailing: const Icon(Symbols.open_in_new_rounded, size: 20),
-              onTap: () => launchUrl(
-                Uri.parse(url),
-                mode: LaunchMode.externalApplication,
-              ),
-            );
             return Column(
               children: [
                 ListTile(
@@ -525,16 +515,17 @@ class _About extends StatelessWidget {
                     version == null ? 'haneoka' : 'haneoka ${version.version}',
                   ),
                 ),
-                link(
-                  Symbols.policy_rounded,
-                  t('legal.privacy.title', 'Privacy'),
-                  'https://haneoka.org/${t.locale}/privacy/',
-                ),
-                link(
-                  Symbols.gavel_rounded,
-                  t('legal.terms.title', 'Terms'),
-                  'https://haneoka.org/${t.locale}/terms/',
-                ),
+                for (final (icon, key, route) in const [
+                  (Symbols.policy_rounded, 'legal.privacy.title', '/privacy'),
+                  (Symbols.gavel_rounded, 'legal.terms.title', '/terms'),
+                ])
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(icon),
+                    title: Text(t(key)),
+                    trailing: const Icon(Symbols.chevron_right_rounded),
+                    onTap: () => openLink(context, route),
+                  ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: const Icon(Symbols.license_rounded),

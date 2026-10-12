@@ -1,8 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../core/app_state.dart';
 import '../core/audio.dart';
@@ -249,6 +250,20 @@ class _SourceScreenState extends State<_SourceScreen> {
         : '';
   }
 
+  /// Saves the file where the reader chooses.
+  Future<void> _download(String file) async {
+    final response = await netClient.get(Uri.parse(_url(file)));
+    if (response.statusCode != 200) return;
+    final bytes = response.bodyBytes;
+    final path = await FilePicker.platform.saveFile(
+      fileName: file.split('/').last,
+      bytes: bytes,
+    );
+    if (path != null && !(Platform.isAndroid || Platform.isIOS)) {
+      await File(path).writeAsBytes(bytes);
+    }
+  }
+
   static String _kind(String file) {
     final ext = file.split('.').last.toLowerCase();
     if (const {'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'}.contains(ext)) {
@@ -310,10 +325,7 @@ class _SourceScreenState extends State<_SourceScreen> {
                     tooltip: t('common.actions.download', 'Download'),
                     onPressed: _url(file).isEmpty
                         ? null
-                        : () => launchUrl(
-                            Uri.parse(_url(file)),
-                            mode: LaunchMode.externalApplication,
-                          ),
+                        : () => _download(file),
                     icon: const Icon(Symbols.download_rounded),
                   ),
                   onTap: () => setState(() => _selected = file),

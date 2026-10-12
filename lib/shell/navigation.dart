@@ -404,4 +404,11 @@ Iterable<NavItem> get allNavItems sync* {
     yield* walk(section.items);
   }
   yield* utilityItems;
+  // Linked from Settings and sign-up, not from the drawer.
+  yield const NavItem(
+    '/privacy',
+    'legal.privacy.title',
+    Symbols.policy_rounded,
+  );
+  yield const NavItem('/terms', 'legal.terms.title', Symbols.gavel_rounded);
 }

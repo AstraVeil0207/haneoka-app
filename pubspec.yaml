@@ -53,6 +53,7 @@ flutter:
   assets:
     - assets/i18n/
     - assets/brand/
+    - assets/brand/oauth/
     - assets/settings/
   fonts:
     - family: Roboto

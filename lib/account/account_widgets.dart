@@ -12,26 +12,13 @@ import '../ui/shapes.dart';
 import '../ui/theme.dart';
 import 'haneoka_account.dart';
 import 'profile_screen.dart';
+import 'sign_in_screen.dart';
 
 void _say(BuildContext context, String text) =>
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
 
-/// Signs in through the website and reports a failure in a snackbar.
-Future<void> signInToHaneoka(BuildContext context) async {
-  final t = AppLocalizations.of(context);
-  final locale = AppScope.of(context).text.locale;
-  try {
-    await HaneokaAccount.instance.signIn(locale);
-  } on AccountError catch (error) {
-    if (!context.mounted ||
-        {'cancelled', 'access_denied'}.contains(error.code)) {
-      return;
-    }
-    _say(context, t.signInFailed);
-  } catch (_) {
-    if (context.mounted) _say(context, t.signInFailed);
-  }
-}
+/// Opens the native sign-in screen.
+Future<void> signInToHaneoka(BuildContext context) => openSignIn(context);
 
 class _Avatar extends StatelessWidget {
   const _Avatar({required this.image});

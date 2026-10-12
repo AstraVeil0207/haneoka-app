@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 import 'package:intl/intl.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../core/app_state.dart';
 import '../core/i18n.dart';
+import '../shell/links.dart';
 import '../shell/page.dart';
 import '../ui/app_image.dart';
 import '../ui/detail.dart';
@@ -341,10 +341,8 @@ class _AnnouncementScreenState extends State<AnnouncementScreen> {
                 HtmlWidget(
                   body,
                   textStyle: theme.textTheme.bodyLarge,
-                  onTapUrl: (url) => launchUrl(
-                    Uri.parse(url),
-                    mode: LaunchMode.externalApplication,
-                  ),
+                  // haneoka.org addresses open their native page.
+                  onTapUrl: (url) => openLink(context, url),
                 ),
             ],
           );

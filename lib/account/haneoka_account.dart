@@ -170,7 +170,69 @@ class HaneokaAccount extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> signIn(String locale) async {
+  /// The sign-in methods the website offers (`/api/v1/account/config`).
+  Future<({bool available, bool signUp, List<String> providers})>
+  config() async {
+    final body = objectOf(
+      await request('GET', '/api/v1/account/config', authorized: false),
+    );
+    return (
+      available: body['available'] != false,
+      signUp:
+          body['emailSignUpEnabled'] != false &&
+          body['emailDeliveryEnabled'] != false,
+      providers: [
+        for (final provider in body['providers'] as List? ?? const [])
+          '$provider',
+      ],
+    );
+  }
+
+  /// Email and password sign-in, straight against the website's account
+  /// service; the session it returns is this app's bearer session.
+  Future<void> signInWithEmail(String email, String password) async {
+    final body = objectOf(
+      await request(
+        'POST',
+        '/api/auth/sign-in/email',
+        body: {'email': email, 'password': password, 'rememberMe': true},
+        authorized: false,
+      ),
+    );
+    final session = body['token'];
+    if (session is! String) throw const AccountError('invalid_grant');
+    await _useSession(session);
+  }
+
+  /// Email-only registration: the website mails a link to set the password.
+  Future<void> register(String email) => request(
+    'POST',
+    '/api/v1/account/register',
+    body: {'email': email},
+    authorized: false,
+  );
+
+  Future<void> requestPasswordReset(String email) => request(
+    'POST',
+    '/api/auth/request-password-reset',
+    body: {'email': email, 'redirectTo': '/account/reset-password'},
+    authorized: false,
+  );
+
+  Future<void> _useSession(String session) async {
+    _token = session;
+    try {
+      await _storage.write(key: _tokenKey, value: session);
+    } catch (_) {
+      // Without a keychain the session lasts until the app closes.
+    }
+    await refresh();
+  }
+
+  /// Provider sign-in: the provider's own page opens in the system browser
+  /// and hands a one-time code back to the app (PKCE), with no website page
+  /// in between.
+  Future<void> signInWithProvider(String provider) async {
     final random = Random.secure();
     String token(int bytes) => base64Url
         .encode(List.generate(bytes, (_) => random.nextInt(256)))
@@ -214,11 +276,9 @@ class HaneokaAccount extends ChangeNotifier {
     final Uri result;
     try {
       final opened = await launchUrl(
-        Uri.parse('$_origin/$locale/account/app/')
-            .replace(queryParameters: query),
-        mode: Platform.isAndroid || Platform.isIOS
-            ? LaunchMode.inAppBrowserView
-            : LaunchMode.externalApplication,
+        Uri.parse('$_origin/api/v1/account/app/oauth')
+            .replace(queryParameters: {...query, 'provider': provider}),
+        mode: LaunchMode.externalApplication,
       );
       if (!opened) throw const AccountError('cancelled');
       result = await returned.future.timeout(const Duration(minutes: 10));
@@ -227,7 +287,6 @@ class HaneokaAccount extends ChangeNotifier {
     } finally {
       await links?.cancel();
       await loopback?.close(force: true);
-      if (Platform.isIOS) unawaited(closeInAppWebView().catchError((_) {}));
     }
     final callback = result.queryParameters;
     if (callback['state'] != state) throw const AccountError('invalid_state');
@@ -241,13 +300,7 @@ class HaneokaAccount extends ChangeNotifier {
     );
     final session = (body as Map?)?['token'];
     if (session is! String) throw const AccountError('invalid_grant');
-    _token = session;
-    try {
-      await _storage.write(key: _tokenKey, value: session);
-    } catch (_) {
-      // Without a keychain the session lasts until the app closes.
-    }
-    await refresh();
+    await _useSession(session);
   }
 
   Future<void> signOut() async {
@@ -372,11 +425,20 @@ class HaneokaAccount extends ChangeNotifier {
     );
     final text = utf8.decode(response.bodyBytes);
     final json = text.isEmpty ? null : jsonDecode(text);
-    if (response.statusCode == 401) throw const AccountError('unauthenticated');
     if (response.statusCode >= 400) {
+      // Haneoka's API nests `{error: {code}}`; the account service answers
+      // `{code, message}`.
       final error = (json as Map?)?['error'];
+      final code = error is Map ? error['code'] : json?['code'];
+      if (response.statusCode == 401 && (code == null || error is Map)) {
+        throw const AccountError('unauthenticated');
+      }
       throw AccountError(
-        error is Map ? '${error['code']}' : 'http_${response.statusCode}',
+        code != null
+            ? '$code'
+            : response.statusCode == 429
+            ? 'too_many_requests'
+            : 'http_${response.statusCode}',
       );
     }
     return json;
@@ -387,3 +449,6 @@ class HaneokaAccount extends ChangeNotifier {
       .encode(sha256.convert(ascii.encode(verifier)).bytes)
       .replaceAll('=', '');
 }
+
+Map<String, Object?> objectOf(Object? value) =>
+    value is Map ? value.cast<String, Object?>() : const {};
