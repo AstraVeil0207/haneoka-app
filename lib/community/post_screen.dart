@@ -940,7 +940,12 @@ class _EngagementBar extends StatelessWidget {
 
 /// Writing a comment or reply (`renderCommentComposer`).
 class CommentComposer extends StatefulWidget {
-  const CommentComposer({required this.postPath, this.replyTo, this.replyName});
+  const CommentComposer({
+    super.key,
+    required this.postPath,
+    this.replyTo,
+    this.replyName,
+  });
   final String postPath;
   final Json? replyTo;
   final String? replyName;

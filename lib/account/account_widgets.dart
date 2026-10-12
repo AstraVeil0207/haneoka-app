@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:material_new_shapes/material_new_shapes.dart';
 import 'package:material_symbols_icons/symbols.dart';
@@ -22,10 +21,6 @@ Future<void> signInToHaneoka(BuildContext context) async {
   final locale = AppScope.of(context).text.locale;
   try {
     await HaneokaAccount.instance.signIn(locale);
-  } on PlatformException catch (error) {
-    // Closing the browser is not an error.
-    if (error.code == 'CANCELED' || !context.mounted) return;
-    _say(context, t.signInFailed);
   } on AccountError catch (error) {
     if (!context.mounted ||
         {'cancelled', 'access_denied'}.contains(error.code)) {

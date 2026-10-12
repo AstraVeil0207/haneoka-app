@@ -91,8 +91,9 @@ import 'reactions.dart';
       return null;
     }
     if (resource == 'shop' && item['sourceTable'] != 'MasterShop') return null;
-    if (resource == 'tgw-card' && item['sourceTable'] != 'MasterVip')
+    if (resource == 'tgw-card' && item['sourceTable'] != 'MasterVip') {
       return null;
+    }
     id = decimal(item[resource == 'tgw-card' ? 'rank' : 'id']);
   } else {
     return null;

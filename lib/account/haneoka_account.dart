@@ -1,12 +1,14 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:app_links/app_links.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/net.dart';
 import '../save/game_save.dart';
@@ -144,22 +146,57 @@ class HaneokaAccount extends ChangeNotifier {
     final state = token(16);
     final challenge = challengeOf(verifier);
     final query = <String, String>{'challenge': challenge, 'state': state};
-    var scheme = 'haneoka';
-    // Desktop builds receive the code on a loopback listener (RFC 8252).
-    if (Platform.isLinux || Platform.isWindows) {
-      final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
-      final port = socket.port;
-      await socket.close();
-      scheme = 'http://127.0.0.1:$port';
-      query['redirect'] = '$scheme/auth';
+    final returned = Completer<Uri>();
+    HttpServer? loopback;
+    StreamSubscription<Uri>? links;
+    if (Platform.isAndroid || Platform.isIOS) {
+      // The website hands the code back to `haneoka://auth`.
+      links = AppLinks().uriLinkStream.listen((uri) {
+        if (uri.scheme == 'haneoka' &&
+            uri.host == 'auth' &&
+            !returned.isCompleted) {
+          returned.complete(uri);
+        }
+      });
+    } else {
+      // Desktop builds receive it on a loopback listener (RFC 8252).
+      loopback = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      query['redirect'] = 'http://127.0.0.1:${loopback.port}/auth';
+      loopback.listen((request) async {
+        if (request.uri.path != '/auth') {
+          request.response.statusCode = HttpStatus.notFound;
+          await request.response.close();
+          return;
+        }
+        request.response.headers.contentType = ContentType.html;
+        request.response.write(
+          '<!doctype html><meta charset="utf-8"><title>Haneoka</title>'
+          '<body style="font:16px system-ui;text-align:center;padding:48px">'
+          '&#10003;</body>',
+        );
+        await request.response.close();
+        if (!returned.isCompleted) returned.complete(request.uri);
+      });
     }
-    final result = await FlutterWebAuth2.authenticate(
-      url: Uri.parse('$_origin/$locale/account/app/')
-          .replace(queryParameters: query)
-          .toString(),
-      callbackUrlScheme: scheme,
-    );
-    final callback = Uri.parse(result).queryParameters;
+    final Uri result;
+    try {
+      final opened = await launchUrl(
+        Uri.parse('$_origin/$locale/account/app/')
+            .replace(queryParameters: query),
+        mode: Platform.isAndroid || Platform.isIOS
+            ? LaunchMode.inAppBrowserView
+            : LaunchMode.externalApplication,
+      );
+      if (!opened) throw const AccountError('cancelled');
+      result = await returned.future.timeout(const Duration(minutes: 10));
+    } on TimeoutException {
+      throw const AccountError('cancelled');
+    } finally {
+      await links?.cancel();
+      await loopback?.close(force: true);
+      if (Platform.isIOS) unawaited(closeInAppWebView().catchError((_) {}));
+    }
+    final callback = result.queryParameters;
     if (callback['state'] != state) throw const AccountError('invalid_state');
     final code = callback['code'];
     if (code == null) throw AccountError(callback['error'] ?? 'cancelled');

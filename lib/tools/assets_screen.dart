@@ -147,8 +147,9 @@ class _AssetsScreenState extends State<AssetsScreen> {
                   walk(entry.value! as Map, next);
                 } else {
                   final label = [...parts, entry.label].join('/');
-                  if (label.toLowerCase().contains(_query))
+                  if (label.toLowerCase().contains(_query)) {
                     hits.add((next, label));
+                  }
                 }
               }
             }
@@ -250,12 +251,14 @@ class _SourceScreenState extends State<_SourceScreen> {
 
   static String _kind(String file) {
     final ext = file.split('.').last.toLowerCase();
-    if (const {'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'}.contains(ext))
+    if (const {'png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'}.contains(ext)) {
       return 'image';
+    }
     if (const {'mp3', 'wav', 'ogg', 'm4a'}.contains(ext)) return 'audio';
     if (const {'mp4', 'webm'}.contains(ext)) return 'video';
-    if (const {'json', 'txt', 'xml', 'csv', 'md', 'atlas'}.contains(ext))
+    if (const {'json', 'txt', 'xml', 'csv', 'md', 'atlas'}.contains(ext)) {
       return 'text';
+    }
     return 'binary';
   }
 
