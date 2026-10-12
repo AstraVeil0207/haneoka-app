@@ -14,6 +14,7 @@ import 'catalog.dart';
 import 'data.dart';
 import 'engine/api.dart';
 import 'engine/box.dart';
+import 'engine/full/play.dart' show Accuracy;
 import 'engine/live.dart';
 import 'engine/master.dart';
 import 'engine/num.dart';
@@ -199,7 +200,18 @@ class TeamBuilderController extends ChangeNotifier {
             ? null
             : ScoreGoal(s.songs, criterion, play, challengeId);
       case GoalKind.gekiso:
-        return null;
+        return s.songs.isEmpty
+            ? null
+            : GekisoGoal(
+                songs: s.songs,
+                criterion: criterion,
+                accuracy: Accuracy(
+                  great: s.allPerfect ? 0 : s.great / 100,
+                  just: s.just / 100,
+                  missEvery: s.allPerfect ? 0 : s.missEvery,
+                ),
+                rank: s.gekisoRank,
+              );
       case GoalKind.event:
         if (s.eventId == null) return null;
         if (s.route != 'skip' && s.songs.isEmpty) return null;

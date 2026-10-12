@@ -224,14 +224,16 @@ class BoxStore extends ChangeNotifier {
     if (!_ownerKnown) return Future.value();
     if (_dirty) return _writing;
     _dirty = true;
-    return _writing = _writing.then((_) async {
-      _dirty = false;
-      final file = await _file(_owner);
-      await file.parent.create(recursive: true);
-      final temp = File('${file.path}.tmp');
-      await temp.writeAsString(jsonEncode(_replica.toJson()));
-      await temp.rename(file.path);
-    }).catchError((Object _) {});
+    return _writing = _writing
+        .then((_) async {
+          _dirty = false;
+          final file = await _file(_owner);
+          await file.parent.create(recursive: true);
+          final temp = File('${file.path}.tmp');
+          await temp.writeAsString(jsonEncode(_replica.toJson()));
+          await temp.rename(file.path);
+        })
+        .catchError((Object _) {});
   }
 
   void _observe(int time) => _clock = math.max(_clock, time);

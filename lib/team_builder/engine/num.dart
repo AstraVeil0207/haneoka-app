@@ -91,3 +91,13 @@ double maxOf(Iterable<num> values, [double start = -inf]) {
   }
   return best;
 }
+
+/// A stable sort, as `Array.prototype.sort` is.
+List<T> stableSorted<T>(Iterable<T> items, int Function(T a, T b) compare) {
+  final indexed = [for (final (i, v) in items.indexed) (i, v)];
+  indexed.sort((a, b) {
+    final d = compare(a.$2, b.$2);
+    return d != 0 ? d : a.$1 - b.$1;
+  });
+  return [for (final (_, v) in indexed) v];
+}

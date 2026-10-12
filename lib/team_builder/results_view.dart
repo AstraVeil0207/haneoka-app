@@ -90,7 +90,8 @@ class _ResultsViewState extends State<ResultsView> {
     final proven = groups.isNotEmpty && groups.every((r) => r.proven);
     final exact = results.results.fold(0, (sum, r) => sum + r.stats.exact);
     final criterion = scoreGoals[settings.criterion] ?? scoreGoals['mean']!;
-    final proof = settings.goal == GoalKind.score
+    final proof =
+        settings.goal == GoalKind.score || settings.goal == GoalKind.gekiso
         ? c.tb(
             proven ? criterion.proven.$1 : criterion.unproven.$1,
             proven ? criterion.proven.$2 : criterion.unproven.$2,
@@ -426,7 +427,8 @@ class _HitCardState extends State<_HitCard> {
           value: formatNumber(locale, hit.power),
         ),
       if (hit.score case final score?) ...[
-        if (s.goal != GoalKind.score || s.criterion != 'mean')
+        if ((s.goal != GoalKind.score && s.goal != GoalKind.gekiso) ||
+            s.criterion != 'mean')
           ValueChip(
             label: c.tb('expectedScore', 'Average score'),
             value: formatNumber(locale, score.mean),

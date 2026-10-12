@@ -76,6 +76,24 @@ class SkillEffectRow {
       targetIds = idsOf(row['skillTargetIDs'] ?? row['targetIds']),
       limitCount = intOf(row['effectLimitCount']),
       maxValue = intOf(row['maxEffectValue']);
+  SkillEffectRow._copy(SkillEffectRow o, {int? id, int? level, int? value})
+    : id = id ?? o.id,
+      level = level ?? o.level,
+      triggerType = o.triggerType,
+      executeLimit = o.executeLimit,
+      resetGroup = o.resetGroup,
+      type = o.type,
+      value = value ?? o.value,
+      seconds = o.seconds,
+      conditionGroup = o.conditionGroup,
+      triggerGroup = o.triggerGroup,
+      releaseGroup = o.releaseGroup,
+      cumulativeId = o.cumulativeId,
+      targetIds = o.targetIds,
+      limitCount = o.limitCount,
+      maxValue = o.maxValue;
+  SkillEffectRow copyWith({int? id, int? level, int? value}) =>
+      SkillEffectRow._copy(this, id: id, level: level, value: value);
   final int id;
   final int level;
 
@@ -314,6 +332,24 @@ class BoostRow {
   final double rewardRate;
 }
 
+class GekisouTables {
+  GekisouTables({
+    required this.luckBasePoints,
+    required this.luckBonusLots,
+    required this.rankingBonuses,
+    required this.gaugeMax,
+    required this.gaugeMaxRush,
+    required this.rushPercent,
+  });
+  final List<({int category, int judgement, int weight, int point})>
+  luckBasePoints;
+  final List<({int lotType, int result, int weight})> luckBonusLots;
+  final List<({int pattern, int count, int rank, int percent})> rankingBonuses;
+  final int gaugeMax;
+  final int gaugeMaxRush;
+  final int rushPercent;
+}
+
 class LiveTables {
   LiveTables({
     required this.adjustment,
@@ -329,7 +365,9 @@ class LiveTables {
     required this.timingTypes,
     required this.afterMs,
     required this.phases,
+    required this.gekiso,
   });
+  final GekisouTables gekiso;
   final double adjustment;
   final double lifeOnus;
   final double lifeBase;
@@ -455,6 +493,46 @@ class EngineMaster {
   final Map<int, int> liveChallengePoints;
   final List<BoostRow> boosts;
   final List<BoostRow> challengeBoosts;
+
+  /// The same release with other member Gekisou skills.
+  EngineMaster withGekisoSkills(Map<int, GekisoSkill> skills) => EngineMaster(
+    server: server,
+    releaseId: releaseId,
+    params: params,
+    live: live,
+    characters: characters,
+    members: members,
+    snaps: snaps,
+    memberLevels: memberLevels,
+    memberAwake: memberAwake,
+    memberRanks: memberRanks,
+    memberLevelLimits: memberLevelLimits,
+    snapLevels: snapLevels,
+    snapRanks: snapRanks,
+    characterRankBonus: characterRankBonus,
+    totalRankBonus: totalRankBonus,
+    maxCharacterRank: maxCharacterRank,
+    vipBonus: vipBonus,
+    bandItems: bandItems,
+    targets: targets,
+    conditions: conditions,
+    conditionSets: conditionSets,
+    cumulative: cumulative,
+    leaderSkills: leaderSkills,
+    liveSkills: liveSkills,
+    supportSkills: supportSkills,
+    gekisoSkills: skills,
+    gekisoSupportSkills: gekisoSupportSkills,
+    liveSkillCategories: liveSkillCategories,
+    gekisoSkillCategories: gekisoSkillCategories,
+    songs: songs,
+    scoreRanks: scoreRanks,
+    challengeMusics: challengeMusics,
+    events: events,
+    liveChallengePoints: liveChallengePoints,
+    boosts: boosts,
+    challengeBoosts: challengeBoosts,
+  );
 }
 
 final _wallClock = RegExp(
@@ -827,6 +905,40 @@ EngineMaster compileTeamData(Doc data) {
         for (final row in _rowsOf(reference['effectSettings']))
           intOf(row['skillEffectType']): intOf(row['phase'], 1),
       },
+      gekiso: GekisouTables(
+        luckBasePoints: [
+          for (final row in _rowsOf(liveTools['gekisouLuckBasePoints']))
+            (
+              category: intOf(row['noteCategory']),
+              judgement: intOf(row['noteSimulateJudgement']),
+              weight: intOf(row['weight']),
+              point: intOf(row['basePoint']),
+            ),
+        ],
+        luckBonusLots: [
+          for (final row in _rowsOf(liveTools['gekisouLuckBonusLots']))
+            (
+              lotType: intOf(row['chanceLotType']),
+              result: intOf(row['lotResult']),
+              weight: intOf(row['weight']),
+            ),
+        ],
+        rankingBonuses: [
+          for (final row in _rowsOf(liveTools['gekisouRankingScoreBonuses']))
+            (
+              pattern: intOf(row['missionPattern']),
+              count: intOf(row['count']),
+              rank: intOf(row['rank']),
+              percent: intOf(row['scoreBonusPercent']),
+            ),
+        ],
+        gaugeMax: setting('gekisou_luck_gauge_max', 100).toInt(),
+        gaugeMaxRush: setting('gekisou_luck_gauge_max_rush', 50).toInt(),
+        rushPercent: setting(
+          'gekisou_luck_rush_score_bonus_percent',
+          0,
+        ).toInt(),
+      ),
     ),
     characters: characters,
     members: members,

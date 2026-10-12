@@ -177,6 +177,7 @@ class EngineClient {
 List<SongRef> _songsOf(Goal goal) => switch (goal) {
   PowerGoal(:final song) => [?song],
   ScoreGoal(:final songs) => songs,
+  GekisoGoal(:final songs) => songs,
   EventGoal(:final songs, :final route) =>
     route == RouteKind.skip ? const [] : songs,
   PotentialGoal() => const [],

@@ -16,6 +16,7 @@ import 'widgets.dart';
 
 const _goals = [
   (GoalKind.score, Symbols.music_note_rounded),
+  (GoalKind.gekiso, Symbols.local_fire_department_rounded),
   (GoalKind.event, Symbols.emoji_events_rounded),
   (GoalKind.plan, Symbols.cycle_rounded),
   (GoalKind.power, Symbols.bolt_rounded),
@@ -193,8 +194,9 @@ class BuildTab extends StatelessWidget {
     final c = controller;
     final s = c.settings;
     void set(Map<String, Object?> patch) => c.updateSettings(patch);
+    final scored = s.goal == GoalKind.score || s.goal == GoalKind.gekiso;
     final needsSongs =
-        s.goal == GoalKind.score ||
+        scored ||
         s.goal == GoalKind.plan ||
         (s.goal == GoalKind.event && s.route != 'skip') ||
         (s.goal == GoalKind.power && s.powerSong);
@@ -213,7 +215,7 @@ class BuildTab extends StatelessWidget {
             selected: s.goal,
             onSelected: (goal) => set({'goal': goal.name}),
           ),
-          if (s.goal == GoalKind.score) ...[
+          if (scored) ...[
             _WrappingSegments(
               value: s.criterion,
               options: [
@@ -232,6 +234,18 @@ class BuildTab extends StatelessWidget {
               ),
             ),
           ],
+          if (s.goal == GoalKind.gekiso)
+            ToolField(
+              label: c.tb('gekisoRank', 'Placement in each range'),
+              child: Segmented<int>(
+                value: s.gekisoRank,
+                grow: false,
+                options: [
+                  for (var rank = 1; rank <= 5; rank++) Choice(rank, '$rank'),
+                ],
+                onSelected: (value) => set({'gekisoRank': value}),
+              ),
+            ),
           if (s.goal == GoalKind.potential)
             Segmented<int>(
               value: s.window,
@@ -407,7 +421,7 @@ class BuildTab extends StatelessWidget {
           ],
         ),
       ],
-      if (s.goal == GoalKind.score ||
+      if (scored ||
           s.goal == GoalKind.plan ||
           (s.goal == GoalKind.event && s.route != 'skip')) ...[
         const SizedBox(height: 16),
@@ -606,7 +620,17 @@ class BuildTab extends StatelessWidget {
         onSelected: (value) =>
             c.updateSettings({'playMode': value ? 'ap' : 'custom'}),
       ),
-      if (!s.allPerfect) ...[
+      if (s.goal == GoalKind.gekiso) ...[
+        if (!s.allPerfect) ...[
+          slider('GREAT', 'great', s.great, 40),
+          _NumberField(
+            label: c.tb('missEvery', 'Miss every N notes'),
+            value: s.missEvery,
+            onChanged: (value) => c.updateSettings({'missEvery': value}),
+          ),
+        ],
+        slider('JUST', 'just', s.just, 100),
+      ] else if (!s.allPerfect) ...[
         slider('GREAT', 'great', s.great, 40),
         slider('GOOD', 'good', s.good, 20),
         slider('MISS', 'miss', s.miss, 20),

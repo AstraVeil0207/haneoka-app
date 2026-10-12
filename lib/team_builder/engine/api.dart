@@ -8,6 +8,9 @@ import 'dart:typed_data';
 import '../../chart/runtime_chart.dart' show RuntimeChart;
 import 'box.dart';
 import 'chart.dart';
+import 'full/play.dart' show Accuracy;
+import 'gekiso.dart';
+import 'gekiso_objective.dart';
 import 'live.dart';
 import 'master.dart';
 import 'num.dart';
@@ -143,6 +146,17 @@ sealed class Goal {
         consumption: (json['consumption'] as num).toInt(),
         play: play(),
       ),
+      'gekiso' => GekisoGoal(
+        songs: songs(json['songs']),
+        criterion: criterion(),
+        accuracy: Accuracy(
+          great: numOf(objectRow(json['accuracy'])['great']),
+          just: numOf(objectRow(json['accuracy'])['just'], 1),
+          missEvery: intOf(objectRow(json['accuracy'])['missEvery']),
+        ),
+        rank: intOf(json['rank'], 1),
+        seeds: intOf(json['seeds']),
+      ),
       'potential' => PotentialGoal(numOf(json['windowSeconds'], 100)),
       'plan' => PlanGoal(
         eventId: (json['eventId'] as num).toInt(),
@@ -193,6 +207,28 @@ class EventGoal extends Goal {
   /// Boosts per normal live (0–10) or challenge points per challenge live.
   final int consumption;
   final PlayModel play;
+}
+
+class GekisoGoal extends Goal {
+  const GekisoGoal({
+    required this.songs,
+    required this.criterion,
+    required this.accuracy,
+    this.rank = 1,
+    this.seeds = 0,
+  });
+  final List<SongRef> songs;
+  final Criterion criterion;
+
+  /// Share of notes hit Great, and of the Just-eligible rest hit Just.
+  final Accuracy accuracy;
+
+  /// Assumed placement in every range (1 for solo Mission lives).
+  final int rank;
+
+  /// Luck ranges: 0 takes the exact nominal lottery expectation; n > 0
+  /// averages n native lottery seeds instead.
+  final int seeds;
 }
 
 class PotentialGoal extends Goal {
@@ -443,6 +479,36 @@ class ChartCache {
   final ChartLoader load;
   final _charts = <SongRef, Future<CompiledChart>>{};
   final _prepared = Expando<PreparedLive>();
+  final _gekiso = <String, Future<GekisoChart>>{};
+
+  /// The Gekisou chart of a song at a stated accuracy and assumed range rank.
+  Future<GekisoChart> gekiso(SongRef ref, Accuracy accuracy, int rank) {
+    final key =
+        '${ref.key}:${accuracy.great}:${accuracy.just}:${accuracy.missEvery}:$rank';
+    var value = _gekiso.remove(key);
+    if (value == null) {
+      final song = master.songs[ref.songId];
+      final difficulty = song?.difficulties
+          .where((item) => item.difficulty == ref.difficulty)
+          .firstOrNull;
+      if (song == null || difficulty == null) {
+        return Future.error(RangeError('unknown-chart:${ref.key}'));
+      }
+      value = load(ref).then(
+        (source) => gekisoChart(
+          master,
+          source,
+          difficulty.playLevel,
+          song.gekisoMissions,
+          accuracy,
+          rank,
+        ),
+      );
+    }
+    _gekiso[key] = value;
+    if (_gekiso.length > 4) _gekiso.remove(_gekiso.keys.first);
+    return value;
+  }
 
   Future<CompiledChart> chart(SongRef ref) {
     var value = _charts.remove(ref);
@@ -595,14 +661,15 @@ HitScore scoreSummary(
   OrderScores scores,
   CompiledChart chart,
   Team team,
-  List<MemberState> members,
-) {
+  List<MemberState> members, [
+  bool battle = false,
+]) {
   List<String> keysOf(List<int> order) => [
     for (final slot in order) members[team.members[slot]].key,
   ];
   final ranks = <int, int>{};
   for (final value in scores.scores) {
-    final rank = scoreRank(chart, value);
+    final rank = battle ? battleRank(chart, value) : scoreRank(chart, value);
     ranks[rank] = (ranks[rank] ?? 0) + 1;
   }
   return HitScore(
@@ -623,9 +690,9 @@ int compareHits(EngineHit a, EngineHit b) {
   return d != 0 ? d : (b.score?.mean ?? 0).compareTo(a.score?.mean ?? 0);
 }
 
-List<EngineHit> _overall(List<SongResult> results, int k) => ([
+List<EngineHit> _overall(List<SongResult> results, int k) => stableSorted([
   for (final result in results) ...result.hits,
-]..sort(compareHits)).take(math.max(k, 3)).toList();
+], compareHits).take(math.max(k, 3)).toList();
 
 typedef Progress = void Function(int done, int total);
 
@@ -683,6 +750,7 @@ Future<EngineResponse> runEngine(
       <SongRef?>[null],
     EventGoal(:final songs) => <SongRef?>[...songs],
     ScoreGoal(:final songs) => <SongRef?>[...songs],
+    GekisoGoal(:final songs) => <SongRef?>[...songs],
     PlanGoal() => <SongRef?>[],
   };
   final budgetEnd = request.timeLimitMs == null ? inf : request.timeLimitMs!;
@@ -990,6 +1058,42 @@ Future<EngineResponse> runEngine(
                               : detail.mean),
                     );
                 }(),
+            ],
+          ),
+        );
+      case GekisoGoal():
+        final gekiso = await charts.gekiso(song!, goal.accuracy, goal.rank);
+        final out = gekisoSearch(
+          master: master,
+          player: player,
+          members: members,
+          snaps: snaps,
+          music: music,
+          chart: gekiso,
+          // 0 seeds: the exact nominal luck expectation.
+          seeds: [for (var i = 0; i < goal.seeds; i++) i],
+          criterion: goal.criterion,
+          constraints: constraints,
+          k: request.k,
+          timeLimitMs: songBudget(),
+          cancelled: cancelled,
+        );
+        results.add(
+          SongResult(
+            song: song,
+            proven: out.proven,
+            bound: out.bound,
+            stats: out.stats,
+            hits: [
+              for (final hit in out.hits)
+                toHit(song, hit)
+                  ..score = scoreSummary(
+                    hit.detail.scores,
+                    chart!,
+                    hit.team,
+                    members,
+                    true,
+                  ),
             ],
           ),
         );
