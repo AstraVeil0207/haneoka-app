@@ -170,5 +170,6 @@
   "linkFailed": "无法更新关联",
   "linkUpdated": "关联已更新",
   "syncedOn": "{date} 更新",
-  "openProfile": "打开主页"
+  "openProfile": "打开主页",
+  "teamBuilderNoSave": "请先在账号中读取此服务器的游戏数据。"
 }

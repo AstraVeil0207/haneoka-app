@@ -55,8 +55,11 @@ class Exact<D> {
   final D detail;
 }
 
-typedef AssignmentBound =
-    double Function(Totals totals, List<int> assigned, int from);
+typedef AssignmentBound = double Function(
+  Totals totals,
+  List<int> assigned,
+  int from,
+);
 
 class JointTarget {
   JointTarget(this.bonus, this.product);
@@ -437,9 +440,17 @@ SearchOutput<D> searchTeams<D>({
   final excludedSnap = constraints.excludedSnaps.toSet();
   final bases = [
     for (final member in members)
-      slotBase(master, player, member, music, memberPowerPercent?.call(member) ?? 0),
+      slotBase(
+        master,
+        player,
+        member,
+        music,
+        memberPowerPercent?.call(member) ?? 0,
+      ),
   ];
-  final snapEvent = [for (final snap in snaps) snapPowerPercent?.call(snap) ?? 0];
+  final snapEvent = [
+    for (final snap in snaps) snapPowerPercent?.call(snap) ?? 0,
+  ];
   // Snap power per (member, snap); column s is the empty slot.
   final width = s + 1;
   final snapPower = Float64List(n * width);
@@ -475,11 +486,10 @@ SearchOutput<D> searchTeams<D>({
     for (final j in allowedSnaps)
       if (snapBonus[j] > 0) j,
   ]..sort((a, b) => snapBonus[b] - snapBonus[a]);
-  final snapBonusTop5 =
-      ([
-        for (final j in allowedSnaps)
-          if (snapBonus[j] > 0) snapBonus[j],
-      ]..sort((a, b) => b - a)).take(5).fold(0, (sum, value) => sum + value);
+  final snapBonusTop5 = ([
+    for (final j in allowedSnaps)
+      if (snapBonus[j] > 0) snapBonus[j],
+  ]..sort((a, b) => b - a)).take(5).fold(0, (sum, value) => sum + value);
   // Per member: the best snap contribution ignoring snap distinctness.
   ({double power, double weight, double bonus}) bestSnap(int i) {
     final bound = constraints.bindings[i];
@@ -565,7 +575,9 @@ SearchOutput<D> searchTeams<D>({
       profiles[leader] ??= leaderProfile(master, members[leader]);
 
   final maxColumns = s + 5;
-  final pools = [for (var from = 0; from < 5; from++) _Tables(5 - from, maxColumns)];
+  final pools = [
+    for (var from = 0; from < 5; from++) _Tables(5 - from, maxColumns),
+  ];
   final columnOf = Int32List(s);
   final columnStamp = Int32List(s);
   var stamp = 0;
@@ -575,17 +587,15 @@ SearchOutput<D> searchTeams<D>({
   final floorValue = floor ?? -inf;
   var timedOut = false;
   var unexploredBound = -inf;
-  final deadline = timeLimitMs != null && timeLimitMs > 0
-      ? timeLimitMs
-      : inf;
-  bool pastDeadline() =>
-      now() > deadline || (cancelled?.call() ?? false);
+  final deadline = timeLimitMs != null && timeLimitMs > 0 ? timeLimitMs : inf;
+  bool pastDeadline() => now() > deadline || (cancelled?.call() ?? false);
 
   String setKeyOf(Team team) =>
       ([for (final i in team.members) members[i].key]..sort()).join('|');
 
   // Equality is prunable only after k distinct legal teams have been evaluated exactly.
-  bool cannotImprove(double upper) => hits.length >= k && upper <= hits[k - 1].key;
+  bool cannotImprove(double upper) =>
+      hits.length >= k && upper <= hits[k - 1].key;
   void retain(_Candidate candidate, [Exact<D>? evaluated]) {
     if (evaluated == null && hits.length >= k && pastDeadline()) {
       timedOut = true;
@@ -752,7 +762,8 @@ SearchOutput<D> searchTeams<D>({
         music,
       );
       exactLead = [
-        for (final (slot, i) in team.indexed) leaderPoints(bases[i], percents[slot]),
+        for (final (slot, i) in team.indexed)
+          leaderPoints(bases[i], percents[slot]),
       ];
     }
     final basePower = [
@@ -794,7 +805,8 @@ SearchOutput<D> searchTeams<D>({
         ? 0
         : requiredSnaps.where((j) => used[j] == 0).length;
     var setLow = -inf;
-    double limit() => math.max(math.max(frontier.threshold, setLow), floorValue);
+    double limit() =>
+        math.max(math.max(frontier.threshold, setLow), floorValue);
     const none = -1e15;
 
     /// Remaining slots × (unused snaps + one empty column per slot).
@@ -927,7 +939,11 @@ SearchOutput<D> searchTeams<D>({
       final x = power, y = base + weight;
       var product = (x + P) * (y + S);
       if (bound(
-            Totals(power: product / (y + S), skill: weight + S, bonus: bonus + B),
+            Totals(
+              power: product / (y + S),
+              skill: weight + S,
+              bonus: bonus + B,
+            ),
             from,
           ) <
           limit()) {
@@ -968,17 +984,13 @@ SearchOutput<D> searchTeams<D>({
             constraints.minBonus!) {
       return;
     }
-    final upper = remainingBound(
-      0,
-      baseTotal,
-      0,
-      memberTotalBonus.toDouble(),
-    );
+    final upper = remainingBound(0, baseTotal, 0, memberTotalBonus.toDouble());
     if (upper < limit() || cannotImproveSet(upper)) return;
     List<int> slotPowersOf(List<int> picks) => [
       for (final (index, i) in team.indexed)
         basePower[index] +
-            snapPower[i * width + (picks[index] < 0 ? s : picks[index])].toInt(),
+            snapPower[i * width + (picks[index] < 0 ? s : picks[index])]
+                .toInt(),
     ];
     // Incumbent: the assignment maximizing the linearized key.
     if (objective.productBase != null && requiredSnaps.isEmpty) {
@@ -1111,9 +1123,7 @@ SearchOutput<D> searchTeams<D>({
         Totals(
           power: power + powerSuffix[slot],
           skill: weight + weightSuffix[slot],
-          bonus:
-              bonus +
-              math.min(bonusSuffix[slot], unusedBonusTop(5 - slot)),
+          bonus: bonus + math.min(bonusSuffix[slot], unusedBonusTop(5 - slot)),
         ),
         slot,
       );
@@ -1206,8 +1216,7 @@ SearchOutput<D> searchTeams<D>({
       final ordered = _stableSorted(
         must.isNotEmpty ? must : list,
         (a, b) =>
-            (slotPower(b) + best[b].power - (slotPower(a) + best[a].power))
-                .sign
+            (slotPower(b) + best[b].power - (slotPower(a) + best[a].power)).sign
                 .toInt(),
       );
       (must.isNotEmpty ? forced : free).add(ordered);
@@ -1243,9 +1252,10 @@ SearchOutput<D> searchTeams<D>({
       final tops = List<Float64List>.filled(values.length + 1, Float64List(5));
       var top = <double>[-inf, -inf, -inf, -inf];
       for (var index = values.length - 1; index >= 0; index--) {
-        top = ([...top, values[index]]..sort((a, b) => b.compareTo(a)))
-            .take(4)
-            .toList();
+        top = ([
+          ...top,
+          values[index],
+        ]..sort((a, b) => b.compareTo(a))).take(4).toList();
         final row = Float64List(5);
         for (var c = 1; c <= 4; c++) {
           row[c] = row[c - 1] + (top[c - 1] == -inf ? 0 : top[c - 1]);
@@ -1259,8 +1269,7 @@ SearchOutput<D> searchTeams<D>({
     final topsSkill = suffixTops(charSkill);
     final topsBonus = suffixTops(charBonus);
     final topsMemberBonus = suffixTops(charMemberBonus);
-    double topSum(List<Float64List> table, int from, int count) =>
-        count <= 0
+    double topSum(List<Float64List> table, int from, int count) => count <= 0
         ? 0
         : table[math.min(from, table.length - 1)][math.min(count, 4)];
     double memberOnlyBound(double memberPart, int index, int left) =>

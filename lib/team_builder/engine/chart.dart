@@ -116,7 +116,9 @@ CompiledChart compileChart(
         note,
   ];
   int capped(int ms) => math.min(frame(ms), maxFrame - 1);
-  final toFrame = valid.isNotEmpty ? math.max(0, capped(valid.last.timeMs)) : -1;
+  final toFrame = valid.isNotEmpty
+      ? math.max(0, capped(valid.last.timeMs))
+      : -1;
   final skipNoteFrac = Float32List.fromList([
     for (final note in valid)
       if (capped(note.timeMs) <= toFrame)

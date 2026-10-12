@@ -545,4 +545,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get openProfile => 'プロフィールを開く';
+
+  @override
+  String get teamBuilderNoSave => '先にアカウントでこのサーバーのゲームデータを読み込んでください。';
 }

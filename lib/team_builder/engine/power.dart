@@ -142,7 +142,10 @@ int maxMemberRank(EngineMaster master, MemberCard card) =>
 int maxSnapRank(EngineMaster master, SnapCard card) =>
     math.max(1, _maxKey(master.snapRanks[card.rankGroup]));
 int maxSkillLevel(List<SkillEffectRow>? rows) =>
-    (rows ?? const <SkillEffectRow>[]).fold(1, (m, row) => math.max(m, row.level));
+    (rows ?? const <SkillEffectRow>[]).fold(
+      1,
+      (m, row) => math.max(m, row.level),
+    );
 
 MemberState? resolveMember(
   EngineMaster master,
@@ -173,7 +176,8 @@ MemberState? resolveMember(
     musicTypeRate: rank.musicTypeRate,
     musicTagRate: rank.musicTagRate,
     own: own,
-    liveSkillCategories: master.liveSkillCategories[card.liveSkillId] ?? const [],
+    liveSkillCategories:
+        master.liveSkillCategories[card.liveSkillId] ?? const [],
     gekisoSkillCategories:
         master.gekisoSkillCategories[card.gekisoSkillId] ?? const [],
     gekisoMissionType: gekiso?.missionType ?? 0,
@@ -217,7 +221,9 @@ bool isTargetMember(MemberState member, TargetRow target) {
     return true;
   }
   if (target.gekisouSkillCategories.isNotEmpty &&
-      target.gekisouSkillCategories.any(member.gekisoSkillCategories.contains)) {
+      target.gekisouSkillCategories.any(
+        member.gekisoSkillCategories.contains,
+      )) {
     return true;
   }
   return target.gekisouMissionType != 0 &&
@@ -607,7 +613,9 @@ TeamPower teamPower(
           player,
           member,
           music,
-          eventEffects.isNotEmpty ? memberEventPercent(eventEffects, member) : 0,
+          eventEffects.isNotEmpty
+              ? memberEventPercent(eventEffects, member)
+              : 0,
         );
         final snap = snaps.elementAtOrNull(index);
         final snapEvent = snap != null && eventEffects.isNotEmpty

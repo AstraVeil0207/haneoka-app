@@ -552,4 +552,8 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get openProfile => 'Open profile';
+
+  @override
+  String get teamBuilderNoSave =>
+      'Read this server\'s game data in Accounts first.';
 }

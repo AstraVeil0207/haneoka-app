@@ -170,5 +170,6 @@
   "linkFailed": "連携を更新できませんでした",
   "linkUpdated": "連携を更新しました",
   "syncedOn": "{date} 更新",
-  "openProfile": "プロフィールを開く"
+  "openProfile": "プロフィールを開く",
+  "teamBuilderNoSave": "先にアカウントでこのサーバーのゲームデータを読み込んでください。"
 }

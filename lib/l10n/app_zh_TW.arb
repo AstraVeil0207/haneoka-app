@@ -170,5 +170,6 @@
   "linkFailed": "無法更新關聯",
   "linkUpdated": "關聯已更新",
   "syncedOn": "{date} 更新",
-  "openProfile": "開啟個人頁面"
+  "openProfile": "開啟個人頁面",
+  "teamBuilderNoSave": "請先在帳號中讀取此伺服器的遊戲資料。"
 }

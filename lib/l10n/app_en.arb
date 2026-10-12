@@ -219,5 +219,9 @@
       }
     }
   },
-  "openProfile": "Open profile"
+  "openProfile": "Open profile",
+  "teamBuilderNoSave": "Read this server's game data in Accounts first.",
+  "@teamBuilderNoSave": {
+    "description": "Team builder: importing cards needs a read save of the selected server."
+  }
 }

@@ -79,11 +79,12 @@ class LiveContext extends Shared {
 SlotSkill Function(int member, int snap) _slotSkillCache(Shared shared) {
   final cache = <int, SlotSkill>{};
   final width = shared.snaps.length + 2;
-  return (member, snap) => cache[member * width + snap + 1] ??= resolveSlotSkill(
-    shared.master,
-    shared.members[member],
-    snap < 0 ? null : shared.snaps[snap],
-  );
+  return (member, snap) =>
+      cache[member * width + snap + 1] ??= resolveSlotSkill(
+        shared.master,
+        shared.members[member],
+        snap < 0 ? null : shared.snaps[snap],
+      );
 }
 
 /// Exact scores shared by reward objectives; eviction only causes recomputation.
@@ -144,7 +145,8 @@ class _LiveCore {
   late final bool drains;
   late final double productScale;
   final _weights = <String, _Weights>{};
-  final _teamModels = <int, ({LinearChart model, Map<String, double> weights})>{};
+  final _teamModels =
+      <int, ({LinearChart model, Map<String, double> weights})>{};
 
   bool get play => judgements != null;
   double get productBase => high.total;
@@ -193,7 +195,9 @@ class _LiveCore {
       for (final time in times) {
         overlap = math.max(
           overlap,
-          times.where((other) => other <= time && time < other + longest).length,
+          times
+              .where((other) => other <= time && time < other + longest)
+              .length,
         );
       }
     }
@@ -213,34 +217,37 @@ class _LiveCore {
     return core;
   }
 
-  _Weights weightOf(int member, int snap) =>
-      _weights['$member:$snap'] ??= () {
-        final skill = slotSkill(member, snap);
-        final upper = skillWeights(high, skill);
-        if (judgements != null && skill.convert != null) {
-          // Conversions are this slot's own upside; fold them into its optimistic weights.
-          final extra = conversionWeights(high, judgements!, skill, factorCap);
-          var total = 0.0;
-          for (var event = 0; event < 5; event++) {
-            upper.perEvent[event] += extra[event];
-            total += upper.perEvent[event];
-          }
-          upper.mean = total / 5;
-          upper.best = maxOf(upper.perEvent);
-        }
-        return _Weights(
-          upper,
-          identical(low, high) ? upper : skillWeights(low, skill),
-        );
-      }();
+  _Weights weightOf(int member, int snap) => _weights['$member:$snap'] ??= () {
+    final skill = slotSkill(member, snap);
+    final upper = skillWeights(high, skill);
+    if (judgements != null && skill.convert != null) {
+      // Conversions are this slot's own upside; fold them into its optimistic weights.
+      final extra = conversionWeights(high, judgements!, skill, factorCap);
+      var total = 0.0;
+      for (var event = 0; event < 5; event++) {
+        upper.perEvent[event] += extra[event];
+        total += upper.perEvent[event];
+      }
+      upper.mean = total / 5;
+      upper.best = maxOf(upper.perEvent);
+    }
+    return _Weights(
+      upper,
+      identical(low, high) ? upper : skillWeights(low, skill),
+    );
+  }();
 
   double scoreHigh(Totals totals) =>
-      totals.power * (high.total + totals.skill) / divisor *
+      totals.power *
+      (high.total + totals.skill) /
+      divisor *
       (1 + high.relativeError);
 
   double scoreLow(Totals totals) => math.max(
     0,
-    totals.power * (low.total + totals.skillLow) / divisor *
+    totals.power *
+            (low.total + totals.skillLow) /
+            divisor *
             (1 - low.relativeError) -
         low.absoluteError,
   );
@@ -302,9 +309,7 @@ class _LiveCore {
       lows[index] = scoreLow(
         Totals(power: power.toDouble(), skill: 0, skillLow: lowSum),
       );
-      highs[index] = scoreHigh(
-        Totals(power: power.toDouble(), skill: highSum),
-      );
+      highs[index] = scoreHigh(Totals(power: power.toDouble(), skill: highSum));
     }
     return (lows, highs);
   }
@@ -314,18 +319,14 @@ class _LiveCore {
     if (judgements == null) return scoreHigh(totals);
     var recovery = 0;
     for (final (slot, member) in team.members.indexed) {
-      recovery = math.max(recovery, slotSkill(member, team.snaps[slot]).recovery);
+      recovery = math.max(
+        recovery,
+        slotSkill(member, team.snaps[slot]).recovery,
+      );
     }
     if (recovery >= maxRecovery) return scoreHigh(totals);
     final entry = _teamModels[recovery] ??= (
-      model: linearPlayChart(
-        context.live,
-        judgements!,
-        true,
-        0,
-        1,
-        recovery,
-      ),
+      model: linearPlayChart(context.live, judgements!, true, 0, 1, recovery),
       weights: <String, double>{},
     );
     var skill = 0.0;
@@ -347,7 +348,9 @@ class _LiveCore {
         return maxOf(weights.perEvent);
       }();
     }
-    return totals.power * (entry.model.total + skill) / divisor *
+    return totals.power *
+        (entry.model.total + skill) /
+        divisor *
         (1 + high.relativeError);
   }
 }
@@ -428,7 +431,8 @@ ObjectiveAdapter<Null> eventBonusSurrogate(
   double key(double bonus, double power) => bonus * bonusWeight + power;
   return ObjectiveAdapter(
     skill: (_, _) => (0, 0),
-    memberBonus: (i) => memberEventPercent(effects, shared.members[i], bonusType),
+    memberBonus: (i) =>
+        memberEventPercent(effects, shared.members[i], bonusType),
     snapBonus: (j) => snapEventPercent(effects, shared.snaps[j], bonusType),
     bound: (totals) => key(totals.bonus, totals.power),
     interval: (_, totals) =>
@@ -439,7 +443,9 @@ ObjectiveAdapter<Null> eventBonusSurrogate(
         bonus += memberEventPercent(effects, shared.members[i], bonusType);
       }
       for (final j in team.snaps) {
-        if (j >= 0) bonus += snapEventPercent(effects, shared.snaps[j], bonusType);
+        if (j >= 0) {
+          bonus += snapEventPercent(effects, shared.snaps[j], bonusType);
+        }
       }
       return Exact(key(bonus.toDouble(), power.toDouble()), null);
     },
@@ -623,16 +629,19 @@ ObjectiveAdapter<EventDetail> eventObjective(
             ])
       : 0.0;
   final tieBounds = <int, double>{};
-  double tieBound(int rank) => tieBounds[rank] ??= tie != 0
-      ? tie * other(maxOtherBonus, rank)
-      : 0;
-  double rewardBound(num bonus, int rank) => value(bonus, rank) + tieBound(rank);
+  double tieBound(int rank) =>
+      tieBounds[rank] ??= tie != 0 ? tie * other(maxOtherBonus, rank) : 0;
+  double rewardBound(num bonus, int rank) =>
+      value(bonus, rank) + tieBound(rank);
   List<double> snapDominance(int member, int snap) =>
       tie != 0 ? [otherSnapBonus(snap).toDouble()] : const [];
   AssignmentBound Function(List<int>, List<List<int>>) assignmentBound(
     int Function(Totals totals) rankOfTotals,
   ) => (members, options) {
-    final memberOther = members.fold(0, (sum, i) => sum + otherMemberBonuses[i]);
+    final memberOther = members.fold(
+      0,
+      (sum, i) => sum + otherMemberBonuses[i],
+    );
     final suffix = Float64List(6);
     for (var slot = 4; slot >= 0; slot--) {
       suffix[slot] =
@@ -664,8 +673,12 @@ ObjectiveAdapter<EventDetail> eventObjective(
     };
   };
   final maxBonus = ptOnly
-      ? _topFive([for (var i = 0; i < context.members.length; i++) memberBonus(i)]) +
-            _topFive([for (var j = 0; j < context.snaps.length; j++) snapBonus(j)])
+      ? _topFive([
+              for (var i = 0; i < context.members.length; i++) memberBonus(i),
+            ]) +
+            _topFive([
+              for (var j = 0; j < context.snaps.length; j++) snapBonus(j),
+            ])
       : 1000000.0;
   int teamBonus(Team team) =>
       team.members.fold(0, (sum, i) => sum + memberBonus(i)) +
@@ -817,7 +830,8 @@ ObjectiveAdapter<EventDetail> eventObjective(
     bound: (totals) =>
         rewardBound(totals.bonus, rankBound(core.scoreHigh(totals))),
     interval: (team, totals) {
-      final scoreLow = core.scoreLow(totals), scoreHigh = core.scoreHigh(totals);
+      final scoreLow = core.scoreLow(totals),
+          scoreHigh = core.scoreHigh(totals);
       final rank = rankOf(scoreLow);
       if (rank == rankBound(scoreHigh)) {
         final key =
@@ -888,7 +902,9 @@ ObjectiveAdapter<EventDetail> eventScoreTieObjective(
       for (var slot = 4; slot >= 0; slot--) {
         suffix[slot] =
             suffix[slot + 1] +
-            maxOf(options[slot].map((snap) => event.skill(members[slot], snap).$2));
+            maxOf(
+              options[slot].map((snap) => event.skill(members[slot], snap).$2),
+            );
       }
       return (totals, assigned, from) {
         var skill = suffix[from];
@@ -999,7 +1015,8 @@ ObjectiveAdapter<EventDetail> challengePointObjective(
     exact: (team, power, slots) {
       final detail = base.exact(team, power, slots).detail;
       final perOrder = Float64List.fromList([
-        for (final score in detail.scores.scores) value(scoreRank(chart, score)),
+        for (final score in detail.scores.scores)
+          value(scoreRank(chart, score)),
       ]);
       final mean = perOrder.fold(0.0, (a, b) => a + b) / perOrder.length;
       return Exact(

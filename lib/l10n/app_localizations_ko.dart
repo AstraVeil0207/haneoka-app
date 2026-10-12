@@ -546,4 +546,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get openProfile => '프로필 열기';
+
+  @override
+  String get teamBuilderNoSave => '먼저 계정에서 이 서버의 게임 데이터를 읽어 주세요.';
 }

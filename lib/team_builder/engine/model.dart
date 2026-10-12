@@ -51,9 +51,7 @@ LinearChart linearChart(PreparedLive live) {
     prefix,
     prefix,
     sum,
-    {
-      for (var e = 0; e < chart.skillTimes.length; e++) e: master.live.lifeBase,
-    },
+    {for (var e = 0; e < chart.skillTimes.length; e++) e: master.live.lifeBase},
     2e-6,
     chart.count + 1,
   );

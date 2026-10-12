@@ -1,0 +1,684 @@
+/// Choosers on the shared selection pane: songs for a search and cards for
+/// a formation slot (`song-picker.ts`, the Teams tab's slot picker), and the
+/// card filters the box and the pickers share (`card-filters.ts`).
+library;
+
+import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
+
+import '../catalog/catalog_screen.dart' show cardRarityName;
+import '../ui/tile.dart';
+import 'catalog.dart';
+import 'engine/api.dart';
+import 'engine/num.dart';
+import 'widgets.dart';
+
+/// Card filters: bands, characters, attributes and rarities.
+class CardFilters {
+  const CardFilters({
+    this.query = '',
+    this.bands = const {},
+    this.characters = const {},
+    this.attributes = const {},
+    this.rarities = const {},
+  });
+  final String query;
+  final Set<int> bands;
+  final Set<int> characters;
+  final Set<int> attributes;
+  final Set<int> rarities;
+
+  int get active =>
+      bands.length + characters.length + attributes.length + rarities.length;
+
+  CardFilters copyWith({
+    String? query,
+    Set<int>? bands,
+    Set<int>? characters,
+    Set<int>? attributes,
+    Set<int>? rarities,
+  }) => CardFilters(
+    query: query ?? this.query,
+    bands: bands ?? this.bands,
+    characters: characters ?? this.characters,
+    attributes: attributes ?? this.attributes,
+    rarities: rarities ?? this.rarities,
+  );
+
+  bool matches(TeamCatalog catalog, bool members, int id) {
+    final characters = catalog.characterIds(members, id);
+    if (bands.isNotEmpty &&
+        !characters.any((c) => bands.contains(catalog.characterBand(c)))) {
+      return false;
+    }
+    if (this.characters.isNotEmpty &&
+        !characters.any(this.characters.contains)) {
+      return false;
+    }
+    if (attributes.isNotEmpty &&
+        !attributes.contains(catalog.attribute(members, id))) {
+      return false;
+    }
+    if (rarities.isNotEmpty &&
+        !rarities.contains(catalog.rarity(members, id))) {
+      return false;
+    }
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return true;
+    return '${catalog.cardName(members, id)} ${catalog.cardSubtitle(members, id)} $id'
+        .toLowerCase()
+        .contains(q);
+  }
+}
+
+Set<int> _toggle(Set<int> set, int value) =>
+    set.contains(value) ? ({...set}..remove(value)) : {...set, value};
+
+/// The filter facets for cards, as chips.
+class CardFilterPanel extends StatelessWidget {
+  const CardFilterPanel({
+    super.key,
+    required this.catalog,
+    required this.filters,
+    required this.onChanged,
+  });
+  final TeamCatalog catalog;
+  final CardFilters filters;
+  final ValueChanged<CardFilters> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = catalog.t;
+    final characters = [
+      for (final id in catalog.master.characters.keys)
+        if (catalog.characterName(id).isNotEmpty &&
+            (filters.bands.isEmpty ||
+                filters.bands.contains(catalog.characterBand(id))))
+          id,
+    ];
+    Widget chips(List<Widget> children) =>
+        Wrap(spacing: 8, runSpacing: 8, children: children);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ToolField(
+          label: t('catalog.fields.band', 'Band'),
+          child: chips([
+            for (final id in catalog.bandIds)
+              FilterChip(
+                avatar: _emblem(catalog.bandIcon(id)),
+                label: Text(catalog.bandName(id)),
+                selected: filters.bands.contains(id),
+                onSelected: (_) => onChanged(
+                  filters.copyWith(bands: _toggle(filters.bands, id)),
+                ),
+              ),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        ToolField(
+          label: t('catalog.fields.character', 'Character'),
+          child: chips([
+            for (final id in characters)
+              FilterChip(
+                avatar: _emblem(catalog.characterFace(id), round: true),
+                label: Text(catalog.characterName(id)),
+                selected: filters.characters.contains(id),
+                onSelected: (_) => onChanged(
+                  filters.copyWith(characters: _toggle(filters.characters, id)),
+                ),
+              ),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        ToolField(
+          label: t('catalog.fields.attribute', 'Attribute'),
+          child: chips([
+            for (final id in [1, 2, 3, 4, 5])
+              FilterChip(
+                avatar: _emblem(catalog.attributeIcon(id) ?? ''),
+                label: Text(catalog.attributeName(id)),
+                selected: filters.attributes.contains(id),
+                onSelected: (_) => onChanged(
+                  filters.copyWith(attributes: _toggle(filters.attributes, id)),
+                ),
+              ),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        ToolField(
+          label: t('catalog.fields.rarity', 'Rarity'),
+          child: chips([
+            for (final id in [1, 2, 3, 4])
+              FilterChip(
+                avatar: _emblem(catalog.rarityIcon(id) ?? ''),
+                label: Text(cardRarityName(id)),
+                selected: filters.rarities.contains(id),
+                onSelected: (_) => onChanged(
+                  filters.copyWith(rarities: _toggle(filters.rarities, id)),
+                ),
+              ),
+          ]),
+        ),
+      ],
+    );
+  }
+}
+
+Widget? _emblem(String url, {bool round = false}) {
+  if (url.isEmpty) return null;
+  final image = Image.network(url, width: 18, height: 18, fit: BoxFit.contain);
+  return round ? ClipOval(child: image) : image;
+}
+
+/// A full-screen chooser: search and filters in its bar, a grid, and a
+/// footer of actions (`selectionPane`).
+class SelectionPane extends StatefulWidget {
+  const SelectionPane({
+    super.key,
+    required this.title,
+    required this.searchLabel,
+    required this.filterLabel,
+    required this.query,
+    required this.onQuery,
+    required this.filters,
+    required this.activeFilters,
+    required this.count,
+    required this.empty,
+    required this.itemCount,
+    required this.item,
+    required this.minTileWidth,
+    required this.aspectRatio,
+    this.footer,
+  });
+  final String title;
+  final String searchLabel;
+  final String filterLabel;
+  final String query;
+  final ValueChanged<String> onQuery;
+  final Widget filters;
+  final int activeFilters;
+  final String count;
+  final String empty;
+  final int itemCount;
+  final Widget Function(BuildContext context, int index) item;
+  final double minTileWidth;
+  final double aspectRatio;
+  final Widget? footer;
+
+  @override
+  State<SelectionPane> createState() => _SelectionPaneState();
+}
+
+class _SelectionPaneState extends State<SelectionPane> {
+  bool _filters = false;
+  late final _search = TextEditingController(text: widget.query);
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.title),
+        actions: [
+          IconButton(
+            tooltip: widget.filterLabel,
+            isSelected: _filters,
+            onPressed: () => setState(() => _filters = !_filters),
+            icon: Badge(
+              isLabelVisible: widget.activeFilters > 0,
+              label: Text('${widget.activeFilters}'),
+              child: const Icon(Symbols.filter_list_rounded),
+            ),
+          ),
+        ],
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(64),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: SearchBar(
+              controller: _search,
+              hintText: widget.searchLabel,
+              leading: const Icon(Symbols.search_rounded),
+              elevation: const WidgetStatePropertyAll(0),
+              onChanged: widget.onQuery,
+            ),
+          ),
+        ),
+      ),
+      body: CustomScrollView(
+        slivers: [
+          if (_filters)
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              sliver: SliverToBoxAdapter(child: widget.filters),
+            ),
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            sliver: SliverToBoxAdapter(
+              child: Text(
+                widget.count,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
+          if (widget.itemCount == 0)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(child: Text(widget.empty)),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              sliver: SliverLayoutBuilder(
+                builder: (context, constraints) => SliverGrid(
+                  gridDelegate: collectionGrid(
+                    context,
+                    constraints.crossAxisExtent,
+                    minWidth: widget.minTileWidth,
+                    aspectRatio: widget.aspectRatio,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    widget.item,
+                    childCount: widget.itemCount,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+      bottomNavigationBar: widget.footer == null
+          ? null
+          : Material(
+              color: theme.colorScheme.surfaceContainer,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: widget.footer,
+                ),
+              ),
+            ),
+    );
+  }
+}
+
+/// Multi- or single-song chooser; returns the chosen songs.
+Future<List<SongRef>?> pickSongs(
+  BuildContext context,
+  TeamCatalog catalog,
+  List<SongRef> songs, {
+  bool single = false,
+  List<int>? allowed,
+}) => Navigator.of(context).push<List<SongRef>>(
+  MaterialPageRoute(
+    fullscreenDialog: true,
+    builder: (_) => _SongPicker(
+      catalog: catalog,
+      initial: songs,
+      single: single,
+      allowed: allowed,
+    ),
+  ),
+);
+
+class _SongPicker extends StatefulWidget {
+  const _SongPicker({
+    required this.catalog,
+    required this.initial,
+    required this.single,
+    this.allowed,
+  });
+  final TeamCatalog catalog;
+  final List<SongRef> initial;
+  final bool single;
+  final List<int>? allowed;
+
+  @override
+  State<_SongPicker> createState() => _SongPickerState();
+}
+
+class _SongPickerState extends State<_SongPicker> {
+  late List<SongRef> _songs = [...widget.initial];
+  String _query = '';
+  int _difficulty = 3;
+  final _bands = <int>{};
+  final _attributes = <int>{};
+  final _missions = <String>{};
+
+  List<String> _songMissions(int id) => [
+    for (final value
+        in objectRow(widget.catalog.song(id)['gekisou'])['missionTypes']
+                as List? ??
+            const [])
+      if (value is num)
+        const [
+              '',
+              'Combo',
+              'Luck',
+              'JustCount',
+            ].elementAtOrNull(value.toInt()) ??
+            ''
+      else
+        '$value',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final catalog = widget.catalog;
+    final t = catalog.t;
+    String tb(
+      String key,
+      String fallback, [
+      Map<String, Object?> v = const {},
+    ]) => t('tools.teamBuilder.$key', fallback, v);
+    final query = _query.trim().toLowerCase();
+    final ids = [
+      for (final key in objectRow(catalog.data['songs']).keys)
+        if (int.tryParse(key) case final id?)
+          if ((widget.allowed == null || widget.allowed!.contains(id)) &&
+              catalog.difficultyRow(id, _difficulty) != null &&
+              (_bands.isEmpty || catalog.songBands(id).any(_bands.contains)) &&
+              (_attributes.isEmpty ||
+                  _attributes.contains(intOf(catalog.song(id)['musicType']))) &&
+              (_missions.isEmpty ||
+                  _songMissions(id).any(_missions.contains)) &&
+              (query.isEmpty ||
+                  '${catalog.songTitle(id)} ${catalog.songBands(id).map(catalog.bandName).join(' ')}'
+                      .toLowerCase()
+                      .contains(query)))
+            id,
+    ]..sort((a, b) => b - a);
+    final selected = {
+      for (final song in _songs)
+        if (song.difficulty == _difficulty) song.songId,
+    };
+    void toggle(int id) {
+      final ref = SongRef(id, _difficulty);
+      if (widget.single) {
+        Navigator.of(context).pop([ref]);
+        return;
+      }
+      setState(() {
+        _songs = _songs.contains(ref)
+            ? [..._songs.where((s) => s != ref)]
+            : [..._songs, ref];
+      });
+    }
+
+    Widget facet(
+      String label,
+      List<(String, String, String?)> options,
+      Set<String> chosen,
+      void Function(String value) toggle,
+    ) => ToolField(
+      label: label,
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (final (value, name, icon) in options)
+            FilterChip(
+              avatar: icon == null ? null : _emblem(icon),
+              label: Text(name),
+              selected: chosen.contains(value),
+              onSelected: (_) => setState(() => toggle(value)),
+            ),
+        ],
+      ),
+    );
+    final bandValues = {for (final b in _bands) '$b'};
+    final attributeValues = {for (final a in _attributes) '$a'};
+    return SelectionPane(
+      title: widget.single
+          ? tb('chooseSong', 'Choose a song')
+          : tb('chooseSongs', 'Choose songs'),
+      searchLabel: t('common.actions.search', 'Search'),
+      filterLabel: tb('filters', 'Filters'),
+      query: _query,
+      onQuery: (value) => setState(() => _query = value),
+      activeFilters: _bands.length + _attributes.length + _missions.length,
+      filters: Builder(
+        builder: (context) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            facet(
+              t('catalog.analysis.fields.gekisouType', 'Gekiso type'),
+              [
+                (
+                  'Combo',
+                  t('catalog.songs.gekisou.gekisouMissionCombo', 'COMBO'),
+                  null,
+                ),
+                (
+                  'Luck',
+                  t('catalog.songs.gekisou.gekisouMissionLuck', 'LUCK'),
+                  null,
+                ),
+                (
+                  'JustCount',
+                  t('catalog.songs.gekisou.gekisouMissionJustCount', 'JUST'),
+                  null,
+                ),
+              ],
+              _missions,
+              (v) => _missions.contains(v)
+                  ? _missions.remove(v)
+                  : _missions.add(v),
+            ),
+            const SizedBox(height: 12),
+            facet(
+              t('catalog.fields.band', 'Band'),
+              [
+                for (final id in catalog.bandIds)
+                  ('$id', catalog.bandName(id), catalog.bandIcon(id)),
+              ],
+              bandValues,
+              (v) => _bands.contains(int.parse(v))
+                  ? _bands.remove(int.parse(v))
+                  : _bands.add(int.parse(v)),
+            ),
+            const SizedBox(height: 12),
+            facet(
+              t('catalog.fields.attribute', 'Attribute'),
+              [
+                for (final id in [1, 2, 3, 4, 5])
+                  ('$id', catalog.attributeName(id), catalog.attributeIcon(id)),
+              ],
+              attributeValues,
+              (v) => _attributes.contains(int.parse(v))
+                  ? _attributes.remove(int.parse(v))
+                  : _attributes.add(int.parse(v)),
+            ),
+          ],
+        ),
+      ),
+      count: tb('songCount', '{count} songs', {'count': ids.length}),
+      empty: tb('noSongs', 'No songs match'),
+      itemCount: ids.length,
+      minTileWidth: 150,
+      aspectRatio: 1,
+      item: (context, index) {
+        final id = ids[index];
+        return Tile(
+          title: catalog.songTitle(id),
+          subtitle: catalog.difficultyLabel(id, _difficulty),
+          images: [catalog.songJacket(id)],
+          fit: BoxFit.cover,
+          selected: selected.contains(id),
+          serverMark: catalog.mark('songs', id),
+          onTap: () => toggle(id),
+        );
+      },
+      footer: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Segmented<int>(
+            value: _difficulty,
+            grow: false,
+            options: [
+              for (final (index, name) in difficultyNames.indexed)
+                Choice(index, name.toUpperCase()),
+            ],
+            onSelected: (value) => setState(() => _difficulty = value),
+          ),
+          if (!widget.single) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              alignment: WrapAlignment.end,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                Text(
+                  tb('selectedSongs', '{count} selected', {
+                    'count': _songs.length,
+                  }),
+                ),
+                TextButton(
+                  onPressed: () => setState(() {
+                    _songs = [
+                      ..._songs.where(
+                        (s) =>
+                            s.difficulty != _difficulty ||
+                            !ids.contains(s.songId),
+                      ),
+                      for (final id in ids) SongRef(id, _difficulty),
+                    ];
+                  }),
+                  child: Text(
+                    tb('selectMatchingSongs', 'Select all shown songs'),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => setState(() => _songs = []),
+                  child: Text(t('common.actions.clear', 'Clear')),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(_songs),
+                  child: Text(tb('useSongs', 'Use these songs')),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Chooses one card (a formation slot); returns its id, or -1 for "no snap".
+Future<int?> pickCard(
+  BuildContext context,
+  TeamCatalog catalog, {
+  required bool members,
+  required List<int> ids,
+  int? current,
+  String? caption,
+}) => Navigator.of(context).push<int>(
+  MaterialPageRoute(
+    fullscreenDialog: true,
+    builder: (_) => _CardPicker(
+      catalog: catalog,
+      members: members,
+      ids: ids,
+      current: current,
+    ),
+  ),
+);
+
+class _CardPicker extends StatefulWidget {
+  const _CardPicker({
+    required this.catalog,
+    required this.members,
+    required this.ids,
+    this.current,
+  });
+  final TeamCatalog catalog;
+  final bool members;
+  final List<int> ids;
+  final int? current;
+
+  @override
+  State<_CardPicker> createState() => _CardPickerState();
+}
+
+class _CardPickerState extends State<_CardPicker> {
+  CardFilters _filters = const CardFilters();
+
+  @override
+  Widget build(BuildContext context) {
+    final catalog = widget.catalog;
+    final t = catalog.t;
+    String tb(
+      String key,
+      String fallback, [
+      Map<String, Object?> v = const {},
+    ]) => t('tools.teamBuilder.$key', fallback, v);
+    final ids = [
+      for (final id in widget.ids)
+        if (_filters.matches(catalog, widget.members, id)) id,
+    ]..sort((a, b) => b - a);
+    return SelectionPane(
+      title: widget.members
+          ? tb('pickMember', 'Choose a member')
+          : tb('pickSnap', 'Choose a snap'),
+      searchLabel: t('common.actions.search', 'Search'),
+      filterLabel: tb('filters', 'Filters'),
+      query: _filters.query,
+      onQuery: (value) =>
+          setState(() => _filters = _filters.copyWith(query: value)),
+      activeFilters: _filters.active,
+      filters: CardFilterPanel(
+        catalog: catalog,
+        filters: _filters,
+        onChanged: (value) => setState(() => _filters = value),
+      ),
+      count: tb('cardCount', '{count} cards', {'count': ids.length}),
+      empty: tb('noMatches', 'No cards match'),
+      itemCount: ids.length,
+      minTileWidth: widget.members ? 140 : 200,
+      aspectRatio: widget.members ? 3 / 4 : 16 / 9,
+      item: (context, index) {
+        final id = ids[index];
+        return Tile(
+          title: catalog.cardName(widget.members, id),
+          subtitle: catalog.cardSubtitle(widget.members, id),
+          adornments: [
+            for (final c in catalog.characterIds(widget.members, id))
+              catalog.characterFace(c),
+          ],
+          images: [catalog.cardImage(widget.members, id)],
+          fit: BoxFit.cover,
+          aspectRatio: widget.members ? 3 / 4 : 16 / 9,
+          marks: catalog.cardMarks(widget.members, id),
+          serverMark: catalog.mark(
+            widget.members ? 'members' : 'snapshots',
+            id,
+          ),
+          selected: id == widget.current,
+          onTap: () => Navigator.of(context).pop(id),
+        );
+      },
+      footer: widget.members
+          ? null
+          : Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () => Navigator.of(context).pop(-1),
+                icon: const Icon(Symbols.hide_image_rounded),
+                label: Text(tb('noSnap', 'No snap')),
+              ),
+            ),
+    );
+  }
+}

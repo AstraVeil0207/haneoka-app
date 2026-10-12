@@ -170,5 +170,6 @@
   "linkFailed": "연결을 업데이트하지 못했습니다",
   "linkUpdated": "연결을 업데이트했습니다",
   "syncedOn": "{date} 업데이트",
-  "openProfile": "프로필 열기"
+  "openProfile": "프로필 열기",
+  "teamBuilderNoSave": "먼저 계정에서 이 서버의 게임 데이터를 읽어 주세요."
 }

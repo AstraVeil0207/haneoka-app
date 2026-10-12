@@ -13,7 +13,8 @@ double f(num x) {
 }
 
 /// `Math.imul`.
-int imul(num a, num b) => (a.toInt().toSigned(32) * b.toInt().toSigned(32)).toSigned(32);
+int imul(num a, num b) =>
+    (a.toInt().toSigned(32) * b.toInt().toSigned(32)).toSigned(32);
 
 /// `x | 0`.
 int i32(num x) => x.toInt().toSigned(32);
@@ -23,12 +24,12 @@ const double inf = double.infinity;
 /// `Math.round`: halves round up.
 int jsRound(double x) => (x + 0.5).floorToDouble().toInt();
 
-typedef Row = Map<String, Object?>;
+typedef Doc = Map<String, Object?>;
 
-Row objectRow(Object? value) =>
+Doc objectRow(Object? value) =>
     value is Map ? value.cast<String, Object?>() : const <String, Object?>{};
 
-List<Row> dataRows(Object? value) => [
+List<Doc> dataRows(Object? value) => [
   for (final row in value is List ? value : objectRow(value).values)
     objectRow(row),
 ];
@@ -36,7 +37,7 @@ List<Row> dataRows(Object? value) => [
 final _underscore = RegExp('^_');
 
 /// Raw `_field` values under `raw`, overridden by the row's own fields.
-Row nativeRow(Object? value) {
+Doc nativeRow(Object? value) {
   final row = objectRow(value);
   return {
     for (final entry in objectRow(row['raw']).entries)

@@ -97,7 +97,10 @@ MemberGrowth memberGrowth(
     math.max(1, math.min(pick(input.level, cap), cap)),
     awake,
     math.min(pick(input.rank, max.rank), max.rank),
-    math.min(pick(input.liveSkillLevel, max.liveSkillLevel), max.liveSkillLevel),
+    math.min(
+      pick(input.liveSkillLevel, max.liveSkillLevel),
+      max.liveSkillLevel,
+    ),
     math.min(
       pick(input.gekisoSkillLevel, max.gekisoSkillLevel),
       max.gekisoSkillLevel,

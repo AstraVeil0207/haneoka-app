@@ -544,6 +544,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get openProfile => '打开主页';
+
+  @override
+  String get teamBuilderNoSave => '请先在账号中读取此服务器的游戏数据。';
 }
 
 /// The translations for Chinese, as used in Taiwan (`zh_TW`).
@@ -1085,4 +1088,7 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get openProfile => '開啟個人頁面';
+
+  @override
+  String get teamBuilderNoSave => '請先在帳號中讀取此伺服器的遊戲資料。';
 }

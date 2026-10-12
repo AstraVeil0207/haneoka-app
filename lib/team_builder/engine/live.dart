@@ -37,10 +37,9 @@ class SkillOrderPlan {
   final Uint8List sources;
 }
 
-final fullSkillOrderPlan = SkillOrderPlan(
-  [for (var i = 0; i < 120; i++) i],
-  Uint8List.fromList([for (var i = 0; i < 120; i++) i]),
-);
+final fullSkillOrderPlan = SkillOrderPlan([
+  for (var i = 0; i < 120; i++) i,
+], Uint8List.fromList([for (var i = 0; i < 120; i++) i]));
 
 bool _equalNumbers(List<num> a, List<num> b) {
   if (identical(a, b)) return true;
@@ -94,7 +93,10 @@ SkillOrderPlan skillOrderPlan(List<SlotSkill?> slots) {
   for (var slot = 0; slot < 5; slot++) {
     var previous = 0;
     while (previous < slot &&
-        !_equalSkill(slots.elementAtOrNull(slot), slots.elementAtOrNull(previous))) {
+        !_equalSkill(
+          slots.elementAtOrNull(slot),
+          slots.elementAtOrNull(previous),
+        )) {
       previous++;
     }
     final group = previous == slot ? classes++ : groups[previous];
@@ -314,7 +316,8 @@ List<_Command> _orderCommands(
     for (final effect in slot.effects) {
       if (effect.gate.blocks(lifeBase)) continue;
       final end = start + windowMs(effect.seconds, slot.extensionMs);
-      for (final channel in effect.type == 2000 ? const [0] : effect.judgements) {
+      for (final channel
+          in effect.type == 2000 ? const [0] : effect.judgements) {
         commands
           ..add(_Command(start, event, channel, effect.delta))
           ..add(_Command(end, event, channel, -effect.delta));
@@ -543,13 +546,10 @@ OrderLives _computeLives(
       }
       final frame = frameTime(start);
       settle(frame);
-      final due = _stable(
-        [
-          for (final rec in pending)
-            if (rec.frame <= frame) rec,
-        ],
-        (a, b) => a.time - b.time,
-      );
+      final due = _stable([
+        for (final rec in pending)
+          if (rec.frame <= frame) rec,
+      ], (a, b) => a.time - b.time);
       var gateLife = life;
       var r = 0;
       for (var j = i; j < n && chart.times[j] <= frame; j++) {
@@ -740,9 +740,8 @@ OrderScores scoreOrdersPlay(
       final comboFactor = comboFactors[i];
       final up = f(factor + channel[judgement]);
       final life = lives.note[i];
-      var x = f(
-        f(luck * f(f(f(judge * noteA[i]) * comboFactor) * up)) / count,
-      ).floorToDouble();
+      var x = f(f(luck * f(f(f(judge * noteA[i]) * comboFactor) * up)) / count)
+          .floorToDouble();
       if (life <= 0) x = f(onus * x).floorToDouble();
       if (assist != 1) x = f(assist * x).floorToDouble();
       score += x;
@@ -761,9 +760,8 @@ int skipScore(EngineMaster master, CompiledChart chart, int power) {
   final combo = comboFactorAt(master.live.combo[0] ?? const [], 0);
   var total = 0;
   for (final frac in chart.skipNoteFrac) {
-    total += f(
-      f(f(great * f(frac * t)) * combo) / chart.convertedCount,
-    ).floor();
+    total += f(f(f(great * f(frac * t)) * combo) / chart.convertedCount)
+        .floor();
   }
   return total;
 }

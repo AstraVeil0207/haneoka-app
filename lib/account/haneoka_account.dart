@@ -354,6 +354,7 @@ class HaneokaAccount extends ChangeNotifier {
     String path, {
     Object? body,
     bool authorized = true,
+    Map<String, String> headers = const {},
   }) async {
     final request = http.Request(method, Uri.parse('$_origin$path'))
       ..headers.addAll({
@@ -361,6 +362,7 @@ class HaneokaAccount extends ChangeNotifier {
         'Origin': _origin,
         if (authorized && _token != null) 'Authorization': 'Bearer $_token',
         if (body != null) 'Content-Type': 'application/json',
+        ...headers,
       });
     if (body != null) request.body = jsonEncode(body);
     final response = await http.Response.fromStream(

@@ -1128,6 +1128,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Open profile'**
   String get openProfile;
+
+  /// Team builder: importing cards needs a read save of the selected server.
+  ///
+  /// In en, this message translates to:
+  /// **'Read this server\'s game data in Accounts first.'**
+  String get teamBuilderNoSave;
 }
 
 class _AppLocalizationsDelegate

@@ -122,9 +122,8 @@ sealed class Goal {
         SongRef.fromJson(objectRow(song)),
     ];
     PlayModel play() => PlayModel.fromJson(objectRow(json['play']));
-    Criterion criterion() => Criterion.values.byName(
-      '${json['criterion'] ?? 'mean'}',
-    );
+    Criterion criterion() =>
+        Criterion.values.byName('${json['criterion'] ?? 'mean'}');
     return switch (json['kind']) {
       'power' => PowerGoal(
         json['song'] == null ? null : SongRef.fromJson(objectRow(json['song'])),
@@ -235,10 +234,12 @@ class EngineRequest {
   });
   factory EngineRequest.fromJson(Map<String, Object?> json) => EngineRequest(
     members: [
-      for (final row in json['members'] as List) MemberInput.fromJson(objectRow(row)),
+      for (final row in json['members'] as List)
+        MemberInput.fromJson(objectRow(row)),
     ],
     snaps: [
-      for (final row in json['snaps'] as List) SnapInput.fromJson(objectRow(row)),
+      for (final row in json['snaps'] as List)
+        SnapInput.fromJson(objectRow(row)),
     ],
     player: PlayerInput.fromJson(objectRow(json['player'])),
     unknownPolicy: UnknownPolicy.values.byName(
@@ -453,9 +454,8 @@ class ChartCache {
       if (song == null || difficulty == null) {
         return Future.error(RangeError('unknown-chart:${ref.key}'));
       }
-      value = load(ref).then(
-        (source) => compileChart(master, song, difficulty, source),
-      );
+      value = load(ref)
+          .then((source) => compileChart(master, song, difficulty, source));
       final pending = value;
       pending.catchError((Object _) {
         if (identical(_charts[ref], pending)) _charts.remove(ref);
@@ -556,7 +556,9 @@ Constraints constraintsOf(
   final memberIndex = {
     for (final (index, member) in members.indexed) member.key: index,
   };
-  final snapIndex = {for (final (index, snap) in snaps.indexed) snap.key: index};
+  final snapIndex = {
+    for (final (index, snap) in snaps.indexed) snap.key: index,
+  };
   List<int> ids(List<String> keys, Map<String, int> index) => [
     for (final key in keys) ?index[key],
   ];
@@ -621,10 +623,9 @@ int compareHits(EngineHit a, EngineHit b) {
   return d != 0 ? d : (b.score?.mean ?? 0).compareTo(a.score?.mean ?? 0);
 }
 
-List<EngineHit> _overall(List<SongResult> results, int k) =>
-    ([for (final result in results) ...result.hits]..sort(compareHits))
-        .take(math.max(k, 3))
-        .toList();
+List<EngineHit> _overall(List<SongResult> results, int k) => ([
+  for (final result in results) ...result.hits,
+]..sort(compareHits)).take(math.max(k, 3)).toList();
 
 typedef Progress = void Function(int done, int total);
 
@@ -645,7 +646,15 @@ Future<EngineResponse> runEngine(
   double now() => clock.elapsedMicroseconds / 1000;
   final goal = request.goal;
   if (goal is PlanGoal) {
-    return _runPlan(master, charts, request, goal, clock, onProgress, cancelled);
+    return _runPlan(
+      master,
+      charts,
+      request,
+      goal,
+      clock,
+      onProgress,
+      cancelled,
+    );
   }
   final box = resolveBox(
     master,
@@ -676,9 +685,7 @@ Future<EngineResponse> runEngine(
     ScoreGoal(:final songs) => <SongRef?>[...songs],
     PlanGoal() => <SongRef?>[],
   };
-  final budgetEnd = request.timeLimitMs == null
-      ? inf
-      : request.timeLimitMs!;
+  final budgetEnd = request.timeLimitMs == null ? inf : request.timeLimitMs!;
   var songsLeft = songs.length;
   double songBudget() => budgetEnd == inf
       ? inf
@@ -787,7 +794,12 @@ Future<EngineResponse> runEngine(
           ),
         );
       case EventGoal():
-        final route = eventRoute(master, goal.eventId, goal.route, goal.consumption);
+        final route = eventRoute(
+          master,
+          goal.eventId,
+          goal.route,
+          goal.consumption,
+        );
         final points = goal.measure != 'items';
         final played = chart != null && goal.route != RouteKind.skip;
         final context = played
@@ -842,7 +854,15 @@ Future<EngineResponse> runEngine(
           var prep = _eventPrep[prepKey];
           if (prep == null) {
             final seeds = <Team>[];
-            for (final weight in const [16777216.0, 64.0, 32.0, 16.0, 8.0, 4.0, 2.0]) {
+            for (final weight in const [
+              16777216.0,
+              64.0,
+              32.0,
+              16.0,
+              8.0,
+              4.0,
+              2.0,
+            ]) {
               seeds.addAll([
                 for (final hit in run(
                   eventBonusSurrogate(shared, route.effects, points, weight),
@@ -853,7 +873,13 @@ Future<EngineResponse> runEngine(
                   hit.team,
               ]);
             }
-            final probe = run(adapter, music, powerEffects, seeds: seeds, limitMs: 1);
+            final probe = run(
+              adapter,
+              music,
+              powerEffects,
+              seeds: seeds,
+              limitMs: 1,
+            );
             prep = (
               seeds: seeds,
               aspiration: probe.hits.length >= request.k
@@ -864,11 +890,21 @@ Future<EngineResponse> runEngine(
             _eventPrep[prepKey] = prep;
           }
           final floor = prep.aspiration;
-          out = run(adapter, music, powerEffects, seeds: prep.seeds, floor: floor);
+          out = run(
+            adapter,
+            music,
+            powerEffects,
+            seeds: prep.seeds,
+            floor: floor,
+          );
           final enough =
-              out.hits.where((hit) => floor == null || hit.key >= floor).length >=
+              out.hits
+                  .where((hit) => floor == null || hit.key >= floor)
+                  .length >=
               request.k;
-          if (!enough) out = run(adapter, music, powerEffects, seeds: prep.seeds);
+          if (!enough) {
+            out = run(adapter, music, powerEffects, seeds: prep.seeds);
+          }
         } else {
           out = run(adapter, music, powerEffects);
         }
@@ -887,12 +923,9 @@ Future<EngineResponse> runEngine(
                 if (hit.key == key) hit.team,
             ];
             final tie = run(
-              eventScoreTieObjective(
-                context!,
-                objective,
-                key,
-                [for (final hit in ordered) hit.team],
-              ),
+              eventScoreTieObjective(context!, objective, key, [
+                for (final hit in ordered) hit.team,
+              ]),
               music,
               powerEffects,
               k: request.k - ordered.length,
@@ -947,17 +980,25 @@ Future<EngineResponse> runEngine(
                       challengePoints: detail.challengePoints,
                       perPlayMin:
                           detail.directMin ??
-                          (perOrder != null ? perOrder.reduce(math.min) : detail.mean),
+                          (perOrder != null
+                              ? perOrder.reduce(math.min)
+                              : detail.mean),
                       perPlayMax:
                           detail.directMax ??
-                          (perOrder != null ? perOrder.reduce(math.max) : detail.mean),
+                          (perOrder != null
+                              ? perOrder.reduce(math.max)
+                              : detail.mean),
                     );
                 }(),
             ],
           ),
         );
       case PotentialGoal():
-        final out = run(potentialObjective(shared, goal.windowSeconds), null, const []);
+        final out = run(
+          potentialObjective(shared, goal.windowSeconds),
+          null,
+          const [],
+        );
         results.add(
           SongResult(
             song: null,
@@ -965,7 +1006,8 @@ Future<EngineResponse> runEngine(
             bound: out.bound,
             stats: out.stats,
             hits: [
-              for (final hit in out.hits) toHit(null, hit)..potential = hit.detail,
+              for (final hit in out.hits)
+                toHit(null, hit)..potential = hit.detail,
             ],
           ),
         );
@@ -1029,9 +1071,18 @@ Future<EngineResponse> _runPlan(
     request.unknownPolicy,
   );
   final player = playerState(master, request.player);
-  final constraints = constraintsOf(request.constraints, box.members, box.snaps);
+  final constraints = constraintsOf(
+    request.constraints,
+    box.members,
+    box.snaps,
+  );
   final shared = Shared(master, box.members, box.snaps);
-  final route = eventRoute(master, goal.eventId, RouteKind.live, goal.boostsPerLive);
+  final route = eventRoute(
+    master,
+    goal.eventId,
+    RouteKind.live,
+    goal.boostsPerLive,
+  );
   final normalResults = <SongResult>[];
   for (final (index, song) in goal.normalSongs.indexed) {
     step(index, total);
@@ -1044,7 +1095,13 @@ Future<EngineResponse> _runPlan(
             250.0,
             (budgetEnd - now()) / math.max(1, goal.normalSongs.length - index),
           );
-    final context = LiveContext(master, box.members, box.snaps, live, goal.play);
+    final context = LiveContext(
+      master,
+      box.members,
+      box.snaps,
+      live,
+      goal.play,
+    );
     final best = searchTeams(
       master: master,
       player: player,
@@ -1097,7 +1154,9 @@ Future<EngineResponse> _runPlan(
                   : 0.0;
               return EngineHit(
                   song: song,
-                  members: [for (final i in hit.team.members) box.members[i].key],
+                  members: [
+                    for (final i in hit.team.members) box.members[i].key,
+                  ],
                   snaps: [
                     for (final j in hit.team.snaps)
                       j < 0 ? null : box.snaps[j].key,
@@ -1108,7 +1167,12 @@ Future<EngineResponse> _runPlan(
                 )
                 ..score = detail.live == null
                     ? null
-                    : scoreSummary(detail.live!.scores, chart, hit.team, box.members)
+                    : scoreSummary(
+                        detail.live!.scores,
+                        chart,
+                        hit.team,
+                        box.members,
+                      )
                 // perOrder includes the challenge-point weight; report plain points per play.
                 ..event = HitEvent(
                   mean: pointsOnly - weight * detail.challengePoints,
@@ -1122,8 +1186,9 @@ Future<EngineResponse> _runPlan(
       ),
     );
   }
-  final bestNormal =
-      ([for (final r in normalResults) ...r.hits]..sort(compareHits)).firstOrNull;
+  final bestNormal = ([
+    for (final r in normalResults) ...r.hits,
+  ]..sort(compareHits)).firstOrNull;
   final lives = goal.boostsPerLive > 0
       ? goal.boostBudget ~/ goal.boostsPerLive
       : goal.boostBudget;
@@ -1142,7 +1207,8 @@ Future<EngineResponse> _runPlan(
       normalLives: lives,
       challengeLives: challengeLives,
       challengePointsEarned: earned,
-      leftoverChallengePoints: pool - challengeLives * goal.challengePointsPerLive,
+      leftoverChallengePoints:
+          pool - challengeLives * goal.challengePointsPerLive,
       eventPoints: eventPointsTotal,
       perBoost: goal.boostBudget != 0
           ? eventPointsTotal /
@@ -1183,7 +1249,12 @@ class TeamEvaluation {
   final List<int> slotPowers;
   final HitScore score;
   final int skipScore;
-  final ({double points, double items, double bonusPercent, double itemBonusPercent})?
+  final ({
+    double points,
+    double items,
+    double bonusPercent,
+    double itemBonusPercent,
+  })?
   event;
 }
 
@@ -1245,22 +1316,37 @@ Future<List<TeamEvaluation>> evaluateTeam(
       effects,
     );
     final usedSnaps = snapStates.whereType<SnapState>().toList();
-    final evaluated = Team([0, 1, 2, 3, 4], [
-      for (final snap in snapStates) snap == null ? -1 : usedSnaps.indexOf(snap),
-    ]);
+    final evaluated = Team(
+      [0, 1, 2, 3, 4],
+      [
+        for (final snap in snapStates)
+          snap == null ? -1 : usedSnaps.indexOf(snap),
+      ],
+    );
     final objective = liveScoreObjective(
       LiveContext(master, teamMembers, usedSnaps, live, play),
       Criterion.mean,
     );
     final detail = objective.exact(evaluated, power.total, power.slots).detail;
-    ({double points, double items, double bonusPercent, double itemBonusPercent})?
+    ({
+      double points,
+      double items,
+      double bonusPercent,
+      double itemBonusPercent,
+    })?
     eventValue;
     if (event != null) {
-      final route = eventRoute(master, event.eventId, event.route, event.consumption);
+      final route = eventRoute(
+        master,
+        event.eventId,
+        event.route,
+        event.consumption,
+      );
       int bonus(int type) =>
           teamMembers.fold(
             0,
-            (sum, member) => sum + memberEventPercent(route.effects, member, type),
+            (sum, member) =>
+                sum + memberEventPercent(route.effects, member, type),
           ) +
           usedSnaps.fold(
             0,
@@ -1332,7 +1418,10 @@ List<SkillWindow> skillWindows(
           } else {
             perfect += effect.delta / 1000;
           }
-          length = math.max(length, windowMs(effect.seconds, skill.extensionMs));
+          length = math.max(
+            length,
+            windowMs(effect.seconds, skill.extensionMs),
+          );
         }
         final start = chart.skillTimes[event];
         return SkillWindow(

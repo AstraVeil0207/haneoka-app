@@ -35,6 +35,7 @@ import '../home/calendar.dart';
 import '../home/home_screen.dart';
 import '../records/player.dart';
 import '../stories/stories.dart';
+import '../team_builder/team_builder_screen.dart';
 import '../records/tracker.dart';
 import '../home/join.dart';
 import '../ui/import_screen.dart';
@@ -125,6 +126,7 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/catalog/assets') return const AssetsScreen();
   if (route == '/catalog/spine') return const SpineScreen();
   if (route == '/stamp-maker') return const StampMakerScreen();
+  if (route == '/team-builder') return const TeamBuilderScreen();
   if (route == '/catalog/stories') {
     return const StoriesScreen(key: ValueKey('band'), mode: 'band');
   }

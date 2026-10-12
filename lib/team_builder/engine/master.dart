@@ -8,7 +8,7 @@ import 'num.dart';
 typedef Stat3 = List<int>;
 
 class TargetRow {
-  TargetRow(Row row)
+  TargetRow(Doc row)
     : id = intOf(row['id']),
       bandId = intOf(row['bandID'] ?? row['bandId']),
       cardType = intOf(row['cardType']),
@@ -52,7 +52,7 @@ class CumulativeRow {
 }
 
 class SkillEffectRow {
-  SkillEffectRow(Row row)
+  SkillEffectRow(Doc row)
     : id = intOf(row['id']),
       level = intOf(row['level']),
       triggerType = intOf(row['skillTriggerType']),
@@ -231,7 +231,7 @@ class ScoreRankRow {
 }
 
 class EventEffectRow {
-  EventEffectRow(Row row)
+  EventEffectRow(Doc row)
     : resourceType = intOf(row['resourceTypeConstraint']),
       characterId = intOf(row['characterId']),
       bandId = intOf(row['bandId']),
@@ -244,9 +244,9 @@ class EventEffectRow {
           ? [
               for (final rank in [1, 2, 3, 4, 5])
                 intOf(
-                  dataRows(
-                    row['perRank'],
-                  ).where((item) => intOf(item['rank']) == rank).firstOrNull?['value'],
+                  dataRows(row['perRank'])
+                      .where((item) => intOf(item['rank']) == rank)
+                      .firstOrNull?['value'],
                 ),
             ]
           : [
@@ -265,7 +265,7 @@ class EventEffectRow {
 }
 
 class RewardRow {
-  RewardRow(Row row)
+  RewardRow(Doc row)
     : scoreRank = intOf(row['scoreRank']),
       group = intOf(row['group']),
       resourceType = intOf(row['resourceType']),
@@ -493,10 +493,10 @@ const _ranks = {
 };
 
 Map<int, Map<int, V>> _nested<V>(
-  List<Row> rows,
+  List<Doc> rows,
   String outer,
   String inner,
-  V Function(Row row) value,
+  V Function(Doc row) value,
 ) {
   final out = <int, Map<int, V>>{};
   for (final row in rows) {
@@ -505,23 +505,22 @@ Map<int, Map<int, V>> _nested<V>(
   return out;
 }
 
-Stat3 _stat(Row row, String p, String t, String v) => [
+Stat3 _stat(Doc row, String p, String t, String v) => [
   intOf(row[p]),
   intOf(row[t]),
   intOf(row[v]),
 ];
 
-List<BoostRow> _boostRows(List<Row> rows, String consumed) =>
-    [
-      for (final row in rows)
-        BoostRow(
-          intOf(row[consumed]),
-          numOf(row['eventPointRate']),
-          numOf(row['liveMusicRewardRate']),
-        ),
-    ]..sort((a, b) => a.consumed - b.consumed);
+List<BoostRow> _boostRows(List<Doc> rows, String consumed) => [
+  for (final row in rows)
+    BoostRow(
+      intOf(row[consumed]),
+      numOf(row['eventPointRate']),
+      numOf(row['liveMusicRewardRate']),
+    ),
+]..sort((a, b) => a.consumed - b.consumed);
 
-List<Row> _rowsOf(Object? value) => [
+List<Doc> _rowsOf(Object? value) => [
   for (final row in dataRows(value)) nativeRow(row),
 ];
 
@@ -552,7 +551,7 @@ Map<int, List<int>> _categories(Object? record) => {
 List<int> _distinct(Iterable<int> values) => values.toSet().toList();
 
 /// `compileFromTeamData`.
-EngineMaster compileTeamData(Row data) {
+EngineMaster compileTeamData(Doc data) {
   final identity = objectRow(data['identity']);
   final runtime = objectRow(objectRow(data['runtimeRules'])['tables']);
   final liveTools = objectRow(data['liveTools']);
@@ -560,7 +559,7 @@ EngineMaster compileTeamData(Row data) {
   final reference = objectRow(data['skillReference']);
   final skills = objectRow(data['skills']);
   final characterRows = objectRow(data['characters']);
-  List<Row> progress(String key) => _rowsOf(progression[key]);
+  List<Doc> progress(String key) => _rowsOf(progression[key]);
 
   final parameters = dataRows(objectRow(runtime['parameters'])['rows']);
   Object? parameter(String key) =>
@@ -588,7 +587,8 @@ EngineMaster compileTeamData(Row data) {
   ).entries) {
     final items = [...entry.value]
       ..sort(
-        (a, b) => intOf(a['requiredComboCount']) - intOf(b['requiredComboCount']),
+        (a, b) =>
+            intOf(a['requiredComboCount']) - intOf(b['requiredComboCount']),
       );
     var sum = 0.0;
     combo[entry.key] = [
@@ -733,7 +733,7 @@ EngineMaster compileTeamData(Row data) {
     final event = objectRow(value);
     final id = intOf(event['id']);
     final tables = objectRow(event['tables']);
-    List<Row> table(String name) => tables.containsKey(name)
+    List<Doc> table(String name) => tables.containsKey(name)
         ? _rowsOf(tables[name])
         : [
             for (final row in _rowsOf(sharedRules[name]))
@@ -818,9 +818,7 @@ EngineMaster compileTeamData(Row data) {
           if (intOf(row['noteSimulateJudgement']) == 6)
             intOf(row['noteJudgementType']),
       },
-      timingTypes: {
-        for (final row in timings) intOf(row['noteJudgementType']),
-      },
+      timingTypes: {for (final row in timings) intOf(row['noteJudgementType'])},
       afterMs: maxOf(
         timings.map((row) => numOf(row['afterMs'] ?? row['after'])),
         0,
@@ -898,13 +896,10 @@ EngineMaster compileTeamData(Row data) {
       for (final value in objectRow(data['bandItems']).values)
         intOf(objectRow(value)['bandItemId']): BandItem(
           intOf(objectRow(value)['bandId']),
-          groupBy(
-            [
-              for (final row in _rowsOf(objectRow(value)['effects']))
-                SkillEffectRow(row),
-            ],
-            (row) => row.level,
-          ),
+          groupBy([
+            for (final row in _rowsOf(objectRow(value)['effects']))
+              SkillEffectRow(row),
+          ], (row) => row.level),
         ),
     },
     targets: {
@@ -952,7 +947,9 @@ EngineMaster compileTeamData(Row data) {
     ],
     events: events,
     liveChallengePoints: {
-      for (final row in dataRows(objectRow(data['challengePointTable'])['rows']))
+      for (final row in dataRows(
+        objectRow(data['challengePointTable'])['rows'],
+      ))
         intOf(row['scoreRank']): intOf(row['value']),
     },
     boosts: _boostRows(

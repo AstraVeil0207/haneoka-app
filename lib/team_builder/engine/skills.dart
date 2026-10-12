@@ -65,7 +65,9 @@ class SlotSkill {
   String get signature => _signature ??= [
     extensionMs,
     recovery,
-    convert == null ? '-' : '${convert!.judgements.join('.')}/${convert!.limit}',
+    convert == null
+        ? '-'
+        : '${convert!.judgements.join('.')}/${convert!.limit}',
     for (final e in effects)
       '${e.type}:${e.delta}:${e.seconds}:${e.gate.kind.index}:${e.gate.value}:${e.gate.positive}:${e.judgements.join('.')}',
   ].join('|');
@@ -139,7 +141,8 @@ Object? _conditionValue(
 
 List<int> _judgementsOf(EngineMaster master, List<int> ids) => [
   for (final id in ids)
-    if ((master.targets[id]?.judgement ?? -1) case final j when j >= 3 && j <= 6)
+    if ((master.targets[id]?.judgement ?? -1) case final j
+        when j >= 3 && j <= 6)
       j,
 ];
 
@@ -174,10 +177,7 @@ SlotSkill resolveSlotSkill(
         row.type == 2000 ? scoreDelta(row.value) : judgementDelta(row.value),
         f(row.seconds),
         life != null
-            ? LifeGate.lifeAtLeast(
-                life.values.firstOrNull ?? 0,
-                life.positive,
-              )
+            ? LifeGate.lifeAtLeast(life.values.firstOrNull ?? 0, life.positive)
             : const LifeGate.always(),
         row.type == 2004 ? _judgementsOf(master, row.targetIds) : const [],
       ),
