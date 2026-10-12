@@ -149,6 +149,14 @@ SkillEffectRow? _comboTemplate(EngineMaster master) {
   return null;
 }
 
+const _contextBudget = 16 * 1024 * 1024;
+int _contextBytes(String key, GekisoContext value) =>
+    key.length * 2 +
+    128 +
+    value.judgement.lengthInBytes +
+    value.gk.lengthInBytes +
+    value.up.lengthInBytes +
+    value.luck.lengthInBytes;
 final _levelTags = Expando<String>();
 final _weightCache = Expando<_Weights>();
 final _performerKeys = Expando<String>();
@@ -233,9 +241,28 @@ GekisoSearchOutput gekisoSearch({
         ),
     ], (a, b) => a.key.compareTo(b.key));
     final key = keyed.map((item) => item.key).join('|');
-    return cache[key] ??= gekisoContext(within, chart, [
+    final known = cache[key];
+    if (known != null) return known;
+    final value = cache[key] = gekisoContext(within, chart, [
       for (final item in keyed) item.p,
     ], seeds);
+    // A context holds four note-sized arrays and a search simulates
+    // thousands of decks: past a fixed budget the oldest are dropped and
+    // simulated again when asked for.
+    chart.contextBytes += _contextBytes(key, value);
+    if (chart.contextBytes > _contextBudget) {
+      evict:
+      for (final old in chart.contexts.values) {
+        for (final oldKey in old.keys.toList()) {
+          final oldValue = old[oldKey]!;
+          if (identical(oldValue, value)) continue;
+          old.remove(oldKey);
+          chart.contextBytes -= _contextBytes(oldKey, oldValue);
+          if (chart.contextBytes <= _contextBudget * 3 ~/ 4) break evict;
+        }
+      }
+    }
+    return value;
   }
 
   /// Linear weight of a context per unit power: `base` without live skills,

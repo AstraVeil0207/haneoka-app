@@ -73,6 +73,7 @@ class GekisoChart {
   /// Per-isolate caches of the Gekisou search on this chart: contexts by
   /// level tag and lottery seeds, then deck; and its seeding phase.
   final contexts = <String, Map<String, GekisoContext>>{};
+  int contextBytes = 0;
   final seeded = <String, Object>{};
 }
 

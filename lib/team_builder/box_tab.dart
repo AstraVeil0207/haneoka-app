@@ -11,9 +11,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
-import '../l10n/app_localizations.dart';
-import '../save/account_store.dart';
-import '../save/game_save.dart';
 import '../ui/tile.dart';
 import 'box.dart';
 import 'catalog.dart';
@@ -21,7 +18,7 @@ import 'controller.dart';
 import 'engine/box.dart';
 import 'engine/num.dart';
 import 'pickers.dart';
-import 'save_import.dart';
+import 'box_import_screen.dart';
 import 'widgets.dart';
 
 enum _Show { owned, all, unowned }
@@ -276,7 +273,7 @@ class _BoxTabState extends State<BoxTab> {
             label: Text(c.tb('bulkMax', 'Full growth')),
           ),
           FilledButton.tonalIcon(
-            onPressed: () => importFromSave(context, c),
+            onPressed: () => openBoxImport(context, c, members: _members),
             icon: const Icon(Symbols.upload_file_rounded),
             label: Text(c.tb('importBox', 'Import')),
           ),
@@ -317,7 +314,8 @@ class _BoxTabState extends State<BoxTab> {
                           child: Text(c.tb('showAll', 'All')),
                         ),
                         FilledButton.tonal(
-                          onPressed: () => importFromSave(context, c),
+                          onPressed: () =>
+                              openBoxImport(context, c, members: _members),
                           child: Text(c.tb('importBox', 'Import')),
                         ),
                       ],
@@ -675,171 +673,6 @@ class _CardEditor extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Imports a read save of this server into the box, after a review of what
-/// it brings and how existing values are treated.
-Future<void> importFromSave(
-  BuildContext context,
-  TeamBuilderController c,
-) async {
-  final store = AccountStore.instance;
-  await store.load();
-  if (!context.mounted) return;
-  final saves = [
-    for (final save in store.saves)
-      if (save.release?.server == c.state.server) save,
-  ];
-  final t = c.state.text;
-  String bi(String key, String fallback, [Map<String, Object?> v = const {}]) =>
-      t('tools.teamBuilder.boxImport.$key', fallback, v);
-  if (saves.isEmpty) {
-    await showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Symbols.upload_file_rounded),
-        title: Text(bi('title', 'Import card data')),
-        content: Text(AppLocalizations.of(context).teamBuilderNoSave),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text(t('common.actions.close', 'Close')),
-          ),
-        ],
-      ),
-    );
-    return;
-  }
-  var save = saves.first;
-  var policy = ExistingPolicy.updates;
-  final confirmed = await showDialog<bool>(
-    context: context,
-    builder: (context) => StatefulBuilder(
-      builder: (context, setState) {
-        final read = readSave(save, c.catalog!);
-        return AlertDialog(
-          icon: const Icon(Symbols.upload_file_rounded),
-          title: Text(bi('title', 'Import card data')),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (saves.length > 1)
-                  DropdownMenu<GameSave>(
-                    expandedInsets: EdgeInsets.zero,
-                    initialSelection: save,
-                    onSelected: (value) {
-                      if (value != null) setState(() => save = value);
-                    },
-                    dropdownMenuEntries: [
-                      for (final s in saves)
-                        DropdownMenuEntry(
-                          value: s,
-                          label: '${s.name ?? s.profileId} · ${s.profileId}',
-                        ),
-                    ],
-                  )
-                else
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Symbols.sports_esports_rounded),
-                    title: Text(save.name ?? save.profileId),
-                    subtitle: Text(save.profileId),
-                  ),
-                const SizedBox(height: 8),
-                Text(
-                  bi(
-                    'candidateCounts',
-                    'Data {index}: {members} members, {snapshots} snapshots, {characters} characters, {items} items',
-                    {
-                      'index': 1,
-                      'members': read.members.length,
-                      'snapshots': read.snaps.length,
-                      'characters': read.characterRanks.length,
-                      'items': read.bandItems.length,
-                    },
-                  ),
-                ),
-                if (read.issues > 0) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    '${bi('issues', 'Entries needing review')}: ${read.issues}',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                Text(
-                  t(
-                    'tools.teamBuilder.importExisting.policy',
-                    'Existing cards',
-                  ),
-                ),
-                const SizedBox(height: 8),
-                RadioGroup<ExistingPolicy>(
-                  groupValue: policy,
-                  onChanged: (next) => setState(() => policy = next ?? policy),
-                  child: Column(
-                    children: [
-                      for (final (value, key, fallback) in [
-                        (ExistingPolicy.updates, 'updates', 'Only increases'),
-                        (
-                          ExistingPolicy.keep,
-                          'keep',
-                          'Keep all existing values',
-                        ),
-                        (
-                          ExistingPolicy.overwrite,
-                          'overwrite',
-                          'Overwrite all existing values',
-                        ),
-                      ])
-                        RadioListTile<ExistingPolicy>(
-                          contentPadding: EdgeInsets.zero,
-                          value: value,
-                          title: Text(
-                            t(
-                              'tools.teamBuilder.importExisting.$key',
-                              fallback,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(t('common.actions.cancel', 'Cancel')),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(bi('confirm', 'Confirm import')),
-            ),
-          ],
-        );
-      },
-    ),
-  );
-  if (confirmed != true || !context.mounted) return;
-  final read = readSave(save, c.catalog!);
-  final changes = [
-    for (final change in read.changes(c.view!, policy))
-      if (c.store!.value(change.$1) != change.$2) change,
-  ];
-  c.write(changes);
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(
-      content: Text(
-        c.tb('imported', 'Imported {count} changes', {'count': changes.length}),
-      ),
-    ),
-  );
 }
 
 /// Saves the box as the website's inventory document

@@ -1,0 +1,492 @@
+{
+ "list": "kind,id,name,level,training,awakening,liveSkillLevel\nmember,1,,40,2,3,2\n,2,,1,,,\nmember,,\"Found My Place\",,,,\nsupport,support-card-1,,,,2,\nsupport,2,,1,,,3\nmember,99999999,,,,,\nmember,4,,999,,,\nmember,member-5,,10,1,1,1",
+ "onpkg": "ONPKG1:H4sIAAAAAAAAAz1POQ7DMAz7i2YNomzn+kqQpV3TLkW7FP17KcUJBAMWRfD4ykcWqDxkWddBxURdwXm+933TdVQpoxlh8MATsUllrB0rnE6dVQAk7lo5wYURrVNnQ9vJBk0xtUsaB91V3L2LFL6kbyqvCFgyYBCrynywuLSQyq1wYwvvkXuB4WIyem2dSdF7iCJEeaN1nvilTxTJP51w4jTyEw+bA6fQLYUMatnZe/eSprCawWAt725Rdvv9AeS0uFZ8AQAA",
+ "cases": {
+  "list": {
+   "cards": [
+    [
+     "intl:members:1",
+     {
+      "level": [
+       40
+      ],
+      "training": [
+       2
+      ],
+      "awakening": [
+       3
+      ],
+      "liveSkillLevel": [
+       2
+      ]
+     }
+    ],
+    [
+     "intl:members:2",
+     {
+      "level": [
+       1
+      ]
+     }
+    ],
+    [
+     "intl:members:3",
+     {}
+    ],
+    [
+     "intl:snapshots:1",
+     {
+      "awakening": [
+       2
+      ]
+     }
+    ],
+    [
+     "intl:members:5",
+     {
+      "level": [
+       10
+      ],
+      "training": [
+       1
+      ],
+      "awakening": [
+       1
+      ],
+      "liveSkillLevel": [
+       1
+      ]
+     }
+    ]
+   ],
+   "maps": [],
+   "issues": [
+    [
+     "snapshots",
+     2,
+     "row",
+     "inventory-list-snapshot-field"
+    ],
+    [
+     "members",
+     99999999,
+     "row",
+     "inventory-list-card-unknown"
+    ],
+    [
+     "members",
+     4,
+     "row",
+     "inventory-list-practice-range"
+    ]
+   ]
+  },
+  "listApplied": {
+   "members": [
+    [
+     1,
+     40,
+     2,
+     3,
+     2,
+     null
+    ],
+    [
+     2,
+     1,
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     3,
+     null,
+     null,
+     null,
+     null,
+     null
+    ],
+    [
+     5,
+     10,
+     1,
+     1,
+     1,
+     null
+    ]
+   ],
+   "snapshots": [
+    [
+     1,
+     null,
+     2
+    ]
+   ],
+   "characterRanks": {},
+   "bandItems": {}
+  },
+  "box": {
+   "cards": [
+    [
+     "intl:members:6",
+     {
+      "awakening": [
+       1
+      ],
+      "level": [
+       1
+      ],
+      "training": [
+       2
+      ],
+      "liveSkillLevel": [
+       1
+      ]
+     }
+    ],
+    [
+     "intl:members:7",
+     {
+      "awakening": [
+       2
+      ],
+      "level": [
+       26
+      ],
+      "training": [
+       1
+      ],
+      "liveSkillLevel": [
+       2
+      ],
+      "gekisoSkillLevel": [
+       1
+      ]
+     }
+    ],
+    [
+     "intl:members:8",
+     {
+      "awakening": [
+       3
+      ],
+      "training": [
+       1
+      ],
+      "liveSkillLevel": [
+       3
+      ]
+     }
+    ],
+    [
+     "intl:members:9",
+     {
+      "awakening": [
+       4
+      ],
+      "level": [
+       40
+      ],
+      "training": [
+       2
+      ],
+      "liveSkillLevel": [
+       4
+      ],
+      "gekisoSkillLevel": [
+       1
+      ]
+     }
+    ],
+    [
+     "intl:members:10",
+     {
+      "awakening": [
+       1
+      ],
+      "training": [
+       1
+      ],
+      "liveSkillLevel": [
+       5
+      ]
+     }
+    ],
+    [
+     "intl:members:11",
+     {
+      "awakening": [
+       2
+      ],
+      "training": [
+       1
+      ],
+      "liveSkillLevel": [
+       1
+      ],
+      "gekisoSkillLevel": [
+       1
+      ]
+     }
+    ],
+    [
+     "intl:members:12",
+     {
+      "awakening": [
+       3
+      ],
+      "training": [
+       2
+      ],
+      "liveSkillLevel": [
+       2
+      ]
+     }
+    ],
+    [
+     "intl:snapshots:3",
+     {
+      "awakening": [
+       1
+      ],
+      "level": [
+       1
+      ]
+     }
+    ],
+    [
+     "intl:snapshots:4",
+     {
+      "awakening": [
+       2
+      ],
+      "level": [
+       15
+      ]
+     }
+    ],
+    [
+     "intl:snapshots:5",
+     {
+      "awakening": [
+       3
+      ],
+      "level": [
+       20
+      ]
+     }
+    ],
+    [
+     "intl:snapshots:6",
+     {
+      "awakening": [
+       1
+      ],
+      "level": [
+       23
+      ]
+     }
+    ],
+    [
+     "intl:snapshots:7",
+     {
+      "awakening": [
+       2
+      ],
+      "level": [
+       26
+      ]
+     }
+    ],
+    [
+     "intl:snapshots:8",
+     {
+      "awakening": [
+       3
+      ],
+      "level": [
+       29
+      ]
+     }
+    ]
+   ],
+   "maps": [
+    [
+     "bandItems:101",
+     [
+      0
+     ]
+    ],
+    [
+     "bandItems:102",
+     [
+      1
+     ]
+    ],
+    [
+     "bandItems:103",
+     [
+      2
+     ]
+    ],
+    [
+     "bandItems:104",
+     [
+      3
+     ]
+    ],
+    [
+     "bandItems:105",
+     [
+      0
+     ]
+    ],
+    [
+     "bandItems:201",
+     [
+      1
+     ]
+    ],
+    [
+     "characterRanks:1",
+     [
+      1
+     ]
+    ],
+    [
+     "characterRanks:2",
+     [
+      50
+     ]
+    ],
+    [
+     "characterRanks:3",
+     [
+      50
+     ]
+    ],
+    [
+     "characterRanks:4",
+     [
+      50
+     ]
+    ],
+    [
+     "characterRanks:5",
+     [
+      50
+     ]
+    ],
+    [
+     "characterRanks:6",
+     [
+      50
+     ]
+    ]
+   ],
+   "issues": [
+    [
+     "members",
+     8,
+     "level",
+     "out_of_current_range"
+    ],
+    [
+     "members",
+     10,
+     "level",
+     "out_of_current_range"
+    ],
+    [
+     "members",
+     11,
+     "level",
+     "out_of_current_range"
+    ],
+    [
+     "members",
+     12,
+     "level",
+     "out_of_current_range"
+    ]
+   ]
+  },
+  "boxApplied": {
+   "members": [
+    [
+     6,
+     1,
+     2,
+     1,
+     1,
+     null
+    ],
+    [
+     7,
+     26,
+     1,
+     2,
+     2,
+     1
+    ],
+    [
+     9,
+     40,
+     2,
+     4,
+     4,
+     1
+    ]
+   ],
+   "snapshots": [
+    [
+     3,
+     1,
+     1
+    ],
+    [
+     4,
+     15,
+     2
+    ],
+    [
+     5,
+     20,
+     3
+    ],
+    [
+     6,
+     23,
+     1
+    ],
+    [
+     7,
+     26,
+     2
+    ],
+    [
+     8,
+     29,
+     3
+    ]
+   ],
+   "characterRanks": {
+    "1": 1,
+    "2": 50,
+    "3": 50,
+    "4": 50,
+    "5": 50,
+    "6": 50
+   },
+   "bandItems": {
+    "101": 0,
+    "102": 1,
+    "103": 2,
+    "104": 3,
+    "105": 0,
+    "201": 1
+   }
+  }
+ }
+}
