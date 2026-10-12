@@ -104,6 +104,9 @@ class BuildSettings {
   List<int> get bands => intListOf(_json['bands']);
   int get minRarity => _int('minRarity');
   int? get timeLimit => _nullableInt('timeLimit');
+  bool get ptGekiso => _json['ptMode'] == 'gekiso';
+  int get ptJust => _int('ptJust');
+  int get ptLuckSamples => _int('ptLuckSamples');
   int get just => _int('just');
   int get gekisoRank => _int('gekisoRank');
 }

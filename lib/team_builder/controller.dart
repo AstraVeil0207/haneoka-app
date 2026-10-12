@@ -20,6 +20,7 @@ import 'engine/master.dart';
 import 'engine/num.dart';
 import 'engine/objectives.dart';
 import 'engine_client.dart';
+import 'pt_controller.dart';
 import 'settings.dart';
 
 class ManualTeam {
@@ -58,6 +59,8 @@ class TeamBuilderController extends ChangeNotifier {
   bool running = false;
   (int, int)? progress;
   String? error;
+
+  late final pt = PtController(this);
 
   ManualTeam manual = const ManualTeam();
   List<TeamEvaluation>? manualResults;
@@ -110,10 +113,12 @@ class TeamBuilderController extends ChangeNotifier {
       }
     }
     notifyListeners();
+    pt.restore();
   }
 
   @override
   void dispose() {
+    pt.dispose();
     store?.removeListener(_adopt);
     store?.dispose();
     engine?.dispose();

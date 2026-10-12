@@ -12,10 +12,11 @@ import 'box.dart';
 import 'box_tab.dart';
 import 'build_tab.dart';
 import 'controller.dart';
+import 'pt_tab.dart';
 import 'teams_tab.dart';
 import 'widgets.dart';
 
-enum _Tab { build, box, account, teams }
+enum _Tab { build, pt, box, account, teams }
 
 class TeamBuilderScreen extends StatefulWidget {
   const TeamBuilderScreen({super.key});
@@ -96,6 +97,12 @@ class _TeamBuilderScreenState extends State<TeamBuilderScreen> {
     final tabs = [
       (_Tab.build, Symbols.groups_rounded, c.tb('tabBuild', 'Build'), null),
       (
+        _Tab.pt,
+        Symbols.emoji_events_rounded,
+        c.tb('pt.tab', 'Event rewards'),
+        null,
+      ),
+      (
         _Tab.box,
         Symbols.style_rounded,
         c.tb('tabBox', 'My cards'),
@@ -155,6 +162,12 @@ class _TeamBuilderScreenState extends State<TeamBuilderScreen> {
           Expanded(
             child: switch (_tab) {
               _Tab.build => BuildTab(controller: c),
+              _Tab.pt => PtTab(
+                controller: c,
+                openTab: (name) => setState(
+                  () => _tab = name == 'account' ? _Tab.account : _Tab.box,
+                ),
+              ),
               _Tab.box => BoxTab(controller: c, query: _query),
               _Tab.account => AccountTab(controller: c),
               _Tab.teams => TeamsTab(controller: c),

@@ -414,6 +414,23 @@ class HitScore {
     required this.orders,
     required this.ranks,
   });
+  factory HitScore.fromJson(Map<String, Object?> json) => HitScore(
+    mean: numOf(json['mean']),
+    min: numOf(json['min']),
+    max: numOf(json['max']),
+    median: numOf(json['median']),
+    worstOrder: [
+      for (final key in json['worstOrder'] as List? ?? const []) '$key',
+    ],
+    bestOrder: [
+      for (final key in json['bestOrder'] as List? ?? const []) '$key',
+    ],
+    orders: intListOf(json['orders']),
+    ranks: {
+      for (final entry in objectRow(json['ranks']).entries)
+        int.parse(entry.key): intOf(entry.value),
+    },
+  );
   final double mean;
   final double min;
   final double max;
@@ -498,6 +515,24 @@ class EngineHit {
     required this.slotPowers,
     required this.key,
   });
+  factory EngineHit.fromJson(Map<String, Object?> json) =>
+      EngineHit(
+          song: json['song'] is Map
+              ? SongRef.fromJson(objectRow(json['song']))
+              : null,
+          members: [for (final key in json['members'] as List) '$key'],
+          snaps: [for (final key in json['snaps'] as List) key as String?],
+          power: intOf(json['power']),
+          slotPowers: intListOf(json['slotPowers']),
+          key: numOf(json['key']),
+        )
+        ..score = json['score'] is Map
+            ? HitScore.fromJson(objectRow(json['score']))
+            : null
+        ..skipScore = (json['skipScore'] as num?)?.toInt()
+        ..event = json['event'] is Map
+            ? HitEvent.fromJson(objectRow(json['event']))
+            : null;
   final SongRef? song;
 
   /// Leader first.
@@ -536,6 +571,19 @@ class SongResult {
     required this.stats,
     this.excludedBelow,
   });
+  factory SongResult.fromJson(Map<String, Object?> json) => SongResult(
+    song: json['song'] is Map
+        ? SongRef.fromJson(objectRow(json['song']))
+        : null,
+    hits: [
+      for (final hit in json['hits'] as List? ?? const [])
+        EngineHit.fromJson(objectRow(hit)),
+    ],
+    proven: json['proven'] == true,
+    bound: (json['bound'] as num?)?.toDouble(),
+    stats: SearchStats(),
+    excludedBelow: (json['excludedBelow'] as num?)?.toDouble(),
+  );
   final SongRef? song;
   List<EngineHit> hits;
   bool proven;

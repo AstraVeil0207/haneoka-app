@@ -69,6 +69,35 @@ const scoreGoals = {
   ),
 };
 
+/// A scrolling pane with its primary action pinned to the bottom (`.tb-run`).
+Widget sticky(BuildContext context, Widget scroll, Widget action) {
+  final surface = Theme.of(context).colorScheme.surface;
+  return Stack(
+    children: [
+      Positioned.fill(child: scroll),
+      Positioned(
+        left: 0,
+        right: 0,
+        bottom: 0,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.bottomCenter,
+              end: Alignment.topCenter,
+              stops: const [0, 0.7, 1],
+              colors: [surface, surface, surface.withValues(alpha: 0)],
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            child: action,
+          ),
+        ),
+      ),
+    ],
+  );
+}
+
 class BuildTab extends StatelessWidget {
   const BuildTab({super.key, required this.controller});
   final TeamBuilderController controller;
@@ -79,32 +108,6 @@ class BuildTab extends StatelessWidget {
     final settings = _settings(context);
     final run = _run(context);
     final results = ResultsView(controller: c);
-    final surface = Theme.of(context).colorScheme.surface;
-    // The search button stays at the bottom of the settings (`.tb-run`).
-    Widget sticky(Widget scroll) => Stack(
-      children: [
-        Positioned.fill(child: scroll),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.bottomCenter,
-                end: Alignment.topCenter,
-                stops: const [0, 0.7, 1],
-                colors: [surface, surface, surface.withValues(alpha: 0)],
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
-              child: run,
-            ),
-          ),
-        ),
-      ],
-    );
     if (MediaQuery.sizeOf(context).width >= 1100) {
       return Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -112,10 +115,12 @@ class BuildTab extends StatelessWidget {
           SizedBox(
             width: 440,
             child: sticky(
+              context,
               ListView(
                 padding: const EdgeInsets.fromLTRB(16, 8, 0, 96),
                 children: settings,
               ),
+              run,
             ),
           ),
           Expanded(
@@ -128,10 +133,12 @@ class BuildTab extends StatelessWidget {
       );
     }
     return sticky(
+      context,
       ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
         children: [...settings, const SizedBox(height: 16), results],
       ),
+      run,
     );
   }
 
