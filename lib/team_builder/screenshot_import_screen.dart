@@ -1,0 +1,782 @@
+/// The screenshot import dialog (`renderScreenshotImportDialog` in
+/// `lit/shared/team-screenshot-import.ts`, the screenshot half of
+/// `lit/team-builder/importers.ts`).
+library;
+
+import 'dart:io';
+import 'dart:ui' as ui;
+
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
+
+import '../account/haneoka_account.dart';
+import 'box_import.dart';
+import 'controller.dart';
+import 'engine/num.dart';
+import 'pickers.dart';
+import 'screenshot_import.dart';
+import 'widgets.dart';
+
+/// Opens the dialog, or says why it cannot: recognition runs for a
+/// signed-in account only.
+Future<void> openScreenshotImport(
+  BuildContext context,
+  TeamBuilderController c,
+) async {
+  final account = HaneokaAccount.instance;
+  if (!account.signedIn) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          c.tb(
+            'screenshotsNeedSignIn',
+            'Screenshot recognition needs a signed-in account.',
+          ),
+        ),
+      ),
+    );
+    return;
+  }
+  await Navigator.of(context).push<void>(
+    MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => _ScreenshotImportScreen(c: c),
+    ),
+  );
+}
+
+enum _Phase {
+  select,
+  preview,
+  preparing,
+  uploading,
+  queued,
+  processing,
+  review,
+  failed,
+}
+
+class _ScreenshotImportScreen extends StatefulWidget {
+  const _ScreenshotImportScreen({required this.c});
+  final TeamBuilderController c;
+
+  @override
+  State<_ScreenshotImportScreen> createState() =>
+      _ScreenshotImportScreenState();
+}
+
+class _ScreenshotImportScreenState extends State<_ScreenshotImportScreen> {
+  TeamBuilderController get c => widget.c;
+  var _phase = _Phase.select;
+  String? _error;
+  final _local = <LocalScreenshot>[];
+  final _results = <ScreenshotResult>[];
+  final _crops = <(int, int), ui.Image>{};
+  final _selections = <(int, int), int?>{};
+  List<ScreenshotCard> _cards = const [];
+  final _choices = <String, ScreenshotChoice>{};
+  var _policy = ExistingPolicy.keep;
+  final _jobs = <String>{};
+  int _generation = 0;
+  RecognitionClient? _client;
+  String _signature = '';
+
+  String _t(String key, String fallback) {
+    final t = c.state.text;
+    if (key.startsWith('existing')) {
+      return t(
+        'tools.teamBuilder.importExisting.${key.substring(8).toLowerCase()}',
+        fallback,
+      );
+    }
+    if (key == 'close' || key == 'cancel') {
+      return t('common.actions.$key', fallback);
+    }
+    return t('tools.teamBuilder.screenshotImport.$key', fallback);
+  }
+
+  @override
+  void dispose() {
+    ++_generation;
+    _cancelJobs();
+    _clearLocal();
+    for (final image in _crops.values) {
+      image.dispose();
+    }
+    super.dispose();
+  }
+
+  void _clearLocal() {
+    for (final local in _local) {
+      local.image.dispose();
+    }
+    _local.clear();
+  }
+
+  void _cancelJobs() {
+    final client = _client;
+    if (client == null) return;
+    for (final id in _jobs.toList()) {
+      client.cancel(id).then((_) => _jobs.remove(id), onError: (_) {});
+    }
+  }
+
+  RecognitionClient? _recognition() {
+    final identity = objectRow(c.catalog?.data['identity']);
+    final owner = '${HaneokaAccount.instance.user?['id'] ?? ''}';
+    final releaseId = '${identity['releaseId'] ?? ''}';
+    final sourceId = '${identity['sourceId'] ?? ''}';
+    if (owner.isEmpty || releaseId.isEmpty || sourceId.isEmpty) return null;
+    return RecognitionClient((
+      owner: owner,
+      server: c.state.server,
+      releaseId: releaseId,
+      sourceId: sourceId,
+    ));
+  }
+
+  Future<void> _pick() async {
+    final picked = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      withData: true,
+      type: FileType.image,
+    );
+    if (picked == null || picked.files.isEmpty || !mounted) return;
+    final generation = ++_generation;
+    setState(() {
+      _clearLocal();
+      _phase = _Phase.preparing;
+      _error = null;
+    });
+    try {
+      if (picked.files.length > 8) throw const ScreenshotError('image-budget');
+      for (final file in picked.files) {
+        final bytes = file.bytes ?? await File(file.path!).readAsBytes();
+        final image = await decodeScreenshot(bytes);
+        if (generation != _generation) {
+          image.dispose();
+          return;
+        }
+        _local.add(LocalScreenshot(image, const ScreenshotCrop()));
+      }
+      if (!mounted) return;
+      setState(() => _phase = _Phase.preview);
+    } on ScreenshotError catch (error) {
+      if (!mounted || generation != _generation) return;
+      setState(() {
+        _clearLocal();
+        _phase = _Phase.failed;
+        _error = error.code;
+      });
+    }
+  }
+
+  /// `files` of the session: one recognition job at a time, each deleted
+  /// once read.
+  Future<void> _upload() async {
+    final client = _client = _recognition();
+    if (client == null) {
+      setState(() {
+        _phase = _Phase.failed;
+        _error = 'unavailable';
+      });
+      return;
+    }
+    final generation = ++_generation;
+    final deadline = DateTime.now().add(const Duration(minutes: 3));
+    setState(() {
+      _phase = _Phase.preparing;
+      _error = null;
+      _results.clear();
+      _selections.clear();
+      for (final image in _crops.values) {
+        image.dispose();
+      }
+      _crops.clear();
+    });
+    bool live() => mounted && generation == _generation;
+    try {
+      for (final local in _local) {
+        final (prepared, png) = await prepareScreenshot(local);
+        try {
+          if (!live()) return;
+          final id = uuid4();
+          _jobs.add(id);
+          setState(() => _phase = _Phase.uploading);
+          var job = await client.submit(png, id);
+          while (job['state'] == 'queued' || job['state'] == 'processing') {
+            if (!live()) return;
+            setState(
+              () => _phase = job['state'] == 'queued'
+                  ? _Phase.queued
+                  : _Phase.processing,
+            );
+            if (DateTime.now().isAfter(deadline)) {
+              throw const ScreenshotError('image-timeout');
+            }
+            await Future<void>.delayed(const Duration(seconds: 1));
+            if (!live()) return;
+            job = await client.poll(id);
+          }
+          if (job['state'] != 'ready') {
+            throw ScreenshotError(
+              '${objectRow(job['error'])['code'] ?? 'recognition-failed'}',
+            );
+          }
+          final result = normalizeRecognition(job);
+          if (result.width != prepared.width ||
+              result.height != prepared.height) {
+            throw const ScreenshotError(
+              'recognition-image-coordinate-mismatch',
+            );
+          }
+          final image = _results.length;
+          for (final (index, row) in result.observations.indexed) {
+            _crops[(image, index)] = await observationCrop(prepared, row.bbox);
+            _selections[(image, index)] = row.cardId;
+          }
+          _results.add(result);
+          await client.cancel(id);
+          _jobs.remove(id);
+        } finally {
+          prepared.dispose();
+        }
+      }
+      if (!live()) return;
+      _clearLocal();
+      _review();
+    } on ScreenshotError catch (error) {
+      if (!live()) return;
+      _cancelJobs();
+      setState(() {
+        _phase = _Phase.failed;
+        _error = error.code;
+      });
+    } catch (_) {
+      if (!live()) return;
+      _cancelJobs();
+      setState(() {
+        _phase = _Phase.failed;
+        _error = 'recognition-failed';
+      });
+    }
+  }
+
+  void _review() {
+    final cards = previewScreenshots(
+      _results,
+      _selections,
+      c.view!,
+      c.catalog!.master,
+      c.state.server,
+    );
+    final keep = {for (final card in cards) card.key};
+    _choices.removeWhere((key, _) => !keep.contains(key));
+    for (final card in cards) {
+      final choice = _choices[card.key];
+      if (choice == null) continue;
+      if (choice.level case ValueChoice(:final value)
+          when !(choice.manual
+                  ? screenshotLevels(c.catalog!.master, card)
+                  : card.observedLevels)
+              .contains(value)) {
+        choice.level = null;
+      }
+    }
+    setState(() {
+      _cards = cards;
+      _signature = boxSignature(c.view!);
+      _phase = _Phase.review;
+    });
+  }
+
+  ScreenshotChoice _choice(String key) => _choices[key] ??= ScreenshotChoice();
+
+  bool get _canConfirm {
+    if (!_choices.values.any((choice) => choice.include)) return false;
+    try {
+      applyScreenshots(_cards, _choices, _policy, c.catalog!.master);
+      return true;
+    } on ScreenshotError {
+      return false;
+    }
+  }
+
+  void _confirm() {
+    final view = c.view;
+    if (view == null || boxSignature(view) != _signature) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            c.state.text(
+              'tools.teamBuilder.boxImport.changed',
+              'Your account, data or inventory changed. Open the import again.',
+            ),
+          ),
+        ),
+      );
+      return;
+    }
+    final changes = [
+      for (final change in applyScreenshots(
+        _cards,
+        _choices,
+        _policy,
+        c.catalog!.master,
+      ))
+        if (c.store!.value(change.$1) != change.$2) change,
+    ];
+    c.write(changes);
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          c.tb('imported', 'Imported {count} changes', {
+            'count': changes.length,
+          }),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _correct(int image, int index) async {
+    final observation = _results[image].observations[index];
+    final catalog = c.catalog!;
+    final picked = await pickCard(
+      context,
+      catalog,
+      members: observation.members,
+      ids: [
+        ...(observation.members
+            ? catalog.master.members.keys
+            : catalog.master.snaps.keys),
+      ],
+      current: _selections[(image, index)],
+    );
+    if (picked == null || picked < 0 || !mounted) return;
+    _selections[(image, index)] = picked;
+    _review();
+  }
+
+  String _errorText(String code) {
+    if (code.startsWith('image-')) {
+      return _t(code, _t('failedMessage', 'Screenshot recognition failed'));
+    }
+    if (code == 'unavailable') {
+      return _t(
+        'unavailable',
+        'Screenshot recognition is unavailable for the loaded card data.',
+      );
+    }
+    return _t('failedMessage', 'Screenshot recognition failed');
+  }
+
+  Widget _cropEditor(int index, LocalScreenshot local) {
+    final theme = Theme.of(context);
+    final image = local.image;
+    final crop = local.crop;
+    return Card.outlined(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 360),
+              child: AspectRatio(
+                aspectRatio: image.width / image.height,
+                child: LayoutBuilder(
+                  builder: (context, box) => Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      RawImage(image: image, fit: BoxFit.fill),
+                      Positioned(
+                        left: box.maxWidth * crop.left / 100,
+                        right: box.maxWidth * crop.right / 100,
+                        top: box.maxHeight * crop.top / 100,
+                        bottom: box.maxHeight * crop.bottom / 100,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: theme.colorScheme.primary,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            for (final (side, label) in [
+              ('top', 'Top'),
+              ('bottom', 'Bottom'),
+              ('left', 'Left'),
+              ('right', 'Right'),
+            ])
+              Row(
+                children: [
+                  SizedBox(width: 64, child: Text(_t(side, label))),
+                  Expanded(
+                    child: Slider(
+                      value: crop.of(side),
+                      max: 45,
+                      divisions: 45,
+                      label: '${crop.of(side).round()}',
+                      onChanged: (value) => setState(
+                        () => local.crop = crop.copyWith(side, value),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _source(int image, int index, int? selected) {
+    final observation = _results[image].observations[index];
+    final catalog = c.catalog!;
+    final ids = {...observation.candidates, ?selected}.toList();
+    final crop = _crops[(image, index)];
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Wrap(
+        spacing: 12,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          if (crop != null)
+            SizedBox(
+              height: 96,
+              child: AspectRatio(
+                aspectRatio: observation.bbox[2] / observation.bbox[3],
+                child: RawImage(image: crop, fit: BoxFit.contain),
+              ),
+            ),
+          if (ids.isNotEmpty)
+            DropdownMenu<int>(
+              key: ValueKey('$image:$index:$selected'),
+              width: 240,
+              label: Text(_t('candidate', 'Card')),
+              initialSelection: selected,
+              hintText: _t('chooseCard', 'Choose card'),
+              onSelected: (id) {
+                if (id == null) return;
+                _selections[(image, index)] = id;
+                _review();
+              },
+              dropdownMenuEntries: [
+                for (final id in ids)
+                  DropdownMenuEntry(
+                    value: id,
+                    label: catalog.has(observation.members, id)
+                        ? catalog.cardName(observation.members, id)
+                        : '#$id',
+                  ),
+              ],
+            ),
+          OutlinedButton(
+            onPressed: () => _correct(image, index),
+            child: Text(_t('chooseCard', 'Choose card')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _cardEntry(ScreenshotCard card) {
+    final theme = Theme.of(context);
+    final catalog = c.catalog!;
+    final choice = _choice(card.key);
+    final (defaultLevel, source) = screenshotLevelDefault(card, _policy);
+    final conflict = source == LevelSource.conflict;
+    final defaultLabel = switch (source) {
+      LevelSource.saved => _t('keepLevel', 'Keep saved level'),
+      LevelSource.conflict => _t('chooseLevel', 'Choose level'),
+      LevelSource.observed => _t('observedLevel', 'Screenshot level'),
+      LevelSource.unknown => _t('unknown', 'Unknown'),
+    };
+    final defaultText = defaultLevel == null
+        ? defaultLabel
+        : '$defaultLabel: $defaultLevel';
+    final levels = screenshotLevels(catalog.master, card);
+    final selectedLevel = switch (choice.level) {
+      KeepChoice() => card.existingLevel,
+      ValueChoice(:final value) => value,
+      null => defaultLevel,
+    };
+    return Card.outlined(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: card.members ? 72 : 112,
+                  child: InkWell(
+                    onTap: () => _correct(
+                      card.observations.first.$1,
+                      card.observations.first.$2,
+                    ),
+                    child: CardArt(
+                      catalog: catalog,
+                      members: card.members,
+                      id: card.cardId,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        catalog.cardName(card.members, card.cardId),
+                        style: theme.textTheme.titleSmall,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      CheckboxListTile(
+                        contentPadding: EdgeInsets.zero,
+                        controlAffinity: ListTileControlAffinity.leading,
+                        dense: true,
+                        value: choice.include,
+                        onChanged: (value) =>
+                            setState(() => choice.include = value ?? false),
+                        title: Text(_t('include', 'Include card')),
+                      ),
+                      Text(defaultText, style: theme.textTheme.bodySmall),
+                      const SizedBox(height: 8),
+                      if (levels.isNotEmpty)
+                        DropdownMenu<int>(
+                          key: ValueKey('${card.key}:$selectedLevel'),
+                          width: 200,
+                          label: Text(_t('level', 'Level')),
+                          initialSelection:
+                              selectedLevel != null &&
+                                  levels.contains(selectedLevel)
+                              ? selectedLevel
+                              : null,
+                          hintText: _t('chooseLevel', 'Choose level'),
+                          errorText:
+                              conflict && choice.include && choice.level == null
+                              ? ''
+                              : null,
+                          onSelected: (level) => setState(() {
+                            if (level == null) return;
+                            choice
+                              ..level = ValueChoice(level)
+                              ..manual = !card.observedLevels.contains(level);
+                          }),
+                          dropdownMenuEntries: [
+                            for (final level in levels)
+                              DropdownMenuEntry(value: level, label: '$level'),
+                          ],
+                        ),
+                      Wrap(
+                        spacing: 4,
+                        children: [
+                          if (card.owned != null && choice.level is! KeepChoice)
+                            TextButton(
+                              onPressed: () => setState(
+                                () => choice.level = const KeepChoice(),
+                              ),
+                              child: Text(
+                                '${_t('keepLevel', 'Keep saved level')}: ${card.existingLevel ?? _t('levelUnknown', 'Level not recognized')}',
+                              ),
+                            ),
+                          if (choice.level != null)
+                            TextButton(
+                              onPressed: () =>
+                                  setState(() => choice.level = null),
+                              child: Text(defaultText),
+                            ),
+                        ],
+                      ),
+                      if (card.observedLevels.isEmpty)
+                        Text(
+                          _t('levelUnknown', 'Level not recognized'),
+                          style: theme.textTheme.labelSmall,
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              title: Text(_t('sourceImages', 'Screenshots')),
+              expandedCrossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final (image, index) in card.observations)
+                  _source(image, index, card.cardId),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final busy = const {
+      _Phase.preparing,
+      _Phase.uploading,
+      _Phase.queued,
+      _Phase.processing,
+    }.contains(_phase);
+    final noGrid =
+        _results.isNotEmpty && _results.every((result) => result.noGrid);
+    final unmatched = [
+      for (final (image, result) in _results.indexed)
+        for (final (index, _) in result.observations.indexed)
+          if (!_cards.any((card) => card.observations.contains((image, index))))
+            (image, index),
+    ];
+    final children = <Widget>[
+      if (_phase == _Phase.select ||
+          _phase == _Phase.failed ||
+          (_phase == _Phase.review && noGrid))
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: OutlinedButton.icon(
+            onPressed: _pick,
+            icon: const Icon(Symbols.add_photo_alternate_rounded),
+            label: Text(_t('chooseImages', 'Choose screenshots')),
+          ),
+        ),
+      if (busy) ...[
+        const LinearProgressIndicator(),
+        Text(
+          _t(_phase.name, 'Recognizing screenshots'),
+          style: theme.textTheme.bodyMedium,
+        ),
+      ],
+      if (_error != null)
+        Text(
+          _errorText(_error!),
+          style: TextStyle(color: theme.colorScheme.error),
+        ),
+      if (_phase == _Phase.preview)
+        for (final (index, local) in _local.indexed) _cropEditor(index, local),
+      if (_phase == _Phase.review && _cards.isNotEmpty) ...[
+        Text(
+          _t('existingPolicy', 'Existing cards'),
+          style: theme.textTheme.labelLarge,
+        ),
+        Segmented<ExistingPolicy>(
+          grow: false,
+          value: _policy,
+          options: [
+            Choice(
+              ExistingPolicy.keep,
+              _t('existingKeep', 'Keep all existing values'),
+            ),
+            Choice(
+              ExistingPolicy.updates,
+              _t('existingUpdates', 'Only increases'),
+            ),
+            Choice(
+              ExistingPolicy.overwrite,
+              _t('existingOverwrite', 'Overwrite all existing values'),
+            ),
+          ],
+          onSelected: (value) => setState(() {
+            _policy = value;
+            for (final card in _cards) {
+              if (card.owned != null) {
+                _choices[card.key]
+                  ?..level = null
+                  ..manual = false;
+              }
+            }
+          }),
+        ),
+        for (final card in _cards) _cardEntry(card),
+      ],
+      if (_phase == _Phase.review) ...[
+        if (noGrid) Text(_t('noGrid', 'No reliable card grid found')),
+        for (final (image, index) in unmatched)
+          Card.outlined(
+            margin: EdgeInsets.zero,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _results[image].observations[index].cardId == null
+                        ? _t('unrecognized', 'Unrecognized card')
+                        : _t('reviewCard', 'Review card'),
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  _source(image, index, null),
+                ],
+              ),
+            ),
+          ),
+      ],
+    ];
+    final footer = switch (_phase) {
+      _Phase.preview => FilledButton(
+        onPressed: _upload,
+        child: Text(_t('upload', 'Recognize')),
+      ),
+      _ when busy => OutlinedButton(
+        onPressed: () {
+          ++_generation;
+          _cancelJobs();
+          setState(() {
+            _clearLocal();
+            _phase = _Phase.select;
+          });
+        },
+        child: Text(_t('cancel', 'Cancel')),
+      ),
+      _Phase.review => FilledButton(
+        onPressed: _canConfirm ? _confirm : null,
+        child: Text(_t('confirm', 'Confirm import')),
+      ),
+      _ => null,
+    };
+    return Scaffold(
+      appBar: AppBar(title: Text(_t('title', 'Import screenshots'))),
+      body: ListView.separated(
+        padding: const EdgeInsets.all(16),
+        itemCount: children.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 12),
+        itemBuilder: (context, index) => children[index],
+      ),
+      bottomNavigationBar: footer == null
+          ? null
+          : Material(
+              color: theme.colorScheme.surfaceContainer,
+              child: SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    heightFactor: 1,
+                    child: footer,
+                  ),
+                ),
+              ),
+            ),
+    );
+  }
+}

@@ -1,0 +1,422 @@
+{
+ "job": {
+  "id": "11111111-1111-4111-8111-111111111111",
+  "state": "ready",
+  "context": {
+   "server": "intl",
+   "releaseId": "r-f0e57525fc61e59a7b15",
+   "sourceId": "v56-e9f2ad502d77-a3806e9a6f30-m882fd4ecba9f-n4cbaad33",
+   "referenceId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "progress": null,
+  "expiresAt": 0,
+  "result": {
+   "schema": "haneoka-card-recognition-result-v1",
+   "identity": {
+    "server": "intl",
+    "releaseId": "r-f0e57525fc61e59a7b15",
+    "sourceId": "v56-e9f2ad502d77-a3806e9a6f30-m882fd4ecba9f-n4cbaad33"
+   },
+   "referenceId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+   "images": [
+    {
+     "id": "i0",
+     "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "size": [
+      1200,
+      800
+     ],
+     "coordinateSpace": "exif_normalized_original",
+     "observationIds": [
+      "o0",
+      "o1",
+      "o2",
+      "o3",
+      "o4",
+      "o5",
+      "o6"
+     ],
+     "status": "ok"
+    }
+   ],
+   "observations": [
+    {
+     "id": "o0",
+     "imageId": "i0",
+     "kind": "members",
+     "bbox": [
+      10,
+      20,
+      90,
+      120
+     ],
+     "cardId": 1,
+     "status": "matched",
+     "candidates": [
+      {
+       "cardId": 1,
+       "variant": "normal",
+       "score": 0.9
+      },
+      {
+       "cardId": 6,
+       "variant": "normal",
+       "score": 0.8
+      }
+     ],
+     "fields": {
+      "level": {
+       "value": 40,
+       "status": "recognized"
+      }
+     }
+    },
+    {
+     "id": "o1",
+     "imageId": "i0",
+     "kind": "members",
+     "bbox": [
+      110,
+      20,
+      90,
+      120
+     ],
+     "cardId": 2,
+     "status": "matched",
+     "candidates": [
+      {
+       "cardId": 2,
+       "variant": "normal",
+       "score": 0.9
+      },
+      {
+       "cardId": 6,
+       "variant": "normal",
+       "score": 0.8
+      }
+     ],
+     "fields": {
+      "level": {
+       "value": null,
+       "status": "unreadable",
+       "reason": "blur"
+      }
+     }
+    },
+    {
+     "id": "o2",
+     "imageId": "i0",
+     "kind": "members",
+     "bbox": [
+      210,
+      20,
+      90,
+      120
+     ],
+     "cardId": 1,
+     "status": "matched",
+     "candidates": [
+      {
+       "cardId": 1,
+       "variant": "normal",
+       "score": 0.9
+      },
+      {
+       "cardId": 6,
+       "variant": "normal",
+       "score": 0.8
+      }
+     ],
+     "fields": {
+      "level": {
+       "value": 50,
+       "status": "recognized"
+      }
+     }
+    },
+    {
+     "id": "o3",
+     "imageId": "i0",
+     "kind": "members",
+     "bbox": [
+      310,
+      20,
+      90,
+      120
+     ],
+     "cardId": 3,
+     "status": "matched",
+     "candidates": [
+      {
+       "cardId": 3,
+       "variant": "normal",
+       "score": 0.9
+      },
+      {
+       "cardId": 6,
+       "variant": "normal",
+       "score": 0.8
+      }
+     ],
+     "fields": {
+      "level": {
+       "value": 30,
+       "status": "recognized"
+      }
+     }
+    },
+    {
+     "id": "o4",
+     "imageId": "i0",
+     "kind": "members",
+     "bbox": [
+      410,
+      20,
+      90,
+      120
+     ],
+     "cardId": null,
+     "status": "matched",
+     "candidates": [
+      {
+       "cardId": 5,
+       "variant": "normal",
+       "score": 0.9
+      },
+      {
+       "cardId": 6,
+       "variant": "normal",
+       "score": 0.8
+      }
+     ],
+     "fields": {
+      "level": {
+       "value": 20,
+       "status": "recognized"
+      }
+     }
+    },
+    {
+     "id": "o5",
+     "imageId": "i0",
+     "kind": "snapshots",
+     "bbox": [
+      510,
+      20,
+      90,
+      120
+     ],
+     "cardId": 1,
+     "status": "matched",
+     "candidates": [
+      {
+       "cardId": 1,
+       "variant": "normal",
+       "score": 0.9
+      },
+      {
+       "cardId": 6,
+       "variant": "normal",
+       "score": 0.8
+      }
+     ],
+     "fields": {
+      "level": {
+       "value": 10,
+       "status": "recognized"
+      }
+     }
+    },
+    {
+     "id": "o6",
+     "imageId": "i0",
+     "kind": "members",
+     "bbox": [
+      610,
+      20,
+      90,
+      120
+     ],
+     "cardId": 4,
+     "status": "matched",
+     "candidates": [
+      {
+       "cardId": 4,
+       "variant": "normal",
+       "score": 0.9
+      },
+      {
+       "cardId": 6,
+       "variant": "normal",
+       "score": 0.8
+      }
+     ],
+     "fields": {
+      "level": {
+       "value": 1,
+       "status": "recognized"
+      }
+     }
+    }
+   ],
+   "engine": {
+    "algorithm": "test"
+   }
+  }
+ },
+ "owned": {
+  "cardId": 4,
+  "training": 1,
+  "level": 20
+ },
+ "cards": [
+  [
+   "intl:members:1",
+   [
+    [
+     0,
+     0
+    ],
+    [
+     0,
+     2
+    ]
+   ],
+   [
+    40,
+    50
+   ],
+   null
+  ],
+  [
+   "intl:members:2",
+   [
+    [
+     0,
+     1
+    ]
+   ],
+   [],
+   null
+  ],
+  [
+   "intl:members:3",
+   [
+    [
+     0,
+     3
+    ]
+   ],
+   [
+    30
+   ],
+   null
+  ],
+  [
+   "intl:snapshots:1",
+   [
+    [
+     0,
+     5
+    ]
+   ],
+   [
+    10
+   ],
+   null
+  ],
+  [
+   "intl:members:4",
+   [
+    [
+     0,
+     6
+    ]
+   ],
+   [
+    1
+   ],
+   20
+  ]
+ ],
+ "applied": {
+  "keep": {
+   "members": [
+    [
+     4,
+     20
+    ],
+    [
+     1,
+     50
+    ],
+    [
+     2,
+     null
+    ],
+    [
+     3,
+     30
+    ]
+   ],
+   "snapshots": [
+    [
+     1,
+     10
+    ]
+   ]
+  },
+  "updates": {
+   "members": [
+    [
+     4,
+     20
+    ],
+    [
+     1,
+     50
+    ],
+    [
+     2,
+     null
+    ],
+    [
+     3,
+     30
+    ]
+   ],
+   "snapshots": [
+    [
+     1,
+     10
+    ]
+   ]
+  },
+  "overwrite": {
+   "members": [
+    [
+     4,
+     1
+    ],
+    [
+     1,
+     50
+    ],
+    [
+     2,
+     null
+    ],
+    [
+     3,
+     30
+    ]
+   ],
+   "snapshots": [
+    [
+     1,
+     10
+    ]
+   ]
+  }
+ }
+}

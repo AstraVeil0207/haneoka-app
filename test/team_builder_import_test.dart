@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:haneoka/team_builder/box.dart';
 import 'package:haneoka/team_builder/box_import.dart';
 import 'package:haneoka/team_builder/engine/master.dart';
+import 'package:haneoka/team_builder/screenshot_import.dart';
 
 /// The website's Box import (`box-import/preview.ts`, `merge.ts`,
 /// `data/list-import.ts`) on a card list and a compact package, read into
@@ -115,5 +116,74 @@ void main() {
       ),
       cases['boxApplied'],
     );
+  });
+
+  test('screenshot recognition', () {
+    final shots = jsonDecode(
+      File('$dir/screenshot-golden.json').readAsStringSync(),
+    ) as Map<String, Object?>;
+    final owned = shots['owned'] as Map<String, Object?>;
+    final id = owned['cardId'];
+    BoxEntry entry(Object? v) => BoxEntry(v, 1, 'test', 0);
+    final view = BoxView.read({
+      'm.$id.own': entry(true),
+      'm.$id.use': entry(true),
+      'm.$id.awk': entry(owned['training']),
+      'm.$id.lvl': entry(owned['level']),
+    });
+    final job = shots['job'] as Map<String, Object?>;
+    final result = normalizeRecognition(job);
+    final selections = {
+      for (final (index, row) in result.observations.indexed)
+        (0, index): row.cardId,
+    };
+    final cards = previewScreenshots(
+      [result],
+      selections,
+      view,
+      master,
+      server,
+    );
+    expect(
+      jsonDecode(
+        jsonEncode([
+          for (final card in cards)
+            [
+              card.key,
+              [
+                for (final (image, index) in card.observations) [image, index],
+              ],
+              card.observedLevels,
+              card.existingLevel,
+            ],
+        ]),
+      ),
+      shots['cards'],
+    );
+    final applied = shots['applied'] as Map<String, Object?>;
+    for (final policy in ExistingPolicy.values) {
+      final choices = {
+        for (final card in cards)
+          card.key: ScreenshotChoice()
+            ..include = true
+            ..level = card.observedLevels.length > 1
+                ? ValueChoice(card.observedLevels[1])
+                : null,
+      };
+      final writes = applyScreenshots(cards, choices, policy, master);
+      final want = applied[policy.name] as Map<String, Object?>;
+      final levels = <String, Object?>{
+        for (final (key, value) in writes)
+          if (key.endsWith('.lvl')) key: value,
+      };
+      for (final (kind, prefix) in [('members', 'm'), ('snapshots', 's')]) {
+        for (final row in want[kind] as List) {
+          final [cardId, level] = row as List;
+          final key = '$prefix.$cardId.lvl';
+          final saved = cardId == id ? owned['level'] : null;
+          expect(levels[key] ?? saved, level, reason: '${policy.name} $key');
+        }
+      }
+    }
   });
 }

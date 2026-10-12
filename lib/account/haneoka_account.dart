@@ -353,6 +353,7 @@ class HaneokaAccount extends ChangeNotifier {
     String method,
     String path, {
     Object? body,
+    List<int>? bytes,
     bool authorized = true,
     Map<String, String> headers = const {},
   }) async {
@@ -365,6 +366,7 @@ class HaneokaAccount extends ChangeNotifier {
         ...headers,
       });
     if (body != null) request.body = jsonEncode(body);
+    if (bytes != null) request.bodyBytes = bytes;
     final response = await http.Response.fromStream(
       await netClient.send(request),
     );

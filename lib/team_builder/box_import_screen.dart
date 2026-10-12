@@ -18,6 +18,7 @@ import '../save/account_store.dart';
 import '../save/game_save.dart';
 import 'box_import.dart';
 import 'controller.dart';
+import 'screenshot_import_screen.dart';
 import 'widgets.dart';
 
 Future<void> openBoxImport(
@@ -583,6 +584,16 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
   Widget _selectBody(ThemeData theme) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      OutlinedButton.icon(
+        onPressed: () {
+          final navigator = Navigator.of(context);
+          navigator.pop();
+          openScreenshotImport(navigator.context, c);
+        },
+        icon: const Icon(Symbols.photo_camera_rounded),
+        label: Text(_t('screenshots', 'Screenshots')),
+      ),
+      const SizedBox(height: 8),
       for (final save in _saves) ...[
         OutlinedButton.icon(
           onPressed: () => _readSave(save),

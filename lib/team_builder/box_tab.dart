@@ -19,6 +19,7 @@ import 'engine/box.dart';
 import 'engine/num.dart';
 import 'pickers.dart';
 import 'box_import_screen.dart';
+import 'screenshot_import_screen.dart';
 import 'widgets.dart';
 
 enum _Show { owned, all, unowned }
@@ -276,6 +277,11 @@ class _BoxTabState extends State<BoxTab> {
             onPressed: () => openBoxImport(context, c, members: _members),
             icon: const Icon(Symbols.upload_file_rounded),
             label: Text(c.tb('importBox', 'Import')),
+          ),
+          FilledButton.tonalIcon(
+            onPressed: () => openScreenshotImport(context, c),
+            icon: const Icon(Symbols.photo_camera_rounded),
+            label: Text(c.tb('importScreens', 'Screenshots')),
           ),
           TextButton.icon(
             onPressed: () => exportBox(c),
