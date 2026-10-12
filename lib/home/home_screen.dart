@@ -1,13 +1,20 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../catalog/catalog_screen.dart';
 import '../catalog/detail_screen.dart';
 import '../catalog/profiles.dart';
 import '../catalog/visuals.dart';
+import '../community/community_time.dart';
 import '../core/api.dart';
+import '../core/net.dart';
+import '../shell/links.dart';
 import 'announcements.dart';
 import '../core/app_state.dart';
 import '../core/i18n.dart';
@@ -51,15 +58,117 @@ class _HomeData {
   }
 }
 
+/// The modules a reader can order and hide (`MODULES`); banners and the
+/// current events stay on top.
+const _modules = [
+  'birthdays',
+  'news',
+  'cards',
+  'songs',
+  'community',
+  'fanInfo',
+];
+const _layoutKey = 'haneoka:home-layout:v6';
+
 class _HomeScreenState extends State<HomeScreen> {
   Future<_HomeData>? _data;
   Future<List<Map<String, Object?>>>? _announcements;
+  Future<List<Map<String, Object?>>>? _community;
+  Future<List<Map<String, Object?>>>? _fanInfo;
+  List<String> _order = [..._modules];
+  Set<String> _hidden = {};
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((prefs) {
+      try {
+        final state = jsonDecode(prefs.getString(_layoutKey) ?? 'null');
+        if (state is! Map || !mounted) return;
+        final order = [
+          for (final id in state['order'] as List? ?? const [])
+            if (_modules.contains(id)) '$id',
+        ];
+        setState(() {
+          if (order.toSet().length == order.length) {
+            _order = [...order, ..._modules.where((m) => !order.contains(m))];
+          }
+          _hidden = {
+            for (final MapEntry(:key, :value)
+                in ((state['hidden'] as Map?) ?? const {}).entries)
+              if (value == true) '$key',
+          };
+        });
+      } catch (_) {}
+    });
+  }
+
+  Future<void> _persist() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _layoutKey,
+      jsonEncode({
+        'order': _order,
+        'hidden': {for (final id in _hidden) id: true},
+      }),
+    );
+  }
+
+  /// The five recommended posts the website's home lists (`renderCommunity`).
+  Future<List<Map<String, Object?>>> _loadCommunity() async {
+    final state = AppScope.of(context);
+    final uri = Uri.https('haneoka.org', '/api/v1/community/posts', {
+      'limit': '5',
+      'scope': 'recommended',
+      'kind': 'post',
+      'server': state.server,
+      'locale': state.text.locale,
+    });
+    final response = await netClient.get(
+      uri,
+      headers: {'accept': 'application/json'},
+    );
+    final body = jsonDecode(utf8.decode(response.bodyBytes));
+    final entries = (body as Map?)?['entries'];
+    return [
+      if (entries is List)
+        for (final entry in entries.whereType<Map>())
+          if (entry['kind'] == 'post' && entry['post'] is Map)
+            (entry['post'] as Map).cast<String, Object?>()
+          else
+            for (final post
+                in (body?['posts'] as List? ?? const []).whereType<Map>())
+              post.cast<String, Object?>(),
+    ];
+  }
+
+  /// bandori.fans entries the website's home seed carries.
+  Future<List<Map<String, Object?>>> _loadFanInfo() async {
+    final state = AppScope.of(context);
+    final response = await netClient.get(
+      Uri.parse('https://haneoka.org/${state.server}/${state.text.locale}/'),
+    );
+    final match = RegExp(r'<script[^>]*data-home-seed[^>]*>([\s\S]*?)</script>')
+        .firstMatch(utf8.decode(response.bodyBytes));
+    if (match == null) return const [];
+    final seed = jsonDecode(match[1]!) as Map;
+    return [
+      for (final entry
+          in ((seed['fanInfo'] as Map?)?['entries'] as List? ?? const [])
+              .whereType<Map>())
+        if ('${entry['title'] ?? ''}'.isNotEmpty &&
+            '${entry['href'] ?? ''}'.startsWith('https://bandori.fans/'))
+          entry.cast<String, Object?>(),
+    ].take(8).toList();
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _data ??= _load();
     _announcements ??= fetchAnnouncements(AppScope.of(context));
+    _community ??= _loadCommunity();
+    _fanInfo ??= _loadFanInfo();
   }
 
   Future<_HomeData> _load() async {
@@ -87,12 +196,292 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  String _label(SiteText t, String id) => switch (id) {
+    'songs' => t('home.dashboard.latestSongs', 'Latest songs'),
+    'cards' => t('home.dashboard.latestCards', 'Latest cards'),
+    'birthdays' => t('home.dashboard.birthdaysTitle', 'Birthday countdown'),
+    'community' => t('home.dashboard.communityTitle', 'Trending community'),
+    'fanInfo' => 'bandori.fans',
+    _ => t('home.announcements.title', 'Announcements'),
+  };
+
+  /// Module order and visibility (`home-layout-dialog`).
+  Future<void> _customize(BuildContext context) => showDialog<void>(
+    context: context,
+    builder: (context) => StatefulBuilder(
+      builder: (context, refresh) {
+        final t = AppScope.of(context).text;
+        void update(VoidCallback change) {
+          setState(change);
+          refresh(() {});
+          _persist();
+        }
+
+        return AlertDialog(
+          icon: const Icon(Symbols.dashboard_customize_rounded),
+          title: Text(t('home.dashboard.customizeLayout', 'Customize layout')),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final (index, id) in _order.indexed)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: IconButton(
+                      tooltip: _hidden.contains(id)
+                          ? t('home.dashboard.showModule', 'Show module')
+                          : t('home.dashboard.hideModule', 'Hide module'),
+                      onPressed: () => update(
+                        () => _hidden.contains(id)
+                            ? _hidden.remove(id)
+                            : _hidden.add(id),
+                      ),
+                      icon: Icon(
+                        _hidden.contains(id)
+                            ? Symbols.visibility_off_rounded
+                            : Symbols.visibility_rounded,
+                      ),
+                    ),
+                    title: Text(
+                      _label(t, id),
+                      style: _hidden.contains(id)
+                          ? TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant,
+                            )
+                          : null,
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        IconButton(
+                          tooltip: t('home.dashboard.moveUp', 'Move up'),
+                          onPressed: index == 0
+                              ? null
+                              : () => update(
+                                  () => _order.insert(
+                                    index - 1,
+                                    _order.removeAt(index),
+                                  ),
+                                ),
+                          icon: const Icon(Symbols.arrow_upward_rounded),
+                        ),
+                        IconButton(
+                          tooltip: t('home.dashboard.moveDown', 'Move down'),
+                          onPressed: index == _order.length - 1
+                              ? null
+                              : () => update(
+                                  () => _order.insert(
+                                    index + 1,
+                                    _order.removeAt(index),
+                                  ),
+                                ),
+                          icon: const Icon(Symbols.arrow_downward_rounded),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => update(() {
+                _order = [..._modules];
+                _hidden = {};
+              }),
+              child: Text(
+                t('home.dashboard.resetLayout', 'Restore default layout'),
+              ),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(t('common.actions.done', 'Done')),
+            ),
+          ],
+        );
+      },
+    ),
+  );
+
+  Widget _communityModule(BuildContext context, SiteText t) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return _Module(
+      icon: Symbols.forum_rounded,
+      title: t('home.dashboard.communityTitle', 'Trending community'),
+      viewAll: t('home.dashboard.openCommunity', 'Open community'),
+      onViewAll: () => widget.onBrowse?.call('/community/feeds'),
+      child: FutureBuilder(
+        future: _community,
+        builder: (context, snapshot) {
+          final posts = snapshot.data;
+          if (posts == null || posts.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                posts == null && !snapshot.hasError
+                    ? ''
+                    : snapshot.hasError
+                    ? t('home.dashboard.sourceUnavailable', 'Unavailable')
+                    : t(
+                        'home.dashboard.communityEmpty',
+                        'There are no public community posts yet.',
+                      ),
+                textAlign: TextAlign.center,
+              ),
+            );
+          }
+          return Column(
+            children: [
+              for (final (index, post) in posts.take(8).indexed)
+                ListTile(
+                  onTap: () =>
+                      openLink(context, '/community/posts/${post['id']}'),
+                  leading: Text(
+                    '${index + 1}',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      color: scheme.primary,
+                    ),
+                  ),
+                  title: Text(
+                    '${post['title'] ?? post['excerpt'] ?? '—'}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    [
+                      '${post['authorName'] ?? ''}',
+                      if (formatCommunityTime(
+                            post['lastEditedAt'] ?? post['createdAt'],
+                            t.locale,
+                          )
+                          case final time?)
+                        time.text,
+                    ].where((s) => s.isNotEmpty).join(' · '),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Symbols.favorite_rounded, size: 16),
+                      Text(' ${post['likeCount'] ?? 0}  '),
+                      const Icon(Symbols.chat_bubble_rounded, size: 16),
+                      Text(' ${post['commentCount'] ?? 0}'),
+                    ],
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  /// `fanSummary`: when and where, or the entry's own line.
+  String _fanSummary(Map<String, Object?> entry, SiteText t) {
+    final start = entry['eventStartAtMs'];
+    final day = '${entry['eventDate'] ?? ''}';
+    String date = '';
+    if (entry['allDay'] != true && start is num) {
+      date = DateFormat.yMMMd(t.locale)
+          .add_jm()
+          .format(DateTime.fromMillisecondsSinceEpoch(start.toInt()));
+    } else if (RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(day)) {
+      date = DateFormat.yMMMd(t.locale).format(DateTime.parse(day));
+    }
+    if (date.isNotEmpty) {
+      return [
+        date,
+        '${entry['venue'] ?? ''}',
+      ].where((s) => s.isNotEmpty).join(' · ');
+    }
+    return '${entry['summary'] ?? ''}'.isNotEmpty
+        ? '${entry['summary']}'
+        : (const {'live', 'real-live'}.contains(entry['category'])
+              ? t('tools.calendar.live', 'Live')
+              : '');
+  }
+
+  Widget _fanInfoModule(BuildContext context, SiteText t) => _Module(
+    icon: Symbols.feed_rounded,
+    title: 'bandori.fans',
+    viewAll: 'bandori.fans',
+    onViewAll: () => launchUrl(
+      Uri.parse('https://bandori.fans/'),
+      mode: LaunchMode.externalApplication,
+    ),
+    child: FutureBuilder(
+      future: _fanInfo,
+      builder: (context, snapshot) {
+        final entries = snapshot.data;
+        if (entries == null || entries.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              entries == null && !snapshot.hasError
+                  ? ''
+                  : snapshot.hasError
+                  ? t('home.dashboard.sourceUnavailable', 'Unavailable')
+                  : t('home.dashboard.fanInfoEmpty', 'No current updates.'),
+              textAlign: TextAlign.center,
+            ),
+          );
+        }
+        return Column(
+          children: [
+            for (final entry in entries)
+              ListTile(
+                onTap: () => launchUrl(
+                  Uri.parse('${entry['href']}'),
+                  mode: LaunchMode.externalApplication,
+                ),
+                leading: switch (entry['image']) {
+                  final String image
+                      when RegExp(r'^/images/calendar-lives/[a-f0-9]{64}\.png$')
+                          .hasMatch(image) =>
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: SizedBox(
+                        width: 56,
+                        height: 32,
+                        child: AppImage(
+                          candidates: ['https://haneoka.org$image'],
+                          fit: BoxFit.cover,
+                          localized: false,
+                        ),
+                      ),
+                    ),
+                  _ => null,
+                },
+                title: Text(
+                  '${entry['title']}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Text(_fanSummary(entry, t)),
+                trailing: const Icon(Symbols.open_in_new_rounded, size: 18),
+              ),
+          ],
+        );
+      },
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final t = state.text;
     return ShellPage(
       title: t('home.dashboard.overview', 'Home'),
+      actions: [
+        BarAction(
+          icon: Symbols.dashboard_customize_rounded,
+          label: t('home.dashboard.customizeLayout', 'Customize layout'),
+          onPressed: () => _customize(context),
+        ),
+      ],
       body: FutureBuilder(
         future: _data,
         builder: (context, snapshot) {
@@ -206,6 +595,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       t: t,
                       api: state.api,
                     );
+                    if (_hidden.contains('birthdays')) {
+                      return Column(children: cards);
+                    }
                     if (constraints.maxWidth < 900) {
                       return Column(children: [...cards, birthdays]);
                     }
@@ -219,94 +611,108 @@ class _HomeScreenState extends State<HomeScreen> {
                     );
                   },
                 ),
-                _Module(
-                  icon: Symbols.campaign_rounded,
-                  title: t('home.announcements.title', 'Announcements'),
-                  viewAll: t('home.announcements.viewAll', 'View all'),
-                  onViewAll: () => widget.onBrowse?.call('/announcements'),
-                  child: FutureBuilder(
-                    future: _announcements,
-                    builder: (context, snapshot) {
-                      final entries = snapshot.data;
-                      if (entries == null) {
-                        return snapshot.hasError
-                            ? Padding(
-                                padding: const EdgeInsets.all(24),
-                                child: Text(
-                                  t('home.dashboard.sourceUnavailable', ''),
-                                  textAlign: TextAlign.center,
-                                ),
-                              )
-                            : const SizedBox(height: 96);
-                      }
-                      return Column(
-                        children: [
-                          for (final entry in entries.take(3))
-                            AnnouncementRow(entry: entry),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-                _Module(
-                  icon: Symbols.library_music_rounded,
-                  title: t('home.dashboard.latestSongs', 'Latest songs'),
-                  viewAll: t('home.dashboard.viewAll', 'View all'),
-                  onViewAll: () => widget.onBrowse?.call('/catalog/songs'),
-                  child: _Rail(
-                    width: 148,
-                    aspectRatio: 1,
-                    children: [
-                      for (final song in songs.take(12))
-                        Tile(
-                          title: songKit.title(song),
-                          subtitle: artist(song),
-                          adornments: [
-                            for (final id
-                                in (song['bandIds'] as List? ?? const []))
-                              ?data.visuals.bandLogo(id),
-                          ],
-                          images: songKit.images(song),
-                          placeholder: Symbols.album_rounded,
-                          marks: [
-                            if (data.visuals.musicTypeMark(song['musicType'])
-                                case final m?)
-                              TileMark.image(MarkAt.start, m),
-                            if (t.release(song['publishedAt']) case final r
-                                when r.isNotEmpty)
-                              TileMark.text(MarkAt.bottomStart, r),
-                          ],
-                          onTap: () => _open(context, 'songs', song),
+                for (final id in _order)
+                  if (!_hidden.contains(id))
+                    ?switch (id) {
+                      'news' => _Module(
+                        icon: Symbols.campaign_rounded,
+                        title: t('home.announcements.title', 'Announcements'),
+                        viewAll: t('home.announcements.viewAll', 'View all'),
+                        onViewAll: () =>
+                            widget.onBrowse?.call('/announcements'),
+                        child: FutureBuilder(
+                          future: _announcements,
+                          builder: (context, snapshot) {
+                            final entries = snapshot.data;
+                            if (entries == null) {
+                              return snapshot.hasError
+                                  ? Padding(
+                                      padding: const EdgeInsets.all(24),
+                                      child: Text(
+                                        t(
+                                          'home.dashboard.sourceUnavailable',
+                                          '',
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    )
+                                  : const SizedBox(height: 96);
+                            }
+                            return Column(
+                              children: [
+                                for (final entry in entries.take(3))
+                                  AnnouncementRow(entry: entry),
+                              ],
+                            );
+                          },
                         ),
-                    ],
-                  ),
-                ),
-                _Module(
-                  icon: Symbols.style_rounded,
-                  title: t('home.dashboard.latestCards', 'Latest cards'),
-                  viewAll: t('home.dashboard.viewAll', 'View all'),
-                  onViewAll: () =>
-                      widget.onBrowse?.call('/catalog/member-cards'),
-                  child: _Rail(
-                    width: 132,
-                    aspectRatio: 3 / 4,
-                    children: [
-                      for (final (card, kit, resource) in cards.take(12))
-                        Tile(
-                          title: kit.title(card),
-                          subtitle: kit.subtitle(card),
-                          adornments: kit.adornments(card),
-                          images: kit.images(card),
+                      ),
+                      'songs' => _Module(
+                        icon: Symbols.library_music_rounded,
+                        title: t('home.dashboard.latestSongs', 'Latest songs'),
+                        viewAll: t('home.dashboard.viewAll', 'View all'),
+                        onViewAll: () =>
+                            widget.onBrowse?.call('/catalog/songs'),
+                        child: _Rail(
+                          width: 148,
+                          aspectRatio: 1,
+                          children: [
+                            for (final song in songs.take(12))
+                              Tile(
+                                title: songKit.title(song),
+                                subtitle: artist(song),
+                                adornments: [
+                                  for (final id
+                                      in (song['bandIds'] as List? ?? const []))
+                                    ?data.visuals.bandLogo(id),
+                                ],
+                                images: songKit.images(song),
+                                placeholder: Symbols.album_rounded,
+                                marks: [
+                                  if (data.visuals.musicTypeMark(
+                                        song['musicType'],
+                                      )
+                                      case final m?)
+                                    TileMark.image(MarkAt.start, m),
+                                  if (t.release(song['publishedAt'])
+                                      case final r when r.isNotEmpty)
+                                    TileMark.text(MarkAt.bottomStart, r),
+                                ],
+                                onTap: () => _open(context, 'songs', song),
+                              ),
+                          ],
+                        ),
+                      ),
+                      'cards' => _Module(
+                        icon: Symbols.style_rounded,
+                        title: t('home.dashboard.latestCards', 'Latest cards'),
+                        viewAll: t('home.dashboard.viewAll', 'View all'),
+                        onViewAll: () =>
+                            widget.onBrowse?.call('/catalog/member-cards'),
+                        child: _Rail(
+                          width: 132,
                           aspectRatio: 3 / 4,
-                          fit: resource == 'cards'
-                              ? BoxFit.contain
-                              : BoxFit.cover,
-                          marks: kit.marks(card),
-                          onTap: () => _open(context, resource, card),
+                          children: [
+                            for (final (card, kit, resource) in cards.take(12))
+                              Tile(
+                                title: kit.title(card),
+                                subtitle: kit.subtitle(card),
+                                adornments: kit.adornments(card),
+                                images: kit.images(card),
+                                aspectRatio: 3 / 4,
+                                fit: resource == 'cards'
+                                    ? BoxFit.contain
+                                    : BoxFit.cover,
+                                marks: kit.marks(card),
+                                onTap: () => _open(context, resource, card),
+                              ),
+                          ],
                         ),
-                    ],
-                  ),
-                ),
+                      ),
+                      'community' => _communityModule(context, t),
+                      'fanInfo' => _fanInfoModule(context, t),
+                      _ => null,
+                    },
               ],
             ),
           );
@@ -334,43 +740,48 @@ class _Module extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      margin: const EdgeInsets.only(top: 12),
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
-      decoration: BoxDecoration(
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Material(
         color: theme.colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(Corner.extraLarge),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          SizedBox(
-            height: 56,
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: theme.colorScheme.secondaryContainer,
-                  child: Icon(
-                    icon,
-                    size: 20,
-                    color: theme.colorScheme.onSecondaryContainer,
-                  ),
+        clipBehavior: Clip.antiAlias,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                height: 56,
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 18,
+                      backgroundColor: theme.colorScheme.secondaryContainer,
+                      child: Icon(
+                        icon,
+                        size: 20,
+                        color: theme.colorScheme.onSecondaryContainer,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(title, style: theme.textTheme.titleLarge),
+                    ),
+                    if (onViewAll != null)
+                      IconButton(
+                        tooltip: viewAll,
+                        onPressed: onViewAll,
+                        icon: const Icon(Symbols.arrow_forward_rounded),
+                      ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Expanded(child: Text(title, style: theme.textTheme.titleLarge)),
-                if (onViewAll != null)
-                  IconButton(
-                    tooltip: viewAll,
-                    onPressed: onViewAll,
-                    icon: const Icon(Symbols.arrow_forward_rounded),
-                  ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 4),
+              child,
+            ],
           ),
-          const SizedBox(height: 4),
-          child,
-        ],
+        ),
       ),
     );
   }
