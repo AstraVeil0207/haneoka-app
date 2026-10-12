@@ -260,8 +260,14 @@ const _mediaTypes = {
 /// Writing a post (`renderPostEditor`): the forum, a title, the body with
 /// markup and stickers, images and videos, tags and who can see it.
 class PostEditorScreen extends StatefulWidget {
-  const PostEditorScreen({super.key, this.forum});
+  const PostEditorScreen({super.key, this.forum, this.image, this.purpose});
   final Json? forum;
+
+  /// A picture to attach at once: the stamp maker's PNG.
+  final ({String name, Uint8List bytes})? image;
+
+  /// The forum to preselect by its purpose (`stamp`).
+  final String? purpose;
   @override
   State<PostEditorScreen> createState() => _PostEditorScreenState();
 }
@@ -282,6 +288,11 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
   void initState() {
     super.initState();
     _forumId = widget.forum?['id'] as String?;
+    if (widget.image case final image?) {
+      final upload = _Upload(image.name, image.bytes, 'image/png');
+      _uploads.add(upload);
+      unawaited(_upload(upload));
+    }
     communityRequest('GET', '/api/v1/community/forums').then((data) {
       if (!mounted) return;
       setState(() {
@@ -291,6 +302,14 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                 forum['isInternal'] != true)
               forum,
         ];
+        if (widget.purpose != null) {
+          _forumId =
+              _forums
+                      .where((f) => f['defaultPurpose'] == widget.purpose)
+                      .firstOrNull?['id']
+                  as String? ??
+              _forumId;
+        }
         if (!_forums.any((f) => f['id'] == _forumId)) {
           _forumId = _forums.firstOrNull?['id'] as String?;
         }

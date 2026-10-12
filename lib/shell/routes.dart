@@ -16,6 +16,7 @@ import '../tools/assets_screen.dart';
 import '../tools/live2d_screen.dart';
 import '../tools/song_progress.dart';
 import '../tools/spine_screen.dart';
+import '../tools/stamp_maker.dart';
 import '../catalog/browse.dart';
 import '../catalog/missions.dart';
 import '../catalog/tgw_card.dart';
@@ -123,6 +124,7 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/catalog/live2d') return const Live2DScreen();
   if (route == '/catalog/assets') return const AssetsScreen();
   if (route == '/catalog/spine') return const SpineScreen();
+  if (route == '/stamp-maker') return const StampMakerScreen();
   if (route == '/catalog/stories') {
     return const StoriesScreen(key: ValueKey('band'), mode: 'band');
   }

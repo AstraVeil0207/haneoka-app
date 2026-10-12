@@ -54,7 +54,7 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 ## Tools
 
 - [~] Live2D: collection and model pages (preview, motions, expressions) · interactive viewer may wait with the 3D players · [~] Spine: collection and model pages (setup-pose preview, family, animations) · interactive viewer may wait with the 3D players · [x] Assets · [x] Help
-- [x] Player profile · [ ] Team builder · [x] Song progress (filled from the imported save) · [ ] Stamp maker · [ ] Chart editor
+- [x] Player profile · [ ] Team builder · [x] Song progress (filled from the imported save) · [~] Stamp maker (textless and original stamps, text layers with the pinned faces, outline, rotation, vertical writing, background, character colours, PNG export, post to community; fixed text frames still to port) · [ ] Chart editor
 
 ## Games
 
