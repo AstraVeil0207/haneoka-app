@@ -20,8 +20,9 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 - [x] Website links open their native page (`openLink`)
 - [x] Global search (catalogue, stories, help in every language; community posts)
 - [x] About
-- [~] Account: imported game accounts kept on the device with a player profile · [ ] sign-in (email, GitHub, Google, X, Discord), profile, account lifecycle
-- [ ] Game account binding: link an Our Notes player (by importing its save) to the haneoka account; the profile shows the player's in-game summary (rank, rating, clears, cards); the website's profile and the database carry the binding; app-only pages for it in M3 Expressive
+- [x] Account: imported game accounts kept on the device with a player profile · [x] haneoka sign-in through the website (every provider, PKCE handoff, bearer session in secure storage) · [ ] profile editing and account lifecycle in the app
+- [x] Game account binding: link an imported player to the haneoka account (public or private), update its summary, unlink; stored in `community_game_account` with a summary snapshot; the website's public profile shows server, player ID, rank and rating
+- [x] haneoka.org links open in the app on Android (verified App Links)
 
 ## Home
 
@@ -32,7 +33,8 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 
 ## Library
 
-- [x] Songs · [~] song detail (metrics, skill timeline from the chart, Gekisou stages, rewards, MV; missing: comments)
+- [x] Songs (performer line: resolved names, band logos, vocalist faces) · [x] song detail (metrics, skill timeline from the chart, Gekisou stages, rewards, MV, comments)
+- [x] Comments on every catalogue entry the website discusses
 - [~] Song meta (table, tiers, live/gekisou; missing: scatter chart view)
 - [x] Events · [x] event detail (overview, recruitments, reward cards, bonuses by card rank, song, story, live rewards with boost and bonus, rewards, missions) · [x] event tracker (challenge and point rankings, live)
 - [x] Characters · [x] character page (profile with rank rewards, cards, stamps, voices, stories, bonds on the friendship board, missions, Live2D list, songs)
@@ -51,21 +53,21 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 
 ## Tools
 
-- [ ] Live2D viewer · [ ] Spine viewer · [ ] Assets · [x] Help
+- [~] Live2D: collection and model pages (preview, motions, expressions) · interactive viewer may wait with the 3D players · [ ] Spine viewer · [x] Assets · [x] Help
 - [x] Player profile · [ ] Team builder · [x] Song progress (filled from the imported save) · [ ] Stamp maker · [ ] Chart editor
 
 ## Games
 
-- [ ] Sonolus · [ ] Song puzzle · [ ] Song guess
+- [x] Sonolus · [x] Song puzzle (IDA* solver, hints, replay, edit mode) · [x] Song guess
 
 ## Community
 
-- [ ] Recommended, latest, tags · [ ] mine, following, bookmarks, notifications, activity
-- [ ] Playlists · [ ] Forums · [ ] Posts, comments, editor
+- [x] For you, latest, following, mine, bookmarks (balanced columns, entity comments in the feed) · [x] tags · [x] notifications · [x] my comments
+- [x] Playlists (picks, Stage Challenge, in-game, community, the reader's own with editor) · [x] Forums · [x] Posts, threaded comments, likes, bookmarks, follows · [x] Post editor with markup, stickers and uploads · [x] Member profiles with linked game accounts
 
 ## GBP archive · Project Sekai
 
-- [ ] Bestdori songs and story sections · [ ] Sekai songs and story sections
+- [x] GBP songs and song pages (song-meta metrics) · [x] GBP event, band, main, afterlive and card stories with the scenario reader · [x] Project Sekai songs and story sections
 
 ## Save
 
