@@ -26,7 +26,7 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 
 ## Home
 
-- [~] Dashboard (banners, event, birthdays, latest songs and cards; missing: announcements, community, news, fan info, layout editing)
+- [x] Dashboard (banners, event, birthdays, announcements, latest songs and cards, trending community, bandori.fans, layout customization)
 - [x] Announcements (list, detail, home module)
 - [x] Calendar
 - [x] Join
@@ -49,11 +49,11 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 
 - [x] Event, band, link, birthday, home, afterlive, tutorial: browse with the website's rails and groups
 - [x] Transcript reader with locations, speakers and voices (3D player may wait)
-- [ ] Story filters · [ ] home spot scene
+- [~] Story search (facets by character, band, kind and release still to port) · [ ] home spot scene
 
 ## Tools
 
-- [~] Live2D: collection and model pages (preview, motions, expressions) · interactive viewer may wait with the 3D players · [ ] Spine viewer · [x] Assets · [x] Help
+- [~] Live2D: collection and model pages (preview, motions, expressions) · interactive viewer may wait with the 3D players · [~] Spine: collection and model pages (setup-pose preview, family, animations) · interactive viewer may wait with the 3D players · [x] Assets · [x] Help
 - [x] Player profile · [ ] Team builder · [x] Song progress (filled from the imported save) · [ ] Stamp maker · [ ] Chart editor
 
 ## Games
