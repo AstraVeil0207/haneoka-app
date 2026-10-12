@@ -117,6 +117,7 @@ class StoriesScreen extends StatefulWidget {
 class _StoriesScreenState extends State<StoriesScreen> {
   Future<_StoryData>? _data;
   String? _rail;
+  String _query = '';
 
   @override
   void didChangeDependencies() {
@@ -274,10 +275,17 @@ class _StoriesScreenState extends State<StoriesScreen> {
           );
         }
         final rail = keys.contains(_rail) ? _rail! : keys.firstOrNull;
+        // A search reads every episode of the section, not just the rail's.
+        final query = _query.trim().toLowerCase();
+        bool matches(Entry e) =>
+            '${t.text(e['title'])} ${t.text(e['description'])} ${t.text(e['chapterName'])} ${e['episodeNumber'] ?? ''}'
+                .toLowerCase()
+                .contains(query);
         final chosen =
             [
               for (final e in episodes)
-                if (_railKey(e, data!) == rail) e,
+                if (query.isNotEmpty ? matches(e) : _railKey(e, data!) == rail)
+                  e,
             ]..sort((a, b) {
               final order = ((a['storySort'] ?? a['episodeNumber'] ?? 0) as num)
                   .compareTo(
@@ -314,6 +322,10 @@ class _StoriesScreenState extends State<StoriesScreen> {
         ].where((g) => g.$2.isNotEmpty).toList();
         return ShellPage(
           title: _label(t),
+          search: ShellSearch(
+            label: t('common.actions.search', 'Search'),
+            onChanged: (value) => setState(() => _query = value),
+          ),
           status: Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -332,7 +344,14 @@ class _StoriesScreenState extends State<StoriesScreen> {
                 )
               : data == null
               ? const Center(child: CircularProgressIndicator())
-              : _body(context, data, keys, rail, chosen, groups),
+              : _body(
+                  context,
+                  data,
+                  query.isEmpty ? keys : const [],
+                  query.isEmpty ? rail : null,
+                  chosen,
+                  groups,
+                ),
         );
       },
     );
@@ -409,7 +428,8 @@ class _StoriesScreenState extends State<StoriesScreen> {
     return CustomScrollView(
       slivers: [
         if (keys.length > 1 ||
-            const {'event', 'birthday'}.contains(widget.mode))
+            (keys.isNotEmpty &&
+                const {'event', 'birthday'}.contains(widget.mode)))
           SliverToBoxAdapter(
             child: SizedBox(
               height: 112,
