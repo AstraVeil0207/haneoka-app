@@ -198,7 +198,7 @@ jobs:
           $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
           $vs = & $vswhere -latest -products '*' -property installationPath
           if (!$vs) { throw 'Visual Studio runtime source not found' }
-          $versions = Get-ChildItem (Join-Path $vs 'VC/Redist/MSVC') -Directory | Sort-Object { [version]$_.Name } -Descending
+          $versions = Get-ChildItem (Join-Path $vs 'VC/Redist/MSVC') -Directory | Sort-Object LastWriteTime -Descending
           $crt = $null
           foreach ($version in $versions) {
             $candidate = Get-ChildItem (Join-Path $version.FullName '${{ matrix.arch }}') -Directory -Filter 'Microsoft.VC*.CRT' -ErrorAction SilentlyContinue | Select-Object -First 1
