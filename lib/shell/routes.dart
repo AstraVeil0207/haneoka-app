@@ -12,6 +12,7 @@ import '../community/user_screen.dart';
 import '../playlists/playlists_screen.dart';
 import '../help/help_screen.dart';
 import '../search/search_screen.dart';
+import '../tools/assets_screen.dart';
 import '../tools/live2d_screen.dart';
 import '../tools/song_progress.dart';
 import '../catalog/browse.dart';
@@ -119,6 +120,7 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/sonolus') return const SonolusScreen();
   if (route == '/song-puzzle') return const SongPuzzleScreen();
   if (route == '/catalog/live2d') return const Live2DScreen();
+  if (route == '/catalog/assets') return const AssetsScreen();
   if (route == '/catalog/stories') {
     return const StoriesScreen(key: ValueKey('band'), mode: 'band');
   }
