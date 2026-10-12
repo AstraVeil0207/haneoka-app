@@ -35,7 +35,7 @@ Status: `[x]` matches the website · `[~]` native, not yet matching · `[ ]` mis
 
 - [x] Songs (performer line: resolved names, band logos, vocalist faces) · [x] song detail (metrics, skill timeline from the chart, Gekisou stages, rewards, MV, comments)
 - [x] Comments on every catalogue entry the website discusses
-- [~] Song meta (table, tiers, live/gekisou; missing: scatter chart view)
+- [x] Song meta (table, tiers, live/gekisou, scatter by level and the sorted metric)
 - [x] Events · [x] event detail (overview, recruitments, reward cards, bonuses by card rank, song, story, live rewards with boost and bonus, rewards, missions) · [x] event tracker (challenge and point rankings, live)
 - [x] Characters · [x] character page (profile with rank rewards, cards, stamps, voices, stories, bonds on the friendship board, missions, Live2D list, songs)
 - [x] Members · [x] member and snapshot detail (level, training, awakening, rank and skill sliders, stats, upgrade costs, skill text per level)

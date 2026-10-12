@@ -1,6 +1,8 @@
+import 'dart:math';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' hide TextDirection;
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:two_dimensional_scrollables/two_dimensional_scrollables.dart';
 
@@ -50,6 +52,7 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
   bool _gekisou = false;
   String _tier = 'theory';
   String _sort = 'score';
+  bool _scatter = false;
   bool _descending = true;
   String _query = '';
   final Set<int> _difficulties = {};
@@ -265,6 +268,23 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
                   : () => _filters(context, visuals),
             ),
             BarAction.choice(
+              label: t('catalog.analysis.fields.scatter', 'Scatter'),
+              options: [
+                BarChoice(
+                  icon: Symbols.table_rows_rounded,
+                  label: label('table', 'Table'),
+                  selected: !_scatter,
+                  onSelected: () => setState(() => _scatter = false),
+                ),
+                BarChoice(
+                  icon: Symbols.monitoring_rounded,
+                  label: t('catalog.analysis.fields.scatter', 'Scatter'),
+                  selected: _scatter,
+                  onSelected: () => setState(() => _scatter = true),
+                ),
+              ],
+            ),
+            BarAction.choice(
               label: label('metaMode', 'Mode'),
               options: [
                 BarChoice(
@@ -299,12 +319,89 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
                   children: [
                     if (!_gekisou) _tiers(context, data.$2, data.$1),
                     Expanded(
-                      child: _table(context, rows, data.$2, data.$3, label),
+                      child: _scatter
+                          ? _scatterChart(context, rows)
+                          : _table(context, rows, data.$2, data.$3, label),
                     ),
                   ],
                 ),
         );
       },
+    );
+  }
+
+  /// Charts as points: level across, the sorted metric up, coloured by
+  /// difficulty (`metaScatter`).
+  Widget _scatterChart(BuildContext context, List<_Chart> rows) {
+    const numeric = {
+      'score',
+      'eff',
+      'time',
+      'bpm',
+      'n',
+      'nps',
+      'sr',
+      'justable',
+      'justableRate',
+      'luck',
+    };
+    final metric = numeric.contains(_sort) ? _sort : 'score';
+    final percent = const {
+      'score',
+      'eff',
+      'sr',
+      'justableRate',
+    }.contains(metric);
+    final t = AppScope.of(context).text;
+    final number = NumberFormat.decimalPattern(t.locale)
+      ..maximumFractionDigits = percent ? 0 : 1;
+    String format(num value) =>
+        percent ? '${number.format(value * 100)}%' : number.format(value);
+    final points = [
+      for (final c in rows)
+        if ((c.row['sortLevel'] ?? c.row['displayLevel'] ?? c.row['playLevel'])
+            case final num level)
+          if (_value(c, metric) case final num value)
+            (level.toDouble(), value.toDouble(), c),
+    ];
+    final padding = pagePadding(context);
+    return Padding(
+      padding: padding,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final size = Size(
+            constraints.maxWidth,
+            (constraints.maxWidth / 2).clamp(240, constraints.maxHeight),
+          );
+          final painter = _ScatterPainter(
+            points: [
+              for (final (x, y, c) in points)
+                (x, y, difficultyColors[c.index.clamp(0, 4)]),
+            ],
+            format: format,
+            scheme: Theme.of(context).colorScheme,
+            textStyle: Theme.of(context).textTheme.labelSmall!,
+            xLabel: t.label('level', 'Level'),
+            yLabel: t.label(metric, metric),
+          );
+          return Align(
+            alignment: Alignment.topCenter,
+            child: GestureDetector(
+              onTapUp: (details) {
+                final hit = painter.hit(details.localPosition, size);
+                if (hit != null) {
+                  openEntity(
+                    context,
+                    catalogProfiles.firstWhere((p) => p.resource == 'songs'),
+                    points[hit].$3.song,
+                  );
+                }
+              },
+              child: CustomPaint(size: size, painter: painter),
+            ),
+          );
+        },
+      ),
     );
   }
 
@@ -849,4 +946,173 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
 
 extension on String {
   String ifEmpty(String fallback) => isEmpty ? fallback : this;
+}
+
+class _ScatterPainter extends CustomPainter {
+  _ScatterPainter({
+    required this.points,
+    required this.format,
+    required this.scheme,
+    required this.textStyle,
+    required this.xLabel,
+    required this.yLabel,
+  });
+  final List<(double, double, Color)> points;
+  final String Function(num) format;
+  final ColorScheme scheme;
+  final TextStyle textStyle;
+  final String xLabel;
+  final String yLabel;
+  static const _pad = (left: 64.0, right: 16.0, top: 20.0, bottom: 40.0);
+
+  ({double xMin, double xMax, double yMin, double yMax})? _range() {
+    if (points.isEmpty) return null;
+    final xs = points.map((p) => p.$1), ys = points.map((p) => p.$2);
+    final yLow = ys.reduce((a, b) => a < b ? a : b),
+        yHigh = ys.reduce((a, b) => a > b ? a : b);
+    final yPad = (yHigh - yLow) * 0.05 == 0 ? 1.0 : (yHigh - yLow) * 0.05;
+    return (
+      xMin: xs.reduce((a, b) => a < b ? a : b).floorToDouble(),
+      xMax: xs.reduce((a, b) => a > b ? a : b).ceilToDouble(),
+      yMin: yLow - yPad,
+      yMax: yHigh + yPad,
+    );
+  }
+
+  Offset _at(
+    double x,
+    double y,
+    Size size,
+    ({double xMin, double xMax, double yMin, double yMax}) r,
+  ) => Offset(
+    _pad.left +
+        (x - r.xMin) /
+            (r.xMax - r.xMin).clamp(1, double.infinity) *
+            (size.width - _pad.left - _pad.right),
+    size.height -
+        _pad.bottom -
+        (y - r.yMin) /
+            (r.yMax - r.yMin) *
+            (size.height - _pad.top - _pad.bottom),
+  );
+
+  int? hit(Offset position, Size size) {
+    final r = _range();
+    if (r == null) return null;
+    for (var i = points.length - 1; i >= 0; i--) {
+      if ((_at(points[i].$1, points[i].$2, size, r) - position).distance <=
+          10) {
+        return i;
+      }
+    }
+    return null;
+  }
+
+  /// `ticks`: round steps of 1, 2, 2.5, 5 or 10.
+  static List<double> _ticks(double min, double max, int count) {
+    final raw = ((max - min).abs() < 1e-9 ? 1e-9 : max - min) / count;
+    final power = pow10((log10(raw)).floor());
+    final step = [
+      1,
+      2,
+      2.5,
+      5,
+      10,
+    ].map((f) => f * power).firstWhere((v) => v >= raw, orElse: () => raw);
+    return [
+      for (
+        var v = (min / step).ceil() * step;
+        v <= max + step * 1e-6;
+        v += step
+      )
+        v,
+    ];
+  }
+
+  static double log10(double v) => log(v) / ln10;
+  static double pow10(int e) => pow(10, e).toDouble();
+
+  void _text(
+    Canvas canvas,
+    String text,
+    Offset at, {
+    TextAlign align = TextAlign.left,
+  }) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: textStyle.copyWith(color: scheme.onSurfaceVariant),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final dx = switch (align) {
+      TextAlign.right => -painter.width,
+      TextAlign.center => -painter.width / 2,
+      _ => 0.0,
+    };
+    painter.paint(canvas, at + Offset(dx, -painter.height / 2));
+  }
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final r = _range();
+    if (r == null) return;
+    final grid = Paint()
+      ..color = scheme.outlineVariant
+      ..strokeWidth = 1;
+    for (final value in _ticks(r.yMin, r.yMax, 6)) {
+      final y = _at(r.xMin, value, size, r).dy;
+      canvas.drawLine(
+        Offset(_pad.left, y),
+        Offset(size.width - _pad.right, y),
+        grid,
+      );
+      _text(
+        canvas,
+        format(value),
+        Offset(_pad.left - 8, y),
+        align: TextAlign.right,
+      );
+    }
+    for (final value in _ticks(
+      r.xMin,
+      r.xMax,
+      12,
+    ).where((v) => v == v.roundToDouble())) {
+      final x = _at(value, r.yMin, size, r).dx;
+      canvas.drawLine(
+        Offset(x, _pad.top),
+        Offset(x, size.height - _pad.bottom),
+        grid,
+      );
+      _text(
+        canvas,
+        '${value.round()}',
+        Offset(x, size.height - _pad.bottom + 14),
+        align: TextAlign.center,
+      );
+    }
+    _text(
+      canvas,
+      xLabel,
+      Offset(size.width - _pad.right, size.height - 8),
+      align: TextAlign.right,
+    );
+    _text(canvas, yLabel, Offset(_pad.left, _pad.top - 10));
+    for (final (x, y, color) in points) {
+      final at = _at(x, y, size, r);
+      canvas.drawCircle(at, 6, Paint()..color = color.withValues(alpha: 0.75));
+      canvas.drawCircle(
+        at,
+        6,
+        Paint()
+          ..color = color
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.5,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ScatterPainter old) => old.points != points;
 }
