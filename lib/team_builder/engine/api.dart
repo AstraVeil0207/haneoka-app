@@ -342,6 +342,9 @@ class EngineRequest {
     this.k = 5,
     this.timeLimitMs,
     this.rewardCutoff,
+    this.shard,
+    this.floors,
+    this.noFloor = false,
   });
   factory EngineRequest.fromJson(Map<String, Object?> json) => EngineRequest(
     members: [
@@ -361,6 +364,21 @@ class EngineRequest {
     k: (json['k'] as num?)?.toInt() ?? 5,
     timeLimitMs: (json['timeLimitMs'] as num?)?.toDouble(),
     rewardCutoff: (json['rewardCutoff'] as num?)?.toDouble(),
+    shard: json['shard'] is Map
+        ? (
+            index: intOf(objectRow(json['shard'])['index']),
+            count: intOf(objectRow(json['shard'])['count']),
+          )
+        : null,
+    floors: json['floors'] is Map
+        ? {
+            for (final MapEntry(:key, :value) in objectRow(
+              json['floors'],
+            ).entries)
+              key: (value as num).toDouble(),
+          }
+        : null,
+    noFloor: json['noFloor'] == true,
   );
 
   /// Other songs' Top-K key. Only a pt-only k=1 request may prove this song
@@ -374,6 +392,40 @@ class EngineRequest {
   final ConstraintInput constraints;
   final int k;
   final double? timeLimitMs;
+
+  /// One leader shard of a search split over several isolates: each team
+  /// has one leader, so the union of the shards' top k is the exact top k.
+  final ({int index, int count})? shard;
+
+  /// Known lower bounds of each song's k-th key (`songId:difficulty`), from
+  /// teams other shards already found.
+  final Map<String, double>? floors;
+
+  /// Searches without the aspiration floor (after one admitted too few).
+  final bool noFloor;
+
+  /// The same request for one shard, a time limit, other floors or songs.
+  EngineRequest copyWith({
+    Goal? goal,
+    double? timeLimitMs,
+    bool keepTimeLimit = true,
+    ({int index, int count})? shard,
+    Map<String, double>? floors,
+    bool? noFloor,
+  }) => EngineRequest(
+    members: members,
+    snaps: snaps,
+    player: player,
+    unknownPolicy: unknownPolicy,
+    goal: goal ?? this.goal,
+    constraints: constraints,
+    k: k,
+    timeLimitMs: timeLimitMs ?? (keepTimeLimit ? this.timeLimitMs : null),
+    rewardCutoff: rewardCutoff,
+    shard: shard ?? this.shard,
+    floors: floors ?? this.floors,
+    noFloor: noFloor ?? this.noFloor,
+  );
 
   EngineRequest withGoal(
     Goal goal,
@@ -571,6 +623,7 @@ class SongResult {
     required this.bound,
     required this.stats,
     this.excludedBelow,
+    this.floor,
   });
   factory SongResult.fromJson(Map<String, Object?> json) => SongResult(
     song: json['song'] is Map
@@ -593,6 +646,10 @@ class SongResult {
 
   /// Exhaustive proof that no team in this scope reaches this key.
   double? excludedBelow;
+
+  /// The aspiration floor a shard searched under: fewer than k teams at or
+  /// above it means the merged search must run again without one.
+  double? floor;
   Map<String, Object?> toJson() => {
     'song': song?.toJson(),
     'proven': proven,
@@ -967,6 +1024,7 @@ Future<EngineResponse> runEngine(
     List<Team>? seeds,
     double? limitMs,
     double? floor,
+    bool unsharded = false,
   }) => searchTeams(
     // Gekisou rewards also read support-skill effects the dominance
     // values do not carry.
@@ -981,6 +1039,7 @@ Future<EngineResponse> runEngine(
     k: k ?? request.k,
     seeds: seeds,
     floor: floor,
+    shard: unsharded ? null : request.shard,
     timeLimitMs: limitMs ?? songBudget(),
     cancelled: cancelled,
     memberPowerPercent: powerEffects.isNotEmpty
@@ -990,7 +1049,37 @@ Future<EngineResponse> runEngine(
         ? (snap) => snapEventPercent(powerEffects, snap)
         : null,
   );
+  // A sharded search first probes the whole box briefly: its teams (exact,
+  // from any leader) seed every shard's threshold.
+  SearchOutput<D> seeded<D>(
+    ObjectiveAdapter<D> objective,
+    MusicView? music,
+    List<EventEffectRow> powerEffects, {
+    List<Team>? seeds,
+  }) {
+    final shard = request.shard;
+    if (shard == null || shard.count < 2) {
+      return run(objective, music, powerEffects, seeds: seeds);
+    }
+    final probe = run(
+      objective,
+      music,
+      powerEffects,
+      seeds: seeds,
+      limitMs: 300,
+      unsharded: true,
+    );
+    return run(
+      objective,
+      music,
+      powerEffects,
+      seeds: [...?seeds, for (final hit in probe.hits) hit.team],
+    );
+  }
+
+  final sharded = (request.shard?.count ?? 1) > 1;
   for (final (index, song) in songs.indexed) {
+    final known = song == null ? null : request.floors?[song.key];
     if (ptTrial && song != null) {
       final source = await charts.source(song);
       validatePtChart(master, song, source);
@@ -1054,7 +1143,7 @@ Future<EngineResponse> runEngine(
                   hit.team,
               ]
             : null;
-        final out = run(objective, music, powerEffects, seeds: seeds);
+        final out = seeded(objective, music, powerEffects, seeds: seeds);
         results.add(
           SongResult(
             song: song,
@@ -1106,15 +1195,17 @@ Future<EngineResponse> runEngine(
             music,
             const [],
             limitMs: 100,
+            unsharded: true,
           ).hits)
             hit.team,
         ];
+        final rewardFloor = math.max(known ?? -inf, rewardCutoff ?? -inf);
         final out = run(
           adapter,
           music,
           const [],
           seeds: seeds,
-          floor: rewardCutoff,
+          floor: rewardFloor.isFinite ? rewardFloor : null,
         );
         results.add(
           SongResult(
@@ -1187,15 +1278,17 @@ Future<EngineResponse> runEngine(
             powerEffects,
             limitMs: 150,
             floor: rewardCutoff,
+            unsharded: true,
           );
           if (probe.proven &&
               !probe.hits.any((hit) => hit.key >= rewardCutoff)) {
+            final excludedBelow = math.max(rewardCutoff, known ?? -inf);
             results.add(
               SongResult(
                 song: song,
                 proven: false,
-                bound: rewardCutoff,
-                excludedBelow: rewardCutoff,
+                bound: excludedBelow,
+                excludedBelow: excludedBelow,
                 stats: probe.stats,
                 hits: [],
               ),
@@ -1217,6 +1310,7 @@ Future<EngineResponse> runEngine(
               powerEffects,
               k: 1,
               limitMs: songBudget() / 4,
+              unsharded: true,
             );
             final top = best.hits.firstOrNull?.key ?? inf;
             scoreCap = best.proven ? top : math.max(top, best.bound ?? inf);
@@ -1247,6 +1341,7 @@ Future<EngineResponse> runEngine(
           );
         }
         SearchOutput<EventDetail> out;
+        double? floor;
         if (played && goal.measure != 'challenge-points') {
           // Seeds along the bonus/power front, and a floor at the k-th best seed's key.
           final prepKey =
@@ -1269,6 +1364,7 @@ Future<EngineResponse> runEngine(
                   music,
                   powerEffects,
                   limitMs: 100,
+                  unsharded: true,
                 ).hits)
                   hit.team,
               ]);
@@ -1279,6 +1375,7 @@ Future<EngineResponse> runEngine(
               powerEffects,
               seeds: seeds,
               limitMs: 1,
+              unsharded: true,
             );
             prep = (
               seeds: seeds,
@@ -1289,8 +1386,11 @@ Future<EngineResponse> runEngine(
             if (_eventPrep.length > 64) _eventPrep.clear();
             _eventPrep[prepKey] = prep;
           }
-          final floor = prep.aspiration;
-          final searchFloor = math.max(floor ?? -inf, rewardCutoff ?? -inf);
+          floor = request.noFloor ? null : prep.aspiration;
+          final searchFloor = math.max(
+            math.max(floor ?? -inf, known ?? -inf),
+            rewardCutoff ?? -inf,
+          );
           out = run(
             adapter,
             music,
@@ -1303,11 +1403,12 @@ Future<EngineResponse> runEngine(
                   .where((hit) => floor == null || hit.key >= floor)
                   .length >=
               request.k;
-          if (!enough && rewardCutoff == null) {
+          if (!enough && rewardCutoff == null && !sharded) {
             out = run(adapter, music, powerEffects, seeds: prep.seeds);
+            floor = null;
           }
         } else {
-          out = run(adapter, music, powerEffects);
+          out = seeded(adapter, music, powerEffects);
         }
         // Teams tied at one reward are ordered by mean score.
         var hits = out.hits;
@@ -1360,6 +1461,7 @@ Future<EngineResponse> runEngine(
             proven: proven,
             bound: bound,
             stats: out.stats,
+            floor: floor != null && sharded ? floor : null,
             hits: [
               for (final hit in hits)
                 () {
@@ -1423,6 +1525,8 @@ Future<EngineResponse> runEngine(
           constraints: constraints,
           k: request.k,
           timeLimitMs: songBudget(),
+          shard: request.shard,
+          floor: known,
           cancelled: cancelled,
         );
         results.add(
@@ -1472,9 +1576,16 @@ Future<EngineResponse> runEngine(
           if (hit.key >= rewardCutoff) hit,
       ];
       if (result.proven && result.hits.isEmpty) {
-        result.excludedBelow = rewardCutoff;
+        final known = result.song == null
+            ? null
+            : request.floors?[result.song!.key];
+        result.excludedBelow = math.max(
+          math.max(rewardCutoff, known ?? -inf),
+          result.floor ?? -inf,
+        );
         result.proven = false;
-        result.bound = rewardCutoff;
+        result.bound = result.excludedBelow;
+        result.floor = null;
       }
     }
   }
