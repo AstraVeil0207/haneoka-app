@@ -160,9 +160,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get latestLive => '最近一次演出';
 
   @override
-  String get allFields => '全部字段';
-
-  @override
   String entries(int count) {
     return '$count 条';
   }
@@ -702,9 +699,6 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get latestLive => '最近一次演出';
-
-  @override
-  String get allFields => '全部欄位';
 
   @override
   String entries(int count) {

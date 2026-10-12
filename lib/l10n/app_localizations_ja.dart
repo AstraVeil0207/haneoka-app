@@ -160,9 +160,6 @@ class AppLocalizationsJa extends AppLocalizations {
   String get latestLive => '最新のライブ';
 
   @override
-  String get allFields => 'すべての項目';
-
-  @override
   String entries(int count) {
     return '$count 件';
   }

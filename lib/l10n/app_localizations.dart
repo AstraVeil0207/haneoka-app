@@ -403,12 +403,6 @@ abstract class AppLocalizations {
   /// **'Latest live'**
   String get latestLive;
 
-  /// No description provided for @allFields.
-  ///
-  /// In en, this message translates to:
-  /// **'All fields'**
-  String get allFields;
-
   /// No description provided for @entries.
   ///
   /// In en, this message translates to:

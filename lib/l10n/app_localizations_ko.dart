@@ -160,9 +160,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get latestLive => '최근 라이브';
 
   @override
-  String get allFields => '전체 항목';
-
-  @override
   String entries(int count) {
     return '$count개';
   }

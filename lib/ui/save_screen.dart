@@ -930,11 +930,6 @@ class _Profile extends StatelessWidget {
                           trailing: const Icon(Symbols.chevron_right_rounded),
                           onTap: () => openJson(t.latestLive, view.persist),
                         ),
-                      ListTile(
-                        title: Text(t.allFields),
-                        trailing: const Icon(Symbols.chevron_right_rounded),
-                        onTap: () => openJson(t.allFields, view.player),
-                      ),
                     ],
                   ),
                 ),
