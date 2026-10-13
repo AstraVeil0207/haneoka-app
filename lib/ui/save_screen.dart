@@ -402,6 +402,13 @@ class _Profile extends StatelessWidget {
                           ),
                         ),
                       ),
+                      if (started is num && started > 0)
+                        Text(
+                          '${t.tutorialDone} · ${DateFormat.yMd(locale).format(DateTime.fromMillisecondsSinceEpoch(started.toInt() * 1000))}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
                       if (save.modifiedAt != null)
                         Text(
                           t.savedOn(
@@ -482,14 +489,6 @@ class _Profile extends StatelessWidget {
         t.ownedSnapshots,
         number.format(view.rows(SaveSection.snapshots).length),
       ),
-      if (started is num && started > 0)
-        stat(
-          Symbols.flag_rounded,
-          t.tutorialDone,
-          DateFormat.yMd(
-            locale,
-          ).format(DateTime.fromMillisecondsSinceEpoch(started.toInt() * 1000)),
-        ),
     ];
     Widget grid(List<Widget> children, {double min = 220}) => LayoutBuilder(
       builder: (context, constraints) {
