@@ -27,6 +27,7 @@ import 'engine/num.dart';
 import 'engine/native_luck.dart';
 import 'engine/objectives.dart' show RouteKind;
 import 'engine/power.dart';
+import 'engine/search.dart' show SearchStats;
 
 class EngineCancelled implements Exception {
   const EngineCancelled();
@@ -119,6 +120,8 @@ typedef _Call = (
 );
 
 Future<String> _encodeData(Doc data) => Isolate.run(() => jsonEncode(data));
+Future<int> _createNativeContext(String payload) =>
+    Isolate.run(() => NativeTeamEngine(jsonDecode(payload) as Doc).handle);
 
 const _engineChannel = MethodChannel('org.haneoka/team_engine');
 
@@ -771,6 +774,7 @@ class _Worker {
   ReceivePort? _failures;
   Completer<SendPort>? _spawnReady;
   int _generation = 0;
+  int? _nativeHandle;
   Future<void>? _ready;
   var _nextId = 1;
   final _pending =
@@ -811,10 +815,19 @@ class _Worker {
     final generation = _generation;
     final payload = await serializedData;
     if (generation != _generation) throw const EngineCancelled();
+    if (nativeLuckAvailable) {
+      final handle = await _createNativeContext(payload);
+      if (generation != _generation) {
+        NativeTeamEngine.dispose(handle);
+        throw const EngineCancelled();
+      }
+      _nativeHandle = handle;
+    }
     final replies = _replies = ReceivePort();
     final ready = _spawnReady = Completer<SendPort>();
     final failures = _failures = ReceivePort();
     failures.listen((failure) {
+      _disposeNative();
       final error = StateError(
         'engine-crashed:${failure is List ? failure.first : 'worker exited'}',
       );
@@ -864,12 +877,13 @@ class _Worker {
     try {
       isolate = await Isolate.spawn(
         _main,
-        (replies.sendPort, payload, chartUrls),
+        (replies.sendPort, payload, chartUrls, _nativeHandle),
         errorsAreFatal: true,
         onError: failures.sendPort,
         onExit: failures.sendPort,
       );
     } catch (_) {
+      _disposeNative();
       failures.close();
       replies.close();
       _spawnReady = null;
@@ -906,6 +920,7 @@ class _Worker {
 
   void cancel() {
     _generation++;
+    _disposeNative();
     if (_spawnReady != null && !_spawnReady!.isCompleted) {
       _spawnReady!.completeError(const EngineCancelled());
     }
@@ -921,6 +936,12 @@ class _Worker {
     _isolate = null;
     _port = null;
     _ready = null;
+  }
+
+  void _disposeNative() {
+    final handle = _nativeHandle;
+    _nativeHandle = null;
+    if (handle != null) NativeTeamEngine.dispose(handle);
   }
 }
 
@@ -1514,15 +1535,18 @@ class EvaluateRequest {
   final ({int eventId, RouteKind route, int consumption})? event;
 }
 
-void _main((SendPort, String, Map<String, String>) args) {
-  final (reply, json, urls) = args;
+void _main((SendPort, String, Map<String, String>, int?) args) {
+  final (reply, json, urls, nativeHandle) = args;
+  final native = nativeHandle == null
+      ? null
+      : NativeTeamEngine.fromHandle(nativeHandle);
   var activeId = 0;
   final client = http.Client();
-  final master = compileTeamData(jsonDecode(json) as Doc);
+  late final master = compileTeamData(jsonDecode(json) as Doc);
   final bytes = <String, Uint8List>{};
-  final charts = ChartCache(master, (song) async {
+  Future<Uint8List> loadBytes(SongRef song) async {
     final cached = bytes.remove(song.key);
-    if (cached != null) return RuntimeChart.fromBytes(cached);
+    if (cached != null) return cached;
     final url = urls[song.key];
     if (url == null || url.isEmpty) throw StateError('chart-file-missing');
     reply.send((activeId, 'phase', 'networkMs'));
@@ -1548,8 +1572,13 @@ void _main((SendPort, String, Map<String, String>) args) {
       throw StateError('chart-release-identity-mismatch');
     }
     reply.send((activeId, 'phase', 'computationMs'));
-    return RuntimeChart.fromBytes(response.bodyBytes);
-  });
+    return response.bodyBytes;
+  }
+
+  late final charts = ChartCache(
+    master,
+    (song) async => RuntimeChart.fromBytes(await loadBytes(song)),
+  );
   final port = ReceivePort();
   reply.send(port.sendPort);
   port.listen((message) async {
@@ -1560,10 +1589,74 @@ void _main((SendPort, String, Map<String, String>) args) {
       final Object result;
       switch (kind) {
         case 'run':
+          final r = request as EngineRequest;
+          if (native != null &&
+              (r.goal is PowerGoal ||
+                  r.goal is ScoreGoal ||
+                  r.goal is GekisoGoal)) {
+            final sources = <Doc>[];
+            for (final song in requestSongs(r).whereType<SongRef>()) {
+              if (native.hasChart(song.key)) {
+                bytes.remove(song.key);
+                continue;
+              }
+              final raw = await loadBytes(song);
+              final decoded =
+                  raw.length >= 2 && raw[0] == 0x1f && raw[1] == 0x8b
+                  ? gzip.decode(raw)
+                  : raw;
+              sources.add({
+                'song': song.toJson(),
+                'chart': jsonDecode(utf8.decode(decoded)),
+              });
+            }
+            result = EngineResponse.fromJson(
+              native.run(r.toJson(), sources, (value) {
+                final song = value['song'] is Map
+                    ? SongRef.fromJson(objectRow(value['song']))
+                    : null;
+                final hits = [
+                  for (final hit in value['hits'] as List)
+                    EngineHit.fromJson(objectRow(hit)),
+                ];
+                final response = emptyResponse(r);
+                final index = response.results.indexWhere(
+                  (row) => row.song == song,
+                );
+                if (index >= 0) {
+                  response.results[index] = SongResult(
+                    song: song,
+                    hits: hits,
+                    proven: false,
+                    bound: double.infinity,
+                    stats: SearchStats(),
+                  );
+                }
+                response.overall.addAll(hits);
+                reply.send((
+                  id,
+                  'snapshot',
+                  EngineSnapshot(
+                    requestId: r.requestId!,
+                    contextKey: r.contextKey!,
+                    response: response,
+                    completed: 0,
+                    total: response.results.length,
+                  ),
+                ));
+              }),
+            );
+            reply.send((
+              id,
+              'progress',
+              (requestSongs(r).length, requestSongs(r).length),
+            ));
+            break;
+          }
           result = await runEngine(
             master,
             charts,
-            request as EngineRequest,
+            r,
             onProgress: (done, total) =>
                 reply.send((id, 'progress', (done, total))),
             onSnapshot: (snapshot) => reply.send((id, 'snapshot', snapshot)),

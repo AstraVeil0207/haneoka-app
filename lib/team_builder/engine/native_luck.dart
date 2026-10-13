@@ -11,9 +11,17 @@ import 'num.dart';
 class _Kernel {
   _Kernel() {
     final directory = File(Platform.resolvedExecutable).parent.path;
-    final library = DynamicLibrary.open(
-      '$directory/lib/libhaneoka_team_engine.so',
-    );
+    final library = Platform.isIOS
+        ? DynamicLibrary.process()
+        : DynamicLibrary.open(
+            Platform.isAndroid
+                ? 'libhaneoka_team_engine.so'
+                : Platform.isWindows
+                ? '$directory/haneoka_team_engine.dll'
+                : Platform.isMacOS
+                ? '$directory/../Frameworks/libhaneoka_team_engine.dylib'
+                : '$directory/lib/libhaneoka_team_engine.so',
+          );
     run = library
         .lookupFunction<
           Pointer<Uint8> Function(Pointer<Uint8>),
@@ -24,30 +32,76 @@ class _Kernel {
           Void Function(Pointer<Uint8>),
           void Function(Pointer<Uint8>)
         >('haneoka_string_free');
-    final libc = DynamicLibrary.process();
-    allocate = libc
+    cancel = library.lookupFunction<Void Function(), void Function()>(
+      'haneoka_cancel',
+    );
+    context = library
+        .lookupFunction<
+          Pointer<Uint8> Function(Pointer<Uint8>),
+          Pointer<Uint8> Function(Pointer<Uint8>)
+        >('haneoka_context_json');
+    stream = library
+        .lookupFunction<
+          Pointer<Uint8> Function(
+            Pointer<Uint8>,
+            Pointer<NativeFunction<Void Function(Pointer<Uint8>)>>,
+          ),
+          Pointer<Uint8> Function(
+            Pointer<Uint8>,
+            Pointer<NativeFunction<Void Function(Pointer<Uint8>)>>,
+          )
+        >('haneoka_context_stream_json');
+    allocate = library
         .lookupFunction<
           Pointer<Uint8> Function(IntPtr),
           Pointer<Uint8> Function(int)
-        >('malloc');
-    free = libc
+        >('haneoka_buffer_alloc');
+    free = library
         .lookupFunction<
-          Void Function(Pointer<Uint8>),
-          void Function(Pointer<Uint8>)
-        >('free');
+          Void Function(Pointer<Uint8>, IntPtr),
+          void Function(Pointer<Uint8>, int)
+        >('haneoka_buffer_free');
   }
   late final Pointer<Uint8> Function(Pointer<Uint8>) run;
   late final void Function(Pointer<Uint8>) release;
   late final void Function() cancel;
+  late final Pointer<Uint8> Function(Pointer<Uint8>) context;
+  late final Pointer<Uint8> Function(
+    Pointer<Uint8>,
+    Pointer<NativeFunction<Void Function(Pointer<Uint8>)>>,
+  )
+  stream;
   late final Pointer<Uint8> Function(int) allocate;
-  late final void Function(Pointer<Uint8>) free;
+  late final void Function(Pointer<Uint8>, int) free;
 }
 
-final _Kernel? _kernel = Platform.isLinux ? _Kernel() : null;
-bool get nativeLuckAvailable => Platform.isLinux;
+final _Kernel? _kernel = nativeLuckAvailable ? _Kernel() : null;
+bool get nativeLuckAvailable =>
+    Platform.isLinux ||
+    Platform.isWindows ||
+    Platform.isMacOS ||
+    Platform.isAndroid ||
+    Platform.isIOS;
 void cancelNativeComputations() => _kernel?.cancel();
 
 Doc nativeLuck(Doc input) {
+  return _invoke(input, _kernel!.run);
+}
+
+Doc _read(Pointer<Uint8> pointer) {
+  if (pointer == nullptr) throw StateError('native-engine-result');
+  var length = 0;
+  while (pointer[length] != 0) {
+    length++;
+  }
+  final output = objectRow(
+    jsonDecode(utf8.decode(pointer.asTypedList(length))),
+  );
+  if (output['error'] != null) throw StateError('${output['error']}');
+  return output;
+}
+
+Doc _invoke(Doc input, Pointer<Uint8> Function(Pointer<Uint8>) run) {
   final kernel = _kernel!;
   final bytes = utf8.encode(jsonEncode(input));
   final pointer = kernel.allocate(bytes.length + 1);
@@ -57,19 +111,49 @@ Doc nativeLuck(Doc input) {
     pointer.asTypedList(bytes.length + 1)
       ..setRange(0, bytes.length, bytes)
       ..[bytes.length] = 0;
-    result = kernel.run(pointer);
-    if (result == nullptr) throw StateError('native-luck-result');
-    var length = 0;
-    while (result[length] != 0) {
-      length++;
-    }
-    final output = objectRow(
-      jsonDecode(utf8.decode(result.asTypedList(length))),
-    );
-    if (output['error'] != null) throw StateError('${output['error']}');
-    return output;
+    result = run(pointer);
+    return _read(result);
   } finally {
     if (result != nullptr) kernel.release(result);
-    kernel.free(pointer);
+    kernel.free(pointer, bytes.length + 1);
+  }
+}
+
+/// One worker owns a release context. Its coordinator disposes the handle
+/// before terminating the isolate, including cancellation and fatal errors.
+class NativeTeamEngine {
+  NativeTeamEngine(Doc data)
+    : handle = intOf(
+        _invoke({'op': 'create', 'data': data}, _kernel!.context)['handle'],
+      );
+  final int handle;
+  NativeTeamEngine.fromHandle(this.handle);
+  final _charts = <String>[];
+  bool hasChart(String key) => _charts.contains(key);
+
+  Doc run(Doc request, List<Doc> charts, void Function(Doc) onCandidate) {
+    final callback = NativeCallable<Void Function(Pointer<Uint8>)>.isolateLocal(
+      (Pointer<Uint8> value) => onCandidate(_read(value)),
+    );
+    try {
+      final result = _invoke({
+        'op': 'run',
+        'handle': handle,
+        'request': request,
+        'charts': charts,
+      }, (input) => _kernel!.stream(input, callback.nativeFunction));
+      _charts
+        ..clear()
+        ..addAll([
+          for (final key in result['cachedCharts'] as List? ?? const []) '$key',
+        ]);
+      return result;
+    } finally {
+      callback.close();
+    }
+  }
+
+  static void dispose(int handle) {
+    _invoke({'op': 'dispose', 'handle': handle}, _kernel!.context);
   }
 }
