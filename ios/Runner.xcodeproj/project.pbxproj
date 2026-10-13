@@ -229,7 +229,7 @@
             files = ();
             inputPaths = ();
             name = "Rust Team Engine";
-            outputPaths = ();
+            outputPaths = ("$(BUILT_PRODUCTS_DIR)/libhaneoka_team_engine.a");
             runOnlyForDeploymentPostprocessing = 0;
             shellPath = /bin/sh;
             shellScript = "/bin/sh \"$PROJECT_DIR/../scripts/build_team_engine_apple.sh\"";
