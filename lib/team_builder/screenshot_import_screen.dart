@@ -3,7 +3,6 @@
 /// `lit/team-builder/importers.ts`).
 library;
 
-import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
@@ -137,12 +136,8 @@ class _ScreenshotImportScreenState extends State<_ScreenshotImportScreen> {
   }
 
   Future<void> _pick() async {
-    final picked = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      withData: true,
-      type: FileType.image,
-    );
-    if (picked == null || picked.files.isEmpty || !mounted) return;
+    final picked = await FilePicker.pickFiles(type: FileType.image);
+    if (picked.isEmpty || !mounted) return;
     final generation = ++_generation;
     setState(() {
       _clearLocal();
@@ -150,9 +145,9 @@ class _ScreenshotImportScreenState extends State<_ScreenshotImportScreen> {
       _error = null;
     });
     try {
-      if (picked.files.length > 8) throw const ScreenshotError('image-budget');
-      for (final file in picked.files) {
-        final bytes = file.bytes ?? await File(file.path!).readAsBytes();
+      if (picked.length > 8) throw const ScreenshotError('image-budget');
+      for (final file in picked) {
+        final bytes = await file.readAsBytes();
         final image = await decodeScreenshot(bytes);
         if (generation != _generation) {
           image.dispose();

@@ -1,4 +1,3 @@
-import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -116,14 +115,8 @@ class _SaveScreenState extends State<SaveScreen> {
     final bytes = exportSave(save);
     final name =
         'our-notes-${save.release?.server ?? 'save'}-${save.profileId}.json';
-    final path = await FilePicker.platform.saveFile(
-      fileName: name,
-      bytes: bytes,
-    );
+    final path = await FilePicker.saveFile(fileName: name, bytes: bytes);
     if (path == null) return;
-    if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
-      await File(path).writeAsBytes(bytes);
-    }
     if (mounted) _say(t.saved);
   }
 

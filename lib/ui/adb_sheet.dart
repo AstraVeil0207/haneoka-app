@@ -96,8 +96,8 @@ class _AdbSheetState extends State<_AdbSheet> {
   }
 
   Future<void> _chooseAdb() async {
-    final picked = await FilePicker.platform.pickFiles();
-    final path = picked?.files.single.path;
+    final picked = await FilePicker.pickFile();
+    final path = picked?.path;
     if (path != null) await _use(path);
   }
 

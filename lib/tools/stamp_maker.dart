@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:file_picker/file_picker.dart';
@@ -258,15 +257,12 @@ class _StampMakerScreenState extends State<StampMakerScreen> {
     setState(() => _busy = true);
     try {
       final bytes = Uint8List.fromList(await _png(_exportSize));
-      final path = await FilePicker.platform.saveFile(
+      final path = await FilePicker.saveFile(
         fileName: _fileName,
         bytes: bytes,
         type: FileType.custom,
         allowedExtensions: const ['png'],
       );
-      if (path != null && !Platform.isAndroid && !Platform.isIOS) {
-        await File(path).writeAsBytes(bytes);
-      }
       if (path != null && mounted) {
         ScaffoldMessenger.of(
           context,

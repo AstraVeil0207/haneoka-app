@@ -7,7 +7,7 @@ import Foundation
 
 import app_links
 import audioplayers_darwin
-import file_picker
+import file_picker_darwin
 import flutter_secure_storage_darwin
 import media_kit_libs_macos_video
 import media_kit_video

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -26,13 +25,15 @@ class _AccountAvatarState extends State<AccountAvatar> {
   void say(String text) =>
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   Future<void> pick() async {
-    final result = await FilePicker.platform.pickFiles(
+    final result = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: ['jpg', 'jpeg', 'png', 'webp'],
     );
     if (!mounted || result == null) return;
-    final file = result.files.single;
-    if (file.size == 0 || file.size > 2 * 1024 * 1024) {
+    final file = result;
+    final length = await file.length();
+    if (!mounted) return;
+    if (length == null || length == 0 || length > 2 * 1024 * 1024) {
       say(label('avatarTooLarge', 'The avatar must be 2 MB or smaller.'));
       return;
     }
@@ -47,11 +48,9 @@ class _AccountAvatarState extends State<AccountAvatar> {
       return;
     }
     try {
-      final bytes =
-          file.bytes ??
-          (file.path == null ? null : await File(file.path!).readAsBytes());
+      final bytes = await file.readAsBytes();
       if (!mounted) return;
-      if (bytes == null || bytes.isEmpty || bytes.length > 2 * 1024 * 1024) {
+      if (bytes.isEmpty || bytes.length > 2 * 1024 * 1024) {
         say(label('avatarTooLarge', 'The avatar must be 2 MB or smaller.'));
         return;
       }

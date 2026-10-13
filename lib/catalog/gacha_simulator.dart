@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math';
 import 'dart:ui' as ui;
 
@@ -494,14 +493,11 @@ class _GachaSimulatorState extends State<GachaSimulator> {
       final data = await image.toByteData(format: ui.ImageByteFormat.png);
       if (data == null) return;
       final bytes = data.buffer.asUint8List();
-      final path = await FilePicker.platform.saveFile(
+      await FilePicker.saveFile(
         fileName: 'gacha-${widget.item['id'] ?? ''}-$_view.png',
         type: FileType.image,
         bytes: bytes,
       );
-      if (path != null && !(Platform.isAndroid || Platform.isIOS)) {
-        await File(path).writeAsBytes(bytes);
-      }
     } finally {
       if (mounted) setState(() => _exporting = false);
     }

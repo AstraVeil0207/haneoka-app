@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -351,19 +350,16 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
   }
 
   Future<void> _pick() async {
-    final result = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      withData: true,
+    final result = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: _mediaTypes.keys.toList(),
     );
-    if (result == null || !mounted) return;
-    for (final file in result.files) {
+    if (!mounted) return;
+    for (final file in result) {
       final type = _mediaTypes[(file.extension ?? '').toLowerCase()];
-      final bytes =
-          file.bytes ??
-          (file.path != null ? await File(file.path!).readAsBytes() : null);
-      if (type == null || bytes == null) continue;
+      if (type == null) continue;
+      final bytes = await file.readAsBytes();
+      if (!mounted) return;
       final upload = _Upload(file.name, bytes, type);
       setState(() => _uploads.add(upload));
       unawaited(_upload(upload));

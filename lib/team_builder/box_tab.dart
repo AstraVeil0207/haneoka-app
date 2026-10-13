@@ -4,7 +4,6 @@
 library;
 
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -731,13 +730,10 @@ Future<void> exportBox(TeamBuilderController c) async {
   final bytes = Uint8List.fromList(
     utf8.encode(const JsonEncoder.withIndent('  ').convert(document)),
   );
-  final path = await FilePicker.platform.saveFile(
+  await FilePicker.saveFile(
     fileName: 'haneoka-team-box-${identity['server']}.json',
     bytes: bytes,
     type: FileType.custom,
     allowedExtensions: const ['json'],
   );
-  if (path != null && !Platform.isAndroid && !Platform.isIOS) {
-    await File(path).writeAsBytes(bytes);
-  }
 }

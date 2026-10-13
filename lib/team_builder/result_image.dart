@@ -3,7 +3,6 @@
 /// 1280-pixel page with the metrics, the five members and their snaps.
 library;
 
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
@@ -372,12 +371,9 @@ Future<List<int>> renderTeamResultImage(TeamResultImage model) async {
 /// Saves the PNG where the reader chooses, as `team.png`.
 Future<void> saveResultImage(List<int> png) async {
   final bytes = png is Uint8List ? png : Uint8List.fromList(png);
-  final path = await FilePicker.platform.saveFile(
+  await FilePicker.saveFile(
     fileName: 'team.png',
     type: FileType.image,
     bytes: bytes,
   );
-  if (path != null && !(Platform.isAndroid || Platform.isIOS)) {
-    await File(path).writeAsBytes(bytes);
-  }
 }

@@ -57,7 +57,7 @@ class _BackupSheetState extends State<_BackupSheet> {
   }
 
   Future<void> _choose() async {
-    final folder = await FilePicker.platform.getDirectoryPath();
+    final folder = await FilePicker.getDirectoryPath();
     if (folder != null) await _load([folder]);
   }
 

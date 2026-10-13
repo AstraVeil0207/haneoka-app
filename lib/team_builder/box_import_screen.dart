@@ -5,7 +5,6 @@
 library;
 
 import 'dart:convert';
-import 'dart:io';
 import 'dart:isolate';
 import 'dart:typed_data';
 
@@ -252,16 +251,17 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
   }
 
   Future<void> _files() async {
-    final picked = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      withData: true,
-    );
-    if (picked == null || picked.files.isEmpty || !mounted) return;
-    final files = picked.files;
+    final picked = await FilePicker.pickFiles();
+    if (picked.isEmpty || !mounted) return;
+    final files = picked;
     if (files.any((f) => isInventoryListFile(f.name))) {
+      if (files.length != 1) {
+        setState(() => _error = 'box_invalid_list');
+        return;
+      }
       final file = files.single;
-      final bytes = file.bytes ?? await File(file.path!).readAsBytes();
-      if (files.length != 1 || bytes.length > 1024 * 1024) {
+      final bytes = await file.readAsBytes();
+      if (bytes.length > 1024 * 1024) {
         setState(() => _error = 'box_invalid_list');
         return;
       }
@@ -276,8 +276,7 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
       return;
     }
     final data = <Uint8List>[
-      for (final file in files)
-        file.bytes ?? await File(file.path!).readAsBytes(),
+      for (final file in files) await file.readAsBytes(),
     ];
     await _parse(() => Isolate.run(() => parseBoxFiles(data)));
   }

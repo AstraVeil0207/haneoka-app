@@ -183,7 +183,7 @@ class _ImportScreenState extends State<ImportScreen> {
 
   Future<void> _pickFiles({bool folder = false}) async {
     if (folder) {
-      final path = await FilePicker.platform.getDirectoryPath();
+      final path = await FilePicker.getDirectoryPath();
       if (!mounted || path == null) return;
       await _run(
         (collector) =>
@@ -191,18 +191,16 @@ class _ImportScreenState extends State<ImportScreen> {
       );
       return;
     }
-    final picked = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      withData: false,
-    );
-    if (!mounted || picked == null) return;
+    final picked = await FilePicker.pickFiles();
+    if (!mounted || picked.isEmpty) return;
     await _run((collector) async {
       final source = FileSaveSource(collector, release: release);
-      for (final file in picked.files) {
-        if (file.path != null) {
-          await source.addPath(file.path!);
-        } else if (file.bytes != null) {
-          source.addBytes(file.bytes!, file.name);
+      for (final file in picked) {
+        final path = file.path;
+        if (path != null) {
+          await source.addPath(path);
+        } else {
+          source.addBytes(await file.readAsBytes(), file.name);
         }
       }
     });

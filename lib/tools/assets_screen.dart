@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -279,13 +278,7 @@ class _SourceScreenState extends State<_SourceScreen> {
       }
       if (!mounted) return;
       final bytes = response.bodyBytes;
-      final path = await FilePicker.platform.saveFile(
-        fileName: file.split('/').last,
-        bytes: bytes,
-      );
-      if (path != null && !(Platform.isAndroid || Platform.isIOS)) {
-        await File(path).writeAsBytes(bytes);
-      }
+      await FilePicker.saveFile(fileName: file.split('/').last, bytes: bytes);
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context)
