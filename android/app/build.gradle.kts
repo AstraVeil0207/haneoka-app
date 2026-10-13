@@ -70,7 +70,7 @@ dependencies {
 }
 
 val rustOutput = layout.buildDirectory.dir("rust-jni")
-android.sourceSets.getByName("main").jniLibs.srcDir(rustOutput)
+android.sourceSets.getByName("main").jniLibs.srcDir(rustOutput.get().asFile)
 val rustTriples = mapOf(
     "arm64-v8a" to ("aarch64-linux-android" to "aarch64-linux-android"),
     "armeabi-v7a" to ("armv7-linux-androideabi" to "armv7a-linux-androideabi"),
