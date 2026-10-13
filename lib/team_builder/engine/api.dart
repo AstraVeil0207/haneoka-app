@@ -2556,8 +2556,9 @@ class SkillWindow {
     this.startMs,
     this.endMs,
     this.percent,
-    this.perfectPercent,
-  );
+    this.perfectPercent, [
+    this.extensionMs = 0,
+  ]);
   factory SkillWindow.fromJson(Map<String, Object?> json) => SkillWindow(
     '${json['member']}',
     intOf(json['event']),
@@ -2565,6 +2566,7 @@ class SkillWindow {
     intOf(json['endMs']),
     numOf(json['percent']),
     numOf(json['perfectPercent']),
+    numOf(json['extensionMs']),
   );
   Map<String, Object?> toJson() => {
     'member': member,
@@ -2573,6 +2575,7 @@ class SkillWindow {
     'endMs': endMs,
     'percent': percent,
     'perfectPercent': perfectPercent,
+    'extensionMs': extensionMs,
   };
   final String member;
   final int event;
@@ -2580,6 +2583,7 @@ class SkillWindow {
   final int endMs;
   final double percent;
   final double perfectPercent;
+  final double extensionMs;
 }
 
 List<SkillWindow> skillWindows(
@@ -2615,6 +2619,7 @@ List<SkillWindow> skillWindows(
           start + length,
           percent,
           perfect,
+          skill.extensionMs,
         );
       }(),
 ];

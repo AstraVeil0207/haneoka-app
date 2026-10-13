@@ -20,7 +20,7 @@ import 'package:flutter/services.dart';
 import 'engine/api.dart';
 import 'engine/execution.dart';
 import 'engine/box.dart';
-import 'engine/live.dart' show PlayModel;
+import 'engine/live.dart' show PlayModel, ap;
 import 'engine/master.dart';
 import 'engine/merge.dart';
 import 'engine/num.dart';
@@ -43,6 +43,7 @@ class TimelineRequest {
     required this.snapKeys,
     required this.song,
     required this.order,
+    this.play = ap,
   });
   factory TimelineRequest.fromJson(Map<String, Object?> json) =>
       TimelineRequest(
@@ -59,6 +60,7 @@ class TimelineRequest {
         snapKeys: [for (final key in json['snapKeys'] as List) key as String?],
         song: SongRef.fromJson(objectRow(json['song'])),
         order: intListOf(json['order']),
+        play: PlayModel.fromJson(objectRow(json['play'])),
       );
   Map<String, Object?> toJson() => {
     'members': [for (final row in members) row.toJson()],
@@ -68,6 +70,7 @@ class TimelineRequest {
     'snapKeys': snapKeys,
     'song': song.toJson(),
     'order': order,
+    'play': play.toJson(),
   };
   final List<MemberInput> members;
   final List<SnapInput> snaps;
@@ -80,6 +83,7 @@ class TimelineRequest {
 
   /// Formation slot firing at each chart skill event.
   final List<int> order;
+  final PlayModel play;
 }
 
 class Timeline {

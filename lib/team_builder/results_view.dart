@@ -920,6 +920,7 @@ class _SkillOrdersState extends State<_SkillOrders> {
         snapKeys: hit.snaps,
         song: hit.song!,
         order: orders[index],
+        play: c.play,
       ),
     );
   }();
@@ -1220,7 +1221,7 @@ class _TimelinePlot extends StatelessWidget {
                 height: 26,
                 child: Tooltip(
                   message:
-                      '+${(window.percent + window.perfectPercent).round()}%',
+                      '+${(window.percent + window.perfectPercent).round()}%${window.extensionMs != 0 ? ' · +${(window.extensionMs / 1000).toStringAsFixed(1)}s' : ''}',
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       color: colorOf(window.member).withValues(alpha: 0.85),
