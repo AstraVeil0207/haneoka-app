@@ -995,6 +995,9 @@ class _EngineCoordinator {
 
   late final List<_Worker> _pool;
   final _bytes = <String, Uint8List>{};
+  final _pendingCharts = <String, Future<Uint8List>>{};
+  int _chartBytes = 0;
+  double _downloadMs = 0;
   final _chartClient = http.Client();
 
   /// Compiles the release ahead of the first call; the other isolates
@@ -1012,43 +1015,61 @@ class _EngineCoordinator {
         : (b.started ? 1 : 0) - (a.started ? 1 : 0),
   ).first;
 
-  Future<Map<String, Uint8List>> _charts(List<SongRef> songs) async {
-    final out = <String, Uint8List>{};
-    for (final song in songs) {
-      final known = _bytes[song.key];
-      if (known != null) {
-        out[song.key] = known;
-        continue;
-      }
-      final url = chartUrl(song);
-      if (url == null) throw RangeError('unknown-chart:${song.key}');
-      // One dropped request must not fail a search over many songs.
-      http.Response? response;
-      for (var attempt = 0; attempt < 3; attempt++) {
-        if (attempt > 0) {
-          await Future<void>.delayed(Duration(milliseconds: 500 * attempt));
-        }
-        try {
-          response = await _chartClient.get(Uri.parse(url));
-          if (response.statusCode < 500) break;
-        } catch (_) {
-          response = null;
-        }
-      }
-      if (response == null) throw StateError('chart-network');
-      if (response.statusCode != 200) {
-        throw StateError('chart-http-${response.statusCode}');
-      }
-      final release = response.headers['x-haneoka-release-id'];
-      if (release != null &&
-          release != Uri.parse(url).queryParameters['release']) {
-        throw StateError('chart-release-identity-mismatch');
-      }
-      if (_bytes.length >= 16) _bytes.remove(_bytes.keys.first);
-      out[song.key] = _bytes[song.key] = response.bodyBytes;
+  Future<Uint8List> _chartBytesFor(SongRef song) {
+    final known = _bytes.remove(song.key);
+    if (known != null) {
+      _bytes[song.key] = known;
+      return Future.value(known);
     }
-    return out;
+    return _pendingCharts[song.key] ??= () async {
+      final started = executionClock();
+      try {
+        final url = chartUrl(song);
+        if (url == null) throw RangeError('unknown-chart:${song.key}');
+        http.Response? response;
+        for (var attempt = 0; attempt < 3; attempt++) {
+          if (attempt > 0) {
+            await Future<void>.delayed(Duration(milliseconds: 500 * attempt));
+          }
+          try {
+            response = await _chartClient.get(Uri.parse(url));
+            if (response.statusCode < 500) break;
+          } catch (_) {
+            response = null;
+          }
+        }
+        if (response == null) throw StateError('chart-network');
+        if (response.statusCode != 200) {
+          throw StateError('chart-http-${response.statusCode}');
+        }
+        final release = response.headers['x-haneoka-release-id'];
+        if (release != null &&
+            release != Uri.parse(url).queryParameters['release']) {
+          throw StateError('chart-release-identity-mismatch');
+        }
+        final bytes = response.bodyBytes;
+        // This is the backend's compressed working set, separate from the
+        // user's disk-cache setting. It covers the catalog without repeated
+        // network reads while keeping native-worker memory bounded.
+        const budget = 64 * 1024 * 1024;
+        if (bytes.length <= budget) {
+          while (_bytes.isNotEmpty && _chartBytes + bytes.length > budget) {
+            _chartBytes -= _bytes.remove(_bytes.keys.first)!.length;
+          }
+          _bytes[song.key] = bytes;
+          _chartBytes += bytes.length;
+        }
+        return bytes;
+      } finally {
+        _downloadMs += executionClock() - started;
+        _pendingCharts.remove(song.key);
+      }
+    }();
   }
+
+  Future<Map<String, Uint8List>> _charts(List<SongRef> songs) async => {
+    for (final song in songs) song.key: await _chartBytesFor(song),
+  };
 
   Future<void> _queue = Future.value();
   int _generation = 0, _requestId = 0;
@@ -1144,6 +1165,7 @@ class _EngineCoordinator {
     void Function(int, int)? progress,
     void Function(EngineSnapshot)? snapshot,
   ) async {
+    final downloadStart = _downloadMs;
     final before = [
       for (final worker in _pool)
         (worker.initializationMs, worker.computationMs, worker.networkMs),
@@ -1198,10 +1220,13 @@ class _EngineCoordinator {
             for (final (i, worker) in _pool.indexed)
               worker.computationMs - before[i].$2,
           ].fold(0, (a, b) => a + b),
-          networkMs: [
-            for (final (i, worker) in _pool.indexed)
-              worker.networkMs - before[i].$3,
-          ].fold(0, (a, b) => a + b),
+          networkMs:
+              _downloadMs -
+              downloadStart +
+              [
+                for (final (i, worker) in _pool.indexed)
+                  worker.networkMs - before[i].$3,
+              ].fold(0, (a, b) => a + b),
           wallMs: executionClock() - started,
         ),
       );
@@ -1262,10 +1287,14 @@ class _EngineCoordinator {
       bool forwardProgress = true,
     ]) async {
       if (stopped || remaining(task.deadline!) == 0) return emptyResponse(task);
+      final loaded = await _charts(
+        requestSongs(task).whereType<SongRef>().toList(),
+      );
+      if (stopped || remaining(task.deadline!) == 0) return emptyResponse(task);
       return worker.call(
         'run',
         task,
-        const {},
+        loaded,
         forwardProgress ? progress : null,
         onSnapshot ?? accept,
       );
