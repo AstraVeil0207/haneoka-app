@@ -45,16 +45,18 @@ class TeamEventOption {
 }
 
 class TeamCatalog {
-  TeamCatalog(this.state, this.data, this.master, this.visuals);
+  TeamCatalog(this.state, this.data, this.master, this.visuals, {this.server});
   final AppState state;
+  final String? server;
   final Doc data;
   final EngineMaster master;
   final CatalogVisuals? visuals;
 
   SiteText get t => state.text;
   String text(Object? value) => t.text(value);
-  String asset(Object? path) =>
-      path is String && path.isNotEmpty ? state.api.asset(path).toString() : '';
+  String asset(Object? path) => path is String && path.isNotEmpty
+      ? state.apiFor(server ?? state.server).asset(path).toString()
+      : '';
 
   Doc _row(String collection, int id) =>
       objectRow(objectRow(data[collection])['$id']);

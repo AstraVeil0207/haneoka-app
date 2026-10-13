@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -46,7 +47,7 @@ class FileSaveSource {
     if (_isZip(bytes)) {
       _zip(bytes, name);
     } else {
-      collector.offer(
+      _offer(
         SaveCandidate(
           bytes: bytes,
           source: name,
@@ -90,7 +91,7 @@ class FileSaveSource {
       return;
     }
     if (stat.size > SaveCodec.maxFileBytes) return;
-    collector.offer(
+    _offer(
       SaveCandidate(
         bytes: await file.readAsBytes(),
         source: file.path,
@@ -122,7 +123,7 @@ class FileSaveSource {
         dos.minute,
         dos.second,
       );
-      collector.offer(
+      _offer(
         SaveCandidate(
           bytes: entry.content,
           source: '$name!${entry.name}',
@@ -132,6 +133,43 @@ class FileSaveSource {
         ),
       );
       entry.clear();
+    }
+  }
+
+  void _offer(SaveCandidate candidate) {
+    if (collector.offer(candidate)) return;
+    if (candidate.bytes.length > SaveCodec.maxFileBytes) return;
+    Object? document;
+    try {
+      document = jsonDecode(utf8.decode(candidate.bytes));
+    } on FormatException {
+      return;
+    }
+    if (document is! Map<String, Object?> ||
+        document['schema'] != 'haneoka-game-save-v1') {
+      return;
+    }
+    final player = document['player'];
+    if (player is! Map<String, Object?>) return;
+    final metadata = SaveCandidate(
+      bytes: candidate.bytes,
+      source: candidate.source,
+      group: candidate.group,
+      release:
+          GameRelease.fromPackage('${document['release']}') ??
+          candidate.release,
+      modifiedAt:
+          DateTime.tryParse('${document['savedAt']}') ?? candidate.modifiedAt,
+    );
+    collector.offerDocument({
+      if (document['settings'] case final Map<String, Object?> settings)
+        ...settings,
+      '_player': player,
+    }, metadata);
+    for (final key in ['persist', 'permanent']) {
+      if (document[key] case final Map<String, Object?> data) {
+        collector.offerDocument(data, metadata);
+      }
     }
   }
 

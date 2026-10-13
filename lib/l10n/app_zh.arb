@@ -170,5 +170,14 @@
   "linkUpdated": "关联已更新",
   "syncedOn": "{date} 更新",
   "openProfile": "打开主页",
-  "teamBuilderNoSave": "请先在账号中读取此服务器的游戏数据。"
+  "teamBuilderNoSave": "请先在账号中读取此服务器的游戏数据。",
+  "updateSave": "更新存档",
+  "updateSaveHint": "读取此账号的新存档，覆盖本地旧存档，其他账号不受影响。",
+  "importToTeamBuilder": "导入配队",
+  "importToTeamHint": "直接使用此存档的卡牌、照片、角色等级和乐队道具，预览后确认导入。",
+  "saveAccountMismatch": "读取到的存档属于其他账号或服务器，请选择当前账号的存档。",
+  "saveUpdated": "存档已更新",
+  "cardSort": "卡牌排序",
+  "sortRarity": "稀有度",
+  "sortNewest": "最新卡牌"
 }

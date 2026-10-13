@@ -39,8 +39,9 @@ String releaseEmblem(GameRelease? release) => release == GameRelease.jp
 /// Reading the game's save: what it is for, the version, and every way this
 /// platform can reach the save, each with what it needs and its steps.
 class ImportScreen extends StatefulWidget {
-  const ImportScreen({super.key, this.initialPath});
+  const ImportScreen({super.key, this.initialPath, this.updateSave});
   final String? initialPath;
+  final GameSave? updateSave;
   @override
   State<ImportScreen> createState() => _ImportScreenState();
 }
@@ -76,6 +77,7 @@ class _ImportScreenState extends State<ImportScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _release ??= widget.updateSave?.release;
     _release ??= AppScope.maybeOf(context)?.server == 'jp'
         ? GameRelease.jp
         : GameRelease.intlStore;
@@ -109,6 +111,29 @@ class _ImportScreenState extends State<ImportScreen> {
       if (!mounted) return;
       if (collector.saves.isEmpty) {
         _say(t.noSaves);
+        return;
+      }
+      if (widget.updateSave case final previous?) {
+        final replacement = collector.saves
+            .where(
+              (save) =>
+                  save.profileId == previous.profileId &&
+                  save.release?.server == previous.release?.server,
+            )
+            .firstOrNull;
+        if (replacement == null) {
+          _say(t.saveAccountMismatch);
+          return;
+        }
+        final updated = GameSave(
+          profileId: replacement.profileId,
+          name: replacement.name ?? previous.name,
+          release: replacement.release,
+          source: replacement.source,
+        )..documents.addAll(replacement.documents);
+        await AccountStore.instance.put(updated);
+        unawaited(HaneokaAccount.instance.syncIfLinked(updated));
+        if (mounted) Navigator.of(context).pop(updated);
         return;
       }
       for (final save in collector.saves) {
@@ -160,7 +185,11 @@ class _ImportScreenState extends State<ImportScreen> {
       return;
     }
     await _run((collector) async {
-      for (final release in GameRelease.values) {
+      for (final release in GameRelease.values.where(
+        (value) =>
+            widget.updateSave?.release == null ||
+            value.server == widget.updateSave!.release!.server,
+      )) {
         await AndroidSaveSource.readWithShizuku(release, collector);
       }
     });
@@ -499,7 +528,7 @@ class _ImportScreenState extends State<ImportScreen> {
       ),
     ];
     return ShellPage(
-      title: t.importTitle,
+      title: widget.updateSave == null ? t.importTitle : t.updateSave,
       body: Stack(
         children: [
           ListView(
@@ -528,13 +557,17 @@ class _ImportScreenState extends State<ImportScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  t.importHeadline,
+                                  widget.updateSave == null
+                                      ? t.importHeadline
+                                      : t.updateSave,
                                   style: theme.textTheme.headlineSmall
                                       ?.copyWith(fontWeight: FontWeight.w600),
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  t.importIntro,
+                                  widget.updateSave == null
+                                      ? t.importIntro
+                                      : '${widget.updateSave!.name ?? widget.updateSave!.profileId} · ${widget.updateSave!.profileId}\n${t.updateSaveHint}',
                                   style: theme.textTheme.bodyMedium?.copyWith(
                                     color: scheme.onSurfaceVariant,
                                   ),
@@ -577,8 +610,12 @@ class _ImportScreenState extends State<ImportScreen> {
                                 height: 18,
                               ),
                               label: Text(value.label(t)),
-                              onSelected: (_) =>
-                                  setState(() => _release = value),
+                              onSelected:
+                                  widget.updateSave?.release != null &&
+                                      value.server !=
+                                          widget.updateSave!.release!.server
+                                  ? null
+                                  : (_) => setState(() => _release = value),
                             ),
                         ],
                       ),

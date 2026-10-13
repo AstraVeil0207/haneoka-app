@@ -547,4 +547,33 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get teamBuilderNoSave => '먼저 계정에서 이 서버의 게임 데이터를 읽어 주세요.';
+
+  @override
+  String get updateSave => '세이브 업데이트';
+
+  @override
+  String get updateSaveHint =>
+      '이 플레이어의 새 세이브로 저장된 데이터를 교체합니다. 다른 플레이어는 변경되지 않습니다.';
+
+  @override
+  String get importToTeamBuilder => '팀 빌더로 가져오기';
+
+  @override
+  String get importToTeamHint => '이 세이브의 카드, 스냅, 캐릭터 레벨과 밴드 아이템을 확인하고 가져옵니다.';
+
+  @override
+  String get saveAccountMismatch =>
+      '다른 플레이어나 서버의 세이브입니다. 업데이트할 플레이어의 세이브를 선택하세요.';
+
+  @override
+  String get saveUpdated => '세이브가 업데이트되었습니다';
+
+  @override
+  String get cardSort => '카드 정렬';
+
+  @override
+  String get sortRarity => '희귀도';
+
+  @override
+  String get sortNewest => '최신 카드';
 }

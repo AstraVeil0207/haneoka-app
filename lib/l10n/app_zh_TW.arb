@@ -170,5 +170,14 @@
   "linkUpdated": "關聯已更新",
   "syncedOn": "{date} 更新",
   "openProfile": "開啟個人頁面",
-  "teamBuilderNoSave": "請先在帳號中讀取此伺服器的遊戲資料。"
+  "teamBuilderNoSave": "請先在帳號中讀取此伺服器的遊戲資料。",
+  "updateSave": "更新存檔",
+  "updateSaveHint": "讀取此帳號的新存檔，覆蓋本機舊存檔，其他帳號不受影響。",
+  "importToTeamBuilder": "匯入配隊",
+  "importToTeamHint": "直接使用此存檔的卡牌、照片、角色等級和樂團道具，預覽後確認匯入。",
+  "saveAccountMismatch": "讀取到的存檔屬於其他帳號或伺服器，請選擇目前帳號的存檔。",
+  "saveUpdated": "存檔已更新",
+  "cardSort": "卡牌排序",
+  "sortRarity": "稀有度",
+  "sortNewest": "最新卡牌"
 }

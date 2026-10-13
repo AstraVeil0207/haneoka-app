@@ -45,8 +45,10 @@ class ManualTeam {
 }
 
 class TeamBuilderController extends ChangeNotifier {
-  TeamBuilderController(this.state);
+  TeamBuilderController(this.state, {this.serverOverride});
   final AppState state;
+  final String? serverOverride;
+  String get server => serverOverride ?? state.server;
 
   TeamCatalog? catalog;
   BoxStore? store;
@@ -62,7 +64,9 @@ class TeamBuilderController extends ChangeNotifier {
   bool activity = false;
   BuildSettings get searchSettings =>
       activity && settings.rewardMode != 'recommendation'
-      ? settings.copyWith({'goal': settings.rewardMode})
+      ? settings.forGoal(
+          settings.rewardMode == 'plan' ? GoalKind.plan : GoalKind.event,
+        )
       : settings;
   String resultsFor = '';
   bool running = false;
@@ -83,7 +87,7 @@ class TeamBuilderController extends ChangeNotifier {
   ]) => state.text('tools.teamBuilder.$key', fallback, values);
 
   Future<void> load() async {
-    final server = state.server;
+    final server = this.server;
     if (_server == server && catalog != null) return;
     _server = server;
     loadError = null;
@@ -91,10 +95,10 @@ class TeamBuilderController extends ChangeNotifier {
     try {
       final data = await loadTeamData(server);
       final master = await _compileMaster(data);
-      final visuals = await CatalogVisuals.of(state.api)
+      final visuals = await CatalogVisuals.of(state.apiFor(server))
           .then<CatalogVisuals?>((v) => v, onError: (Object _) => null);
       if (_server != server) return;
-      catalog = TeamCatalog(state, data, master, visuals);
+      catalog = TeamCatalog(state, data, master, visuals, server: server);
       engine?.dispose();
       engine = EngineClient(data, catalog!.chartUrl)..warm();
       store?.removeListener(_adopt);
@@ -319,21 +323,14 @@ class TeamBuilderController extends ChangeNotifier {
 
   /// What the request depends on, to tell stale results.
   String _fingerprint() {
-    final stamp = (
-      settings,
-      catalog,
-      view,
-      store?.owner,
-      state.server,
-      activity,
-    );
+    final stamp = (settings, catalog, view, store?.owner, server, activity);
     if (stamp == _contextStamp) return _contextValue;
     _contextStamp = stamp;
     final request = this.request();
     if (request == null) return _contextValue = '';
     return _contextValue = jsonEncode([
       store?.owner,
-      state.server,
+      server,
       catalog?.data['identity'],
       objectRow(catalog?.data['crossServer'])['identities'],
       request.toJson(),

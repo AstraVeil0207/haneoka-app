@@ -170,5 +170,14 @@
   "linkUpdated": "連携を更新しました",
   "syncedOn": "{date} 更新",
   "openProfile": "プロフィールを開く",
-  "teamBuilderNoSave": "先にアカウントでこのサーバーのゲームデータを読み込んでください。"
+  "teamBuilderNoSave": "先にアカウントでこのサーバーのゲームデータを読み込んでください。",
+  "updateSave": "セーブを更新",
+  "updateSaveHint": "このプレイヤーの新しいセーブで保存済みデータを置き換えます。他のプレイヤーは変更されません。",
+  "importToTeamBuilder": "編成に取り込む",
+  "importToTeamHint": "このセーブのカード、スナップ、キャラクターレベルとバンドアイテムを確認して取り込みます。",
+  "saveAccountMismatch": "別のプレイヤーまたはサーバーのセーブです。更新するプレイヤーのセーブを選んでください。",
+  "saveUpdated": "セーブを更新しました",
+  "cardSort": "カードの並び順",
+  "sortRarity": "レアリティ",
+  "sortNewest": "新しいカード"
 }

@@ -129,7 +129,7 @@ class _ScreenshotImportScreenState extends State<_ScreenshotImportScreen> {
     if (owner.isEmpty || releaseId.isEmpty || sourceId.isEmpty) return null;
     return RecognitionClient((
       owner: owner,
-      server: c.state.server,
+      server: c.server,
       releaseId: releaseId,
       sourceId: sourceId,
     ));
@@ -264,7 +264,7 @@ class _ScreenshotImportScreenState extends State<_ScreenshotImportScreen> {
       _selections,
       c.view!,
       c.catalog!.master,
-      c.state.server,
+      c.server,
     );
     final keep = {for (final card in cards) card.key};
     _choices.removeWhere((key, _) => !keep.contains(key));

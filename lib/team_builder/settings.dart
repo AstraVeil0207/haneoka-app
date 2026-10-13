@@ -9,13 +9,22 @@ import 'engine/num.dart';
 enum GoalKind { score, gekiso, event, plan, power, potential }
 
 class BuildSettings {
-  BuildSettings(Doc json) : _json = {..._defaults, ...json} {
+  BuildSettings(Doc json)
+    : _json = {..._defaults, ...json},
+      _searchGoal = null {
     if (_json['goal'] == 'event' || _json['goal'] == 'plan') {
       _json['rewardMode'] = _json['goal'];
       _json['goal'] = 'score';
     }
   }
   final Doc _json;
+  final GoalKind? _searchGoal;
+  BuildSettings._search(this._json, this._searchGoal);
+
+  // Saved legacy goals migrate to rewardMode; a live search goal must not
+  // pass through that migration or it turns back into ordinary score search.
+  BuildSettings forGoal(GoalKind goal) =>
+      BuildSettings._search({..._json}, goal);
 
   static const _defaults = <String, Object?>{
     'rewardMode': 'recommendation',
@@ -72,6 +81,7 @@ class BuildSettings {
   ];
 
   GoalKind get goal =>
+      _searchGoal ??
       GoalKind.values.where((g) => g.name == _json['goal']).firstOrNull ??
       GoalKind.score;
   List<SongRef> get songs => _songs('songs');

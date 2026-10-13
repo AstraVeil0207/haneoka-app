@@ -553,4 +553,34 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get teamBuilderNoSave =>
       'Read this server\'s game data in Accounts first.';
+
+  @override
+  String get updateSave => 'Update save';
+
+  @override
+  String get updateSaveHint =>
+      'Read a new save for this player to replace the stored copy. Other players stay unchanged.';
+
+  @override
+  String get importToTeamBuilder => 'Import to team builder';
+
+  @override
+  String get importToTeamHint =>
+      'Review and import cards, snapshots, character levels and band items directly from this save.';
+
+  @override
+  String get saveAccountMismatch =>
+      'This save belongs to a different player or server. Choose a save for the player being updated.';
+
+  @override
+  String get saveUpdated => 'Save updated';
+
+  @override
+  String get cardSort => 'Card order';
+
+  @override
+  String get sortRarity => 'Rarity';
+
+  @override
+  String get sortNewest => 'Newest cards';
 }

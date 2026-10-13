@@ -191,12 +191,12 @@ class PtController {
   /// Loads the device's latest job of this server and owner.
   Future<void> restore() async {
     if (host.catalog == null || host.store == null) return;
-    final key = '${host.state.server}|$owner|$dataFingerprint';
+    final key = '${host.server}|$owner|$dataFingerprint';
     if (key == _restoreKey) return;
     _restoreKey = key;
     final generation = ++_generation;
     try {
-      final restored = await _store.latest(host.state.server, owner);
+      final restored = await _store.latest(host.server, owner);
       if (generation != _generation) return;
       for (final task in restored?.tasks ?? const <PtTask>[]) {
         if (task.status == 'running') task.status = 'queued';
@@ -245,7 +245,7 @@ class PtController {
         if (resume) throw StateError('pt-input-changed');
         current = createPtJob(
           request,
-          server: host.state.server,
+          server: host.server,
           dataFingerprint: dataFingerprint,
           owner: owner,
           cycle: cycle,

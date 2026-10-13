@@ -98,6 +98,7 @@ class ShellPage extends StatefulWidget {
     this.status,
     this.actions = const [],
     this.search,
+    this.showBack = false,
   });
   final String title;
   final Locale? titleLanguage;
@@ -112,6 +113,7 @@ class ShellPage extends StatefulWidget {
   final double marksExtent;
   final List<BarAction> actions;
   final ShellSearch? search;
+  final bool showBack;
   final Widget body;
 
   @override
@@ -203,9 +205,11 @@ class _ShellPageState extends State<ShellPage> {
   bool _detail(BuildContext context) {
     final route = ModalRoute.of(context);
     if (!(route?.canPop ?? false)) return false;
+    if (widget.showBack) return true;
     final name = route?.settings.name;
     if (name == null) return true;
     final parts = Uri.parse(name).pathSegments;
+    if (parts.length > 2 && parts.first == 'account') return true;
     if (parts.length > 1 && parts.first == 'stories') return true;
     if (parts.length > 2 &&
         parts.first == 'community' &&

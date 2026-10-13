@@ -97,8 +97,9 @@ Widget sticky(BuildContext context, Widget scroll, Widget action) {
 }
 
 class BuildTab extends StatefulWidget {
-  const BuildTab({super.key, required this.controller});
+  const BuildTab({super.key, required this.controller, this.leading});
   final TeamBuilderController controller;
+  final Widget? leading;
 
   @override
   State<BuildTab> createState() => _BuildTabState();
@@ -129,7 +130,13 @@ class _BuildTabState extends State<BuildTab> {
   @override
   Widget build(BuildContext context) {
     final c = controller;
-    final settings = _cachedSettings(context);
+    final settings = [
+      if (widget.leading != null) ...[
+        widget.leading!,
+        const SizedBox(height: 16),
+      ],
+      ..._cachedSettings(context),
+    ];
     final run = _run(context);
     final results = ResultsView(controller: c);
     if (MediaQuery.sizeOf(context).width >= 1100) {
@@ -234,93 +241,97 @@ class _BuildTabState extends State<BuildTab> {
     final theme = Theme.of(context);
     final criterion = scoreGoals[s.criterion] ?? scoreGoals['mean']!;
     return [
-      ToolSection(
-        icon: Symbols.flag_rounded,
-        title: c.tb('goal', 'Goal'),
-        children: [
-          if (!c.activity)
-            _GoalGrid(
-              goals: [
-                for (final (goal, icon) in _goals)
-                  (goal, icon, goalText(c, goal)),
-              ],
-              selected: s.goal,
-              onSelected: (goal) => set({'goal': goal.name}),
-            ),
-          if (s.goal == GoalKind.event)
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              value: s.fullRanking,
-              title: Text(c.tb('fullRanking', 'Full reward ranking')),
-              onChanged: (value) => set({'fullRanking': value == true}),
-            ),
-          if (scored) ...[
-            _WrappingSegments(
-              value: s.criterion,
-              options: [
-                for (final key in const ['mean', 'max', 'min'])
-                  (
-                    key,
-                    c.tb(scoreGoals[key]!.label.$1, scoreGoals[key]!.label.$2),
-                  ),
-              ],
-              onSelected: (value) => set({'criterion': value}),
-            ),
-            Text(
-              c.tb(criterion.help.$1, criterion.help.$2),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ],
-          if (s.goal == GoalKind.gekiso)
-            ToolField(
-              label: c.tb('gekisoRank', 'Placement in each range'),
-              child: Segmented<int>(
-                value: s.gekisoRank,
-                grow: false,
-                options: [
-                  for (var rank = 1; rank <= 5; rank++) Choice(rank, '$rank'),
+      if (!c.activity || s.goal != GoalKind.plan)
+        ToolSection(
+          icon: Symbols.flag_rounded,
+          title: c.activity ? goalText(c, s.goal) : c.tb('goal', 'Goal'),
+          children: [
+            if (!c.activity)
+              _GoalGrid(
+                goals: [
+                  for (final (goal, icon) in _goals)
+                    (goal, icon, goalText(c, goal)),
                 ],
-                onSelected: (value) => set({'gekisoRank': value}),
+                selected: s.goal,
+                onSelected: (goal) => set({'goal': goal.name}),
               ),
-            ),
-          if (s.goal == GoalKind.potential)
-            Segmented<int>(
-              value: s.window,
-              options: [
-                for (final window in const [60, 120, 180])
-                  Choice(window, '$window s'),
-              ],
-              onSelected: (value) => set({'window': value}),
-            ),
-          if (s.goal == GoalKind.power)
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              value: s.powerSong,
-              onChanged: (value) => set({'powerSong': value == true}),
-              title: Text(
-                c.tb('powerSong', "Include a song's type and tag bonus"),
+            if (s.goal == GoalKind.event)
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: s.fullRanking,
+                title: Text(c.tb('fullRanking', 'Full reward ranking')),
+                onChanged: (value) => set({'fullRanking': value == true}),
               ),
-            ),
-          if (s.goal == GoalKind.score || s.goal == GoalKind.power) ...[
-            CheckboxListTile(
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              value: s.challengeRules,
-              onChanged: (value) => set({'challengeRules': value == true}),
-              title: Text(
-                c.tb(
-                  'challengeRules',
-                  'Challenge live rules (event parameter bonus)',
+            if (scored) ...[
+              _WrappingSegments(
+                value: s.criterion,
+                options: [
+                  for (final key in const ['mean', 'max', 'min'])
+                    (
+                      key,
+                      c.tb(
+                        scoreGoals[key]!.label.$1,
+                        scoreGoals[key]!.label.$2,
+                      ),
+                    ),
+                ],
+                onSelected: (value) => set({'criterion': value}),
+              ),
+              Text(
+                c.tb(criterion.help.$1, criterion.help.$2),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-            ),
-            if (s.challengeRules) ..._eventSection(context),
+            ],
+            if (s.goal == GoalKind.gekiso)
+              ToolField(
+                label: c.tb('gekisoRank', 'Placement in each range'),
+                child: Segmented<int>(
+                  value: s.gekisoRank,
+                  grow: false,
+                  options: [
+                    for (var rank = 1; rank <= 5; rank++) Choice(rank, '$rank'),
+                  ],
+                  onSelected: (value) => set({'gekisoRank': value}),
+                ),
+              ),
+            if (s.goal == GoalKind.potential)
+              Segmented<int>(
+                value: s.window,
+                options: [
+                  for (final window in const [60, 120, 180])
+                    Choice(window, '$window s'),
+                ],
+                onSelected: (value) => set({'window': value}),
+              ),
+            if (s.goal == GoalKind.power)
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                value: s.powerSong,
+                onChanged: (value) => set({'powerSong': value == true}),
+                title: Text(
+                  c.tb('powerSong', "Include a song's type and tag bonus"),
+                ),
+              ),
+            if (s.goal == GoalKind.score || s.goal == GoalKind.power) ...[
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                value: s.challengeRules,
+                onChanged: (value) => set({'challengeRules': value == true}),
+                title: Text(
+                  c.tb(
+                    'challengeRules',
+                    'Challenge live rules (event parameter bonus)',
+                  ),
+                ),
+              ),
+              if (s.challengeRules) ..._eventSection(context),
+            ],
           ],
-        ],
-      ),
+        ),
       if (s.goal == GoalKind.event) ...[
         const SizedBox(height: 16),
         ToolSection(

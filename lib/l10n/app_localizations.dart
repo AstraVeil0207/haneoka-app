@@ -1128,6 +1128,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Read this server\'s game data in Accounts first.'**
   String get teamBuilderNoSave;
+
+  /// No description provided for @updateSave.
+  ///
+  /// In en, this message translates to:
+  /// **'Update save'**
+  String get updateSave;
+
+  /// No description provided for @updateSaveHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Read a new save for this player to replace the stored copy. Other players stay unchanged.'**
+  String get updateSaveHint;
+
+  /// No description provided for @importToTeamBuilder.
+  ///
+  /// In en, this message translates to:
+  /// **'Import to team builder'**
+  String get importToTeamBuilder;
+
+  /// No description provided for @importToTeamHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Review and import cards, snapshots, character levels and band items directly from this save.'**
+  String get importToTeamHint;
+
+  /// No description provided for @saveAccountMismatch.
+  ///
+  /// In en, this message translates to:
+  /// **'This save belongs to a different player or server. Choose a save for the player being updated.'**
+  String get saveAccountMismatch;
+
+  /// No description provided for @saveUpdated.
+  ///
+  /// In en, this message translates to:
+  /// **'Save updated'**
+  String get saveUpdated;
+
+  /// No description provided for @cardSort.
+  ///
+  /// In en, this message translates to:
+  /// **'Card order'**
+  String get cardSort;
+
+  /// No description provided for @sortRarity.
+  ///
+  /// In en, this message translates to:
+  /// **'Rarity'**
+  String get sortRarity;
+
+  /// No description provided for @sortNewest.
+  ///
+  /// In en, this message translates to:
+  /// **'Newest cards'**
+  String get sortNewest;
 }
 
 class _AppLocalizationsDelegate

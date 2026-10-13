@@ -6,9 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../core/app_state.dart';
+import '../l10n/app_localizations.dart';
+import '../save/game_save.dart';
 import '../shell/page.dart';
+import '../ui/labels.dart';
 import 'account_tab.dart';
 import 'box.dart';
+import 'box_import_screen.dart';
 import 'box_tab.dart';
 import 'build_tab.dart';
 import 'controller.dart';
@@ -19,7 +23,8 @@ import 'widgets.dart';
 enum _Tab { build, pt, box, account, teams }
 
 class TeamBuilderScreen extends StatefulWidget {
-  const TeamBuilderScreen({super.key});
+  const TeamBuilderScreen({super.key, this.importSave});
+  final GameSave? importSave;
 
   @override
   State<TeamBuilderScreen> createState() => _TeamBuilderScreenState();
@@ -30,17 +35,37 @@ class _TeamBuilderScreenState extends State<TeamBuilderScreen> {
   _Tab _tab = _Tab.build;
   String _query = '';
   String? _errorShown;
+  bool _importOpened = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final state = AppScope.of(context);
-    final controller = _controller ??= TeamBuilderController(state)
-      ..addListener(_changed);
+    final controller = _controller ??= TeamBuilderController(
+      state,
+      serverOverride: widget.importSave?.release?.server,
+    )..addListener(_changed);
     controller.load();
   }
 
   void _changed() {
+    final c = _controller;
+    if (!_importOpened &&
+        widget.importSave != null &&
+        c?.catalog != null &&
+        c?.view != null) {
+      _importOpened = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          openBoxImport(
+            context,
+            c!,
+            members: true,
+            initialSave: widget.importSave,
+          );
+        }
+      });
+    }
     final error = _controller?.error;
     if (error != null && error != _errorShown) {
       _errorShown = error;
@@ -180,8 +205,11 @@ class _TeamBuilderScreenState extends State<TeamBuilderScreen> {
       );
     }
     return ShellPage(
+      showBack: widget.importSave != null,
       key: ValueKey(_tab == _Tab.box),
-      title: c.tb('title', 'Team builder'),
+      title: widget.importSave?.release == null
+          ? c.tb('title', 'Team builder')
+          : '${c.tb('title', 'Team builder')} · ${widget.importSave!.release!.label(AppLocalizations.of(context))}',
       search: ready && _tab == _Tab.box
           ? ShellSearch(
               label: t('common.actions.search', 'Search'),

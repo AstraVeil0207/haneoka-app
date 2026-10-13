@@ -170,5 +170,14 @@
   "linkUpdated": "연결을 업데이트했습니다",
   "syncedOn": "{date} 업데이트",
   "openProfile": "프로필 열기",
-  "teamBuilderNoSave": "먼저 계정에서 이 서버의 게임 데이터를 읽어 주세요."
+  "teamBuilderNoSave": "먼저 계정에서 이 서버의 게임 데이터를 읽어 주세요.",
+  "updateSave": "세이브 업데이트",
+  "updateSaveHint": "이 플레이어의 새 세이브로 저장된 데이터를 교체합니다. 다른 플레이어는 변경되지 않습니다.",
+  "importToTeamBuilder": "팀 빌더로 가져오기",
+  "importToTeamHint": "이 세이브의 카드, 스냅, 캐릭터 레벨과 밴드 아이템을 확인하고 가져옵니다.",
+  "saveAccountMismatch": "다른 플레이어나 서버의 세이브입니다. 업데이트할 플레이어의 세이브를 선택하세요.",
+  "saveUpdated": "세이브가 업데이트되었습니다",
+  "cardSort": "카드 정렬",
+  "sortRarity": "희귀도",
+  "sortNewest": "최신 카드"
 }

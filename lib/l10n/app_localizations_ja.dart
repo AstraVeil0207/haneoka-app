@@ -545,4 +545,32 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get teamBuilderNoSave => '先にアカウントでこのサーバーのゲームデータを読み込んでください。';
+
+  @override
+  String get updateSave => 'セーブを更新';
+
+  @override
+  String get updateSaveHint => 'このプレイヤーの新しいセーブで保存済みデータを置き換えます。他のプレイヤーは変更されません。';
+
+  @override
+  String get importToTeamBuilder => '編成に取り込む';
+
+  @override
+  String get importToTeamHint => 'このセーブのカード、スナップ、キャラクターレベルとバンドアイテムを確認して取り込みます。';
+
+  @override
+  String get saveAccountMismatch =>
+      '別のプレイヤーまたはサーバーのセーブです。更新するプレイヤーのセーブを選んでください。';
+
+  @override
+  String get saveUpdated => 'セーブを更新しました';
+
+  @override
+  String get cardSort => 'カードの並び順';
+
+  @override
+  String get sortRarity => 'レアリティ';
+
+  @override
+  String get sortNewest => '新しいカード';
 }

@@ -62,6 +62,7 @@ class _PtTabState extends State<PtTab> {
   Widget build(BuildContext context) {
     final modes = Segmented<String>(
       value: c.settings.rewardMode,
+      grow: false,
       options: [
         Choice('recommendation', c.tb('recommendation', 'Recommendation')),
         Choice('event', c.tb('rewardSearch', 'Reward team search')),
@@ -74,12 +75,7 @@ class _PtTabState extends State<PtTab> {
       },
     );
     if (c.settings.rewardMode != 'recommendation') {
-      return Column(
-        children: [
-          Padding(padding: const EdgeInsets.all(16), child: modes),
-          Expanded(child: BuildTab(controller: c)),
-        ],
-      );
+      return BuildTab(controller: c, leading: modes);
     }
     pt.sync();
     final settings = [

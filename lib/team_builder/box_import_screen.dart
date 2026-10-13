@@ -29,19 +29,26 @@ Future<void> openBoxImport(
   BuildContext context,
   TeamBuilderController c, {
   required bool members,
+  GameSave? initialSave,
 }) => Navigator.of(context).push<void>(
   MaterialPageRoute(
     fullscreenDialog: true,
-    builder: (_) => _BoxImportScreen(c: c, members: members),
+    builder: (_) =>
+        _BoxImportScreen(c: c, members: members, initialSave: initialSave),
   ),
 );
 
 enum _Phase { select, parsing, choose, review }
 
 class _BoxImportScreen extends StatefulWidget {
-  const _BoxImportScreen({required this.c, required this.members});
+  const _BoxImportScreen({
+    required this.c,
+    required this.members,
+    this.initialSave,
+  });
   final TeamBuilderController c;
   final bool members;
+  final GameSave? initialSave;
 
   @override
   State<_BoxImportScreen> createState() => _BoxImportScreenState();
@@ -85,12 +92,17 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.initialSave case final save?) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _readSave(save);
+      });
+    }
     AccountStore.instance.load().then((_) {
       if (!mounted) return;
       setState(
         () => _saves = [
           for (final save in AccountStore.instance.saves)
-            if (save.release?.server == c.state.server) save,
+            if (save.release?.server == c.server) save,
         ],
       );
     });
@@ -151,6 +163,9 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
   void _review(BoxPreview preview, {bool maps = true}) {
     _preview = preview;
     _confirmation = BoxConfirmation.all(preview, maps: maps);
+    if (widget.initialSave != null) {
+      _confirmation!.setPolicy(preview, ExistingPolicy.updates);
+    }
     _phase = _Phase.review;
     _recheck();
   }
@@ -185,7 +200,7 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
             c.view!,
             c.catalog!.master,
             c.catalog!.data,
-            c.state.server,
+            c.server,
           ),
         );
       } on BoxImportError catch (error) {
@@ -234,7 +249,7 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
             c.view!,
             c.catalog!.master,
             c.catalog!.data,
-            c.state.server,
+            c.server,
             widget.members,
           ),
           maps: false,
@@ -247,6 +262,10 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
   }
 
   void _readSave(GameSave save) {
+    if (save.release != null && save.release!.server != c.server) {
+      setState(() => _error = 'box_review_changed');
+      return;
+    }
     final player = save.player;
     _parse(() async {
       final candidate = projectBox({'_player': player}, 'encrypted-player');
@@ -311,7 +330,7 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
         ))
           if (c.store!.value(change.$1) != change.$2) change,
       ];
-      c.write(changes);
+      if (changes.isNotEmpty && !c.write(changes)) return;
       final messenger = ScaffoldMessenger.of(context);
       Navigator.of(context).pop();
       messenger.showSnackBar(

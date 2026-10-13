@@ -97,6 +97,12 @@ class SaveCollector {
   bool offer(SaveCandidate candidate) {
     final data = SaveCodec.decode(candidate.bytes);
     if (data == null) return false;
+    return offerDocument(data, candidate);
+  }
+
+  /// A JSON save exported by Haneoka, with the same account grouping and
+  /// newest-document rules as the game's encrypted files.
+  bool offerDocument(Map<String, Object?> data, SaveCandidate candidate) {
     final kind = _kindOf(data);
     if (kind == null) {
       unreadable++;

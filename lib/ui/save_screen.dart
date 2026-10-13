@@ -1,4 +1,3 @@
-
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +12,7 @@ import '../catalog/profiles.dart';
 import '../catalog/visuals.dart';
 import '../core/api.dart';
 import '../core/app_state.dart';
+import '../core/relative_time.dart';
 import '../l10n/app_localizations.dart';
 import '../save/account_store.dart';
 import '../save/export.dart';
@@ -20,6 +20,7 @@ import '../save/game_save.dart';
 import '../save/save_view.dart';
 import '../shell/page.dart';
 import '../shell/routes.dart';
+import '../team_builder/team_builder_screen.dart';
 import 'app_image.dart';
 import 'detail.dart';
 import 'import_screen.dart';
@@ -88,8 +89,64 @@ class SaveScreen extends StatefulWidget {
 
 class _SaveScreenState extends State<SaveScreen> {
   Future<_Catalog>? _catalog;
+  bool _busy = false;
+  bool _newestFirst = false;
 
-  GameSave get save => widget.save;
+  GameSave get save =>
+      AccountStore.instance.saves
+          .where(
+            (s) =>
+                s.profileId == widget.save.profileId &&
+                s.release?.server == widget.save.release?.server,
+          )
+          .firstOrNull ??
+      widget.save;
+
+  @override
+  void initState() {
+    super.initState();
+    AccountStore.instance.addListener(_changed);
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    AccountStore.instance.removeListener(_changed);
+    super.dispose();
+  }
+
+  Future<void> _updateSave() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final updated = await Navigator.of(context).push<GameSave>(
+      MaterialPageRoute(builder: (_) => ImportScreen(updateSave: save)),
+    );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (updated != null) _say(AppLocalizations.of(context).saveUpdated);
+  }
+
+  Future<void> _importTeam() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final selected = save;
+    try {
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          settings: const RouteSettings(name: '/team-builder'),
+          builder: (_) => TeamBuilderScreen(importSave: selected),
+        ),
+      );
+    } catch (error) {
+      if (mounted) _say('$error');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   void didChangeDependencies() {
@@ -151,19 +208,15 @@ class _SaveScreenState extends State<SaveScreen> {
       title: save.name ?? save.profileId,
       actions: [
         BarAction(
-          icon: Symbols.content_copy_rounded,
-          label: t.exportTeam,
-          onPressed: _copyPackage,
+          icon: Symbols.groups_rounded,
+          label: t.importToTeamBuilder,
+          onPressed: _busy ? null : _importTeam,
+          tonal: true,
         ),
         BarAction(
-          icon: Symbols.download_rounded,
-          label: t.exportSave,
-          onPressed: _saveFile,
-        ),
-        BarAction(
-          icon: Symbols.delete_rounded,
-          label: t.removeAccount,
-          onPressed: _remove,
+          icon: Symbols.refresh_rounded,
+          label: t.updateSave,
+          onPressed: _busy ? null : _updateSave,
         ),
       ],
       body: FutureBuilder(
@@ -173,6 +226,11 @@ class _SaveScreenState extends State<SaveScreen> {
           catalog: snapshot.data,
           onCopyPackage: _copyPackage,
           onSaveFile: _saveFile,
+          onRemove: _remove,
+          onUpdateSave: _busy ? null : _updateSave,
+          onImportTeam: _busy ? null : _importTeam,
+          newestFirst: _newestFirst,
+          onSortChanged: (value) => setState(() => _newestFirst = value),
         ),
       ),
     );
@@ -185,11 +243,20 @@ class _Profile extends StatelessWidget {
     required this.catalog,
     required this.onCopyPackage,
     required this.onSaveFile,
+    required this.onRemove,
+    required this.onUpdateSave,
+    required this.onImportTeam,
+    required this.newestFirst,
+    required this.onSortChanged,
   });
   final GameSave save;
   final _Catalog? catalog;
   final VoidCallback onCopyPackage;
   final VoidCallback onSaveFile;
+  final VoidCallback onRemove;
+  final VoidCallback? onUpdateSave, onImportTeam;
+  final bool newestFirst;
+  final ValueChanged<bool> onSortChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -419,7 +486,7 @@ class _Profile extends StatelessWidget {
         stat(
           Symbols.flag_rounded,
           t.tutorialDone,
-          DateFormat.yMMMd(
+          DateFormat.yMd(
             locale,
           ).format(DateTime.fromMillisecondsSinceEpoch(started.toInt() * 1000)),
         ),
@@ -597,7 +664,12 @@ class _Profile extends StatelessWidget {
             final rarity = ((b['rarity'] as num?) ?? 0).compareTo(
               (a['rarity'] as num?) ?? 0,
             );
-            return rarity != 0
+            if (newestFirst) {
+              final released = (RelativeTime.timestamp(b['releasedAt']) ?? 0)
+                  .compareTo(RelativeTime.timestamp(a['releasedAt']) ?? 0);
+              if (released != 0) return released;
+            }
+            return !newestFirst && rarity != 0
                 ? rarity
                 : ((b[kit?.profile.id.first ?? 'id'] as num?) ?? 0).compareTo(
                     (a[kit?.profile.id.first ?? 'id'] as num?) ?? 0,
@@ -621,8 +693,8 @@ class _Profile extends StatelessWidget {
             final entry = entries[index];
             final row = owned[kit.id(entry)];
             final level = support
-                ? 'Rank ${row?['_rank'] ?? 1}'
-                : '★${row?['_awakeCount'] ?? 1}';
+                ? '${site.label('rank', 'Rank')} ${row?['_rank'] ?? 1}'
+                : '${site('catalog.cards.fields.awakening', 'Awakening')} ${row?['_awakeCount'] ?? 0}';
             return SizedBox(
               width: width,
               child: Tile(
@@ -769,13 +841,54 @@ class _Profile extends StatelessWidget {
               children: [
                 header,
                 const SizedBox(height: 16),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: onImportTeam,
+                      icon: const Icon(Symbols.groups_rounded),
+                      label: Text(t.importToTeamBuilder),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: onUpdateSave,
+                      icon: const Icon(Symbols.refresh_rounded),
+                      label: Text(t.updateSave),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  t.importToTeamHint,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 24),
                 grid(stats, min: 150),
                 const SizedBox(height: 28),
-                if (results.isNotEmpty)
-                  section(Symbols.music_note_rounded, t.songClears, clears()),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(t.cardSort, style: theme.textTheme.labelLarge),
+                    ChoiceChip(
+                      label: Text(t.sortRarity),
+                      selected: !newestFirst,
+                      onSelected: (_) => onSortChanged(false),
+                    ),
+                    ChoiceChip(
+                      label: Text(t.sortNewest),
+                      selected: newestFirst,
+                      onSelected: (_) => onSortChanged(true),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
                 section(
                   Symbols.person_rounded,
-                  t.ownedMembers,
+                  '${t.ownedMembers} · ${number.format(view.rows(SaveSection.memberCards).length)}',
                   rail(
                     'cards',
                     SaveSection.memberCards,
@@ -788,7 +901,7 @@ class _Profile extends StatelessWidget {
                 ),
                 section(
                   Symbols.photo_library_rounded,
-                  t.ownedSnapshots,
+                  '${t.ownedSnapshots} · ${number.format(view.rows(SaveSection.snapshots).length)}',
                   rail(
                     'support-cards',
                     SaveSection.snapshots,
@@ -800,6 +913,8 @@ class _Profile extends StatelessWidget {
                     child: Text(t.viewAll),
                   ),
                 ),
+                if (results.isNotEmpty)
+                  section(Symbols.music_note_rounded, t.songClears, clears()),
                 if (items.isNotEmpty)
                   section(
                     Symbols.inventory_2_rounded,
@@ -891,23 +1006,39 @@ class _Profile extends StatelessWidget {
                   t.profileLink,
                   PlayerLink(save: save),
                 ),
-                section(
-                  Symbols.ios_share_rounded,
-                  t.exportsTitle,
-                  grid([
-                    exportCard(
-                      Symbols.content_copy_rounded,
-                      t.exportTeam,
-                      t.exportTeamHint,
-                      onCopyPackage,
-                    ),
-                    exportCard(
-                      Symbols.download_rounded,
-                      t.exportSave,
-                      t.exportSaveHint,
-                      onSaveFile,
-                    ),
-                  ], min: 280),
+                DetailFold(
+                  title: t.exportsTitle,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      grid([
+                        exportCard(
+                          Symbols.content_copy_rounded,
+                          t.exportTeam,
+                          t.exportTeamHint,
+                          onCopyPackage,
+                        ),
+                        exportCard(
+                          Symbols.download_rounded,
+                          t.exportSave,
+                          t.exportSaveHint,
+                          onSaveFile,
+                        ),
+                      ], min: 280),
+                      const SizedBox(height: 12),
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: TextButton.icon(
+                          onPressed: onRemove,
+                          style: TextButton.styleFrom(
+                            foregroundColor: scheme.error,
+                          ),
+                          icon: const Icon(Symbols.delete_rounded),
+                          label: Text(t.removeAccount),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 DetailFold(
                   title: t.rawData,

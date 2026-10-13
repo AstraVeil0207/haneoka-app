@@ -378,15 +378,16 @@ class _PlayerLinkState extends State<PlayerLink> {
             note,
           ];
         }
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainer,
-            borderRadius: BorderRadius.circular(Corner.large),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: children,
+        return Material(
+          color: scheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(Corner.large),
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: children,
+            ),
           ),
         );
       },

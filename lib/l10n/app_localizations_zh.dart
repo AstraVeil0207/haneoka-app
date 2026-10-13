@@ -544,6 +544,33 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get teamBuilderNoSave => '请先在账号中读取此服务器的游戏数据。';
+
+  @override
+  String get updateSave => '更新存档';
+
+  @override
+  String get updateSaveHint => '读取此账号的新存档，覆盖本地旧存档，其他账号不受影响。';
+
+  @override
+  String get importToTeamBuilder => '导入配队';
+
+  @override
+  String get importToTeamHint => '直接使用此存档的卡牌、照片、角色等级和乐队道具，预览后确认导入。';
+
+  @override
+  String get saveAccountMismatch => '读取到的存档属于其他账号或服务器，请选择当前账号的存档。';
+
+  @override
+  String get saveUpdated => '存档已更新';
+
+  @override
+  String get cardSort => '卡牌排序';
+
+  @override
+  String get sortRarity => '稀有度';
+
+  @override
+  String get sortNewest => '最新卡牌';
 }
 
 /// The translations for Chinese, as used in Taiwan (`zh_TW`).
@@ -1085,4 +1112,31 @@ class AppLocalizationsZhTw extends AppLocalizationsZh {
 
   @override
   String get teamBuilderNoSave => '請先在帳號中讀取此伺服器的遊戲資料。';
+
+  @override
+  String get updateSave => '更新存檔';
+
+  @override
+  String get updateSaveHint => '讀取此帳號的新存檔，覆蓋本機舊存檔，其他帳號不受影響。';
+
+  @override
+  String get importToTeamBuilder => '匯入配隊';
+
+  @override
+  String get importToTeamHint => '直接使用此存檔的卡牌、照片、角色等級和樂團道具，預覽後確認匯入。';
+
+  @override
+  String get saveAccountMismatch => '讀取到的存檔屬於其他帳號或伺服器，請選擇目前帳號的存檔。';
+
+  @override
+  String get saveUpdated => '存檔已更新';
+
+  @override
+  String get cardSort => '卡牌排序';
+
+  @override
+  String get sortRarity => '稀有度';
+
+  @override
+  String get sortNewest => '最新卡牌';
 }
