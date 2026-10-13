@@ -28,6 +28,61 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
+class _AddressPageRoute extends MaterialPageRoute<void> {
+  _AddressPageRoute({
+    required super.builder,
+    required super.settings,
+    this.restoringHistory = false,
+  });
+
+  final bool restoringHistory;
+  bool _returningToPrevious = false;
+
+  @override
+  void didChangeNext(Route<dynamic>? nextRoute) {
+    _returningToPrevious =
+        nextRoute is _AddressPageRoute && nextRoute.restoringHistory;
+    super.didChangeNext(nextRoute);
+  }
+
+  @override
+  Widget buildTransitions(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    if (MediaQuery.disableAnimationsOf(context)) return child;
+    if (_returningToPrevious) {
+      return SlideTransition(
+        position: secondaryAnimation
+            .drive(CurveTween(curve: Curves.easeInOutCubic))
+            .drive(Tween(begin: Offset.zero, end: const Offset(1, 0))),
+        child: child,
+      );
+    }
+    if (restoringHistory) {
+      return SlideTransition(
+        position: animation
+            .drive(CurveTween(curve: Curves.easeInOutCubic))
+            .drive(Tween(begin: const Offset(-1, 0), end: Offset.zero)),
+        child: super.buildTransitions(
+          context,
+          const AlwaysStoppedAnimation(1),
+          secondaryAnimation,
+          child,
+        ),
+      );
+    }
+    return super.buildTransitions(
+      context,
+      animation,
+      secondaryAnimation,
+      child,
+    );
+  }
+}
+
 class _PageNavigationObserver extends NavigatorObserver {
   _PageNavigationObserver(this.onChange);
   final ValueChanged<String> onChange;
@@ -201,7 +256,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       }
     }
     final destination = route;
-    final page = MaterialPageRoute<void>(
+    final page = _AddressPageRoute(
+      restoringHistory: !remember,
       settings: RouteSettings(name: destination),
       builder: (_) =>
           screenFor(destination, navigate: _navigate) ??
@@ -301,7 +357,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         key: _pages,
         observers: [_observer],
         onGenerateRoute: (_) {
-          final route = MaterialPageRoute<void>(
+          final route = _AddressPageRoute(
             settings: RouteSettings(name: destinationRoute),
             builder: (_) =>
                 screenFor(destinationRoute, navigate: _navigate) ??
