@@ -34,6 +34,16 @@ class _PageNavigationObserver extends NavigatorObserver {
   final _routes = <Route<dynamic>>[];
   Route<dynamic>? _visibleRoute;
   Route<dynamic>? get current => _routes.lastOrNull;
+  Iterable<String> addressesFrom(Route<dynamic>? root) {
+    if (root == null) return const [];
+    final start = _routes.indexOf(root);
+    if (start < 0) return const [];
+    return _routes
+        .skip(start)
+        .map((route) => route.settings.name)
+        .whereType<String>();
+  }
+
   void _changed() {
     if (_visibleRoute != current) {
       _visibleRoute = current;
@@ -182,8 +192,13 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _scaffold.currentState?.closeDrawer();
     if (route == _route) return;
     if (remember) {
-      _routeHistory.add(_route);
-      if (_routeHistory.length > 16) _routeHistory.removeAt(0);
+      final addresses = _observer.addressesFrom(_rootRoute).toList();
+      for (final address in addresses.isEmpty ? [_route] : addresses) {
+        if (_routeHistory.lastOrNull != address) _routeHistory.add(address);
+      }
+      if (_routeHistory.length > 16) {
+        _routeHistory.removeRange(0, _routeHistory.length - 16);
+      }
     }
     final destination = route;
     final page = MaterialPageRoute<void>(
