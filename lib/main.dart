@@ -8,8 +8,24 @@ import 'core/app_state.dart';
 import 'l10n/app_localizations.dart';
 import 'shell/shell.dart';
 import 'ui/theme.dart';
+import 'team_builder/engine_client.dart'
+    show runTeamEngineHost, runTeamEngineProcess;
 
 Future<void> main(List<String> arguments) async {
+  if (arguments.isNotEmpty &&
+      arguments.first.startsWith('--haneoka-team-engine-process=')) {
+    await runTeamEngineProcess(
+      arguments.first.substring('--haneoka-team-engine-process='.length),
+    );
+    return;
+  }
+  if (arguments.isNotEmpty &&
+      arguments.first.startsWith('--haneoka-team-engine=')) {
+    await runTeamEngineHost(
+      arguments.first.substring('--haneoka-team-engine='.length),
+    );
+    return;
+  }
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
   final state = await AppState.load(

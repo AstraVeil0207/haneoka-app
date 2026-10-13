@@ -96,14 +96,40 @@ Widget sticky(BuildContext context, Widget scroll, Widget action) {
   );
 }
 
-class BuildTab extends StatelessWidget {
+class BuildTab extends StatefulWidget {
   const BuildTab({super.key, required this.controller});
   final TeamBuilderController controller;
 
   @override
+  State<BuildTab> createState() => _BuildTabState();
+}
+
+class _BuildTabState extends State<BuildTab> {
+  TeamBuilderController get controller => widget.controller;
+  Object? _settingsStamp;
+  List<Widget> _settingsCache = const [];
+  List<Widget> _cachedSettings(BuildContext context) {
+    final c = controller;
+    final stamp = (
+      c.settings,
+      c.activity,
+      c.catalog,
+      c.view,
+      Theme.of(context),
+      c.state.text,
+      MediaQuery.textScalerOf(context),
+    );
+    if (stamp != _settingsStamp) {
+      _settingsStamp = stamp;
+      _settingsCache = _settings(context);
+    }
+    return _settingsCache;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final c = controller;
-    final settings = _settings(context);
+    final settings = _cachedSettings(context);
     final run = _run(context);
     final results = ResultsView(controller: c);
     if (MediaQuery.sizeOf(context).width >= 1100) {

@@ -8,12 +8,15 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
 import '../chart/runtime_chart.dart' show RuntimeChart;
-import '../core/net.dart';
+
+import 'dart:ui' show IsolateNameServer;
+
+import 'package:flutter/services.dart';
+
 import 'engine/api.dart';
 import 'engine/execution.dart';
 import 'engine/box.dart';
@@ -21,6 +24,7 @@ import 'engine/live.dart' show PlayModel;
 import 'engine/master.dart';
 import 'engine/merge.dart';
 import 'engine/num.dart';
+import 'engine/native_luck.dart';
 import 'engine/objectives.dart' show RouteKind;
 import 'engine/power.dart';
 
@@ -39,6 +43,31 @@ class TimelineRequest {
     required this.song,
     required this.order,
   });
+  factory TimelineRequest.fromJson(Map<String, Object?> json) =>
+      TimelineRequest(
+        members: [
+          for (final row in json['members'] as List)
+            MemberInput.fromJson(objectRow(row)),
+        ],
+        snaps: [
+          for (final row in json['snaps'] as List)
+            SnapInput.fromJson(objectRow(row)),
+        ],
+        unknownPolicy: UnknownPolicy.values.byName('${json['unknownPolicy']}'),
+        memberKeys: [for (final key in json['memberKeys'] as List) '$key'],
+        snapKeys: [for (final key in json['snapKeys'] as List) key as String?],
+        song: SongRef.fromJson(objectRow(json['song'])),
+        order: intListOf(json['order']),
+      );
+  Map<String, Object?> toJson() => {
+    'members': [for (final row in members) row.toJson()],
+    'snaps': [for (final row in snaps) row.toJson()],
+    'unknownPolicy': unknownPolicy.name,
+    'memberKeys': memberKeys,
+    'snapKeys': snapKeys,
+    'song': song.toJson(),
+    'order': order,
+  };
   final List<MemberInput> members;
   final List<SnapInput> snaps;
   final UnknownPolicy unknownPolicy;
@@ -54,6 +83,26 @@ class TimelineRequest {
 
 class Timeline {
   Timeline(this.durationMs, this.density, this.fever, this.windows);
+  factory Timeline.fromJson(Map<String, Object?> json) => Timeline(
+    intOf(json['durationMs']),
+    intListOf(json['density']),
+    [
+      for (final row in json['fever'] as List)
+        (intOf((row as List)[0]), intOf(row[1])),
+    ],
+    [
+      for (final row in json['windows'] as List)
+        SkillWindow.fromJson(objectRow(row)),
+    ],
+  );
+  Map<String, Object?> toJson() => {
+    'durationMs': durationMs,
+    'density': density,
+    'fever': [
+      for (final r in fever) [r.$1, r.$2],
+    ],
+    'windows': [for (final w in windows) w.toJson()],
+  };
   final int durationMs;
 
   /// Note counts per 500 ms.
@@ -69,11 +118,653 @@ typedef _Call = (
   Map<String, Uint8List> charts,
 );
 
-/// One engine isolate: compiles the release once, then serves calls.
-class _Worker {
-  _Worker(this.data, this.chartUrl);
+Future<String> _encodeData(Doc data) => Isolate.run(() => jsonEncode(data));
+
+const _engineChannel = MethodChannel('org.haneoka/team_engine');
+
+class _DisplayCall {
+  _DisplayCall(this.kind, this.request, this.progress, this.snapshot);
+  final String kind;
+  final Object request;
+  final void Function(int, int)? progress;
+  final void Function(EngineSnapshot)? snapshot;
+  final completer = Completer<Object?>();
+  EngineResponse? latest;
+}
+
+/// UI endpoint. The separate Flutter engine owns its coordinator, worker pool,
+/// heaps, scores, sorting, snapshots and JSON; this endpoint only displays replies.
+class EngineClient {
+  EngineClient(this.data, this.chartUrl);
   final Doc data;
   final String? Function(SongRef) chartUrl;
+  final _key = 'haneoka-engine-${DateTime.now().microsecondsSinceEpoch}';
+  final _pending = <int, _DisplayCall>{};
+  int _nextId = 0, _generation = 0;
+  bool _disposed = false;
+  Object? _failure;
+  Isolate? _bridge;
+  ReceivePort? _replies, _errors;
+  SendPort? _port;
+  Future<SendPort>? _ready;
+
+  Future<SendPort> _connect() => _ready ??= () async {
+    if (_disposed) throw const EngineCancelled();
+    final ready = Completer<SendPort>();
+    final replies = _replies = ReceivePort();
+    final errors = _errors = ReceivePort();
+    errors.listen((error) {
+      final failure = StateError('engine-bridge:$error');
+      _failure = failure;
+      if (!ready.isCompleted) ready.completeError(failure);
+      for (final call in _pending.values) {
+        if (!call.completer.isCompleted) call.completer.completeError(failure);
+      }
+      _pending.clear();
+    });
+    replies.listen((message) async {
+      if (message is SendPort) {
+        _port = message;
+        if (!ready.isCompleted) ready.complete(message);
+        return;
+      }
+      final (id, kind, payload) = message as (int, String, Object?);
+      if (kind == 'fatal') {
+        _failure = StateError('$payload');
+        for (final call in _pending.values) {
+          if (!call.completer.isCompleted) {
+            call.completer.completeError(_failure!);
+          }
+        }
+        _pending.clear();
+        return;
+      }
+      if (kind == 'native-start') {
+        if (_disposed) return;
+        try {
+          await _engineChannel.invokeMethod<void>('start', {'key': _key});
+        } catch (error) {
+          _port?.send((0, 'native-error', '$error'));
+        }
+        return;
+      }
+      if (kind == 'native-dispose') {
+        try {
+          if (!Platform.isLinux) {
+            await _engineChannel.invokeMethod<void>('dispose', {'key': _key});
+          }
+        } finally {
+          replies.close();
+          errors.close();
+          _bridge?.kill(priority: Isolate.immediate);
+        }
+        return;
+      }
+      final call = _pending[id];
+      if (call == null || call.completer.isCompleted) return;
+      if (kind == 'snapshot') {
+        final value = payload as EngineSnapshot;
+        call.latest = value.response;
+        call.snapshot?.call(value);
+        return;
+      }
+      if (kind == 'progress') {
+        final (done, total) = payload as (int, int);
+        call.progress?.call(done, total);
+        return;
+      }
+      _pending.remove(id);
+      if (kind == 'error') {
+        call.completer.completeError(StateError('$payload'));
+      } else if (kind == 'cancelled') {
+        call.completer.completeError(const EngineCancelled());
+      } else {
+        call.completer.complete(payload);
+      }
+    });
+    final urls = {
+      for (final value in objectRow(data['songs']).values)
+        for (final difficulty in dataRows(objectRow(value)['difficulty']))
+          '${intOf(objectRow(value)['musicId'])}:${intOf(difficulty['difficulty'])}':
+              chartUrl(
+                SongRef(
+                  intOf(objectRow(value)['musicId']),
+                  intOf(difficulty['difficulty']),
+                ),
+              ) ??
+              '',
+    };
+    final bridge = await Isolate.spawn(
+      _displayBridge,
+      (replies.sendPort, data, urls, _key),
+      onError: errors.sendPort,
+      errorsAreFatal: true,
+    );
+    if (_disposed) {
+      bridge.kill(priority: Isolate.immediate);
+      replies.close();
+      errors.close();
+      throw const EngineCancelled();
+    }
+    _bridge = bridge;
+    return ready.future;
+  }();
+
+  void warm() => _connect().ignore();
+  Future<T> _call<T>(
+    String kind,
+    Object request, [
+    void Function(int, int)? progress,
+    void Function(EngineSnapshot)? snapshot,
+  ]) {
+    if (_disposed) return Future.error(const EngineCancelled());
+    if (_failure != null) return Future.error(_failure!);
+    final id = ++_nextId, generation = _generation;
+    final call = _DisplayCall(kind, request, progress, snapshot);
+    _pending[id] = call;
+    Timer? timer;
+    if (request is EngineRequest && request.deadline!.isFinite) {
+      timer = Timer(
+        Duration(microseconds: (remaining(request.deadline!) * 1000).ceil()),
+        () {
+          if (!_pending.containsKey(id) || call.completer.isCompleted) return;
+          _pending.remove(id);
+          final response = call.latest ?? emptyResponse(request);
+          response.stopReason = 'budget';
+          call.completer.complete(response);
+          _port?.send((id, 'abort', null));
+        },
+      );
+    }
+    _connect().then(
+      (port) {
+        if (!_pending.containsKey(id)) return;
+        if (generation != _generation) {
+          _pending.remove(id);
+          if (request is EngineRequest) {
+            call.completer.complete(
+              emptyResponse(request)..stopReason = 'cancelled',
+            );
+          } else {
+            call.completer.completeError(const EngineCancelled());
+          }
+          return;
+        }
+        port.send((id, kind, request));
+      },
+      onError: (Object error, StackTrace stack) {
+        if (_pending.remove(id) != null && !call.completer.isCompleted) {
+          call.completer.completeError(error, stack);
+        }
+      },
+    );
+    return call.completer.future
+        .then((value) => value as T)
+        .whenComplete(() => timer?.cancel());
+  }
+
+  Future<EngineResponse> run(
+    EngineRequest request, [
+    void Function(int, int)? progress,
+    void Function(EngineSnapshot)? snapshot,
+  ]) => _call(
+    'run',
+    request.copyWith(
+      deadline: deadlineOf(request),
+      requestId: request.requestId ?? '$_key-${_nextId + 1}',
+    ),
+    progress,
+    snapshot,
+  );
+  Future<List<TeamEvaluation>> evaluate(EvaluateRequest request) =>
+      _call('evaluate', request);
+  Future<Timeline> timeline(TimelineRequest request) =>
+      _call('timeline', request);
+  void cancel() {
+    _generation++;
+    _port?.send((0, 'cancel', null));
+  }
+
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    _generation++;
+    for (final call in _pending.values) {
+      if (!call.completer.isCompleted) {
+        call.completer.completeError(const EngineCancelled());
+      }
+    }
+    _pending.clear();
+    IsolateNameServer.removePortNameMapping(_key);
+    if (_port != null) {
+      _port!.send((0, 'dispose', null));
+    } else {
+      _bridge?.kill(priority: Isolate.immediate);
+      _replies?.close();
+      _errors?.close();
+    }
+  }
+}
+
+/// Transport runs beside the UI, while all compute and GC-heavy allocations
+/// run in another isolate group. Only JSON and SendPorts cross that boundary.
+void _displayBridge((SendPort, Doc, Map<String, String>, String) args) {
+  final (ui, data, urls, key) = args;
+  final calls = ReceivePort(), replies = ReceivePort();
+  final host = Completer<SendPort>(), initialized = Completer<void>();
+  initialized.future.ignore();
+  final kinds = <int, String>{};
+  final aborted = <int>{};
+  var generation = 0, disposed = false;
+  if (!IsolateNameServer.registerPortWithName(replies.sendPort, key)) {
+    throw StateError('engine-port-registration');
+  }
+  ui.send(calls.sendPort);
+  if (Platform.isLinux) {
+    _processTransport(replies.sendPort).catchError((Object error) {
+      calls.sendPort.send((0, 'native-error', '$error'));
+    });
+  } else {
+    ui.send((0, 'native-start', key));
+  }
+  void close() {
+    IsolateNameServer.removePortNameMapping(key);
+    calls.close();
+    replies.close();
+    ui.send((0, 'native-dispose', null));
+  }
+
+  replies.listen((message) {
+    if (message is SendPort) {
+      if (!host.isCompleted) host.complete(message);
+      return;
+    }
+    final row = objectRow(jsonDecode(message as String));
+    final id = intOf(row['id']), kind = '${row['kind']}';
+    if (kind == 'fatal') {
+      if (!host.isCompleted) {
+        host.completeError(StateError('${row['message']}'));
+      }
+      for (final callId in kinds.keys.toList()) {
+        ui.send((callId, 'error', row['message']));
+      }
+      kinds.clear();
+      if (!initialized.isCompleted) {
+        initialized.completeError(StateError('${row['message']}'));
+      }
+      ui.send((0, 'fatal', row['message']));
+      disposed = true;
+      generation++;
+      close();
+      return;
+    }
+    if (kind == 'ready') {
+      if (!initialized.isCompleted) initialized.complete();
+      return;
+    }
+    if (kind == 'disposed') {
+      close();
+      return;
+    }
+    if (kind == 'error' && id == 0) {
+      if (!initialized.isCompleted) {
+        initialized.completeError(StateError('${row['message']}'));
+      }
+      return;
+    }
+    if (kind == 'snapshot') {
+      ui.send((id, kind, EngineSnapshot.fromJson(objectRow(row['snapshot']))));
+    } else if (kind == 'progress') {
+      ui.send((id, kind, (intOf(row['done']), intOf(row['total']))));
+    } else if (kind == 'error' || kind == 'cancelled') {
+      kinds.remove(id);
+      ui.send((id, kind, row['message']));
+    } else if (kind == 'result') {
+      final result = switch (kinds.remove(id)) {
+        'run' => EngineResponse.fromJson(objectRow(row['result'])),
+        'evaluate' => [
+          for (final value in row['result'] as List)
+            TeamEvaluation.fromJson(objectRow(value)),
+        ],
+        'timeline' => Timeline.fromJson(objectRow(row['result'])),
+        _ => null,
+      };
+      if (result != null) ui.send((id, 'result', result));
+    }
+  });
+  final boot = () async {
+    final port = await host.future.timeout(const Duration(seconds: 20));
+    port.send(
+      jsonEncode({'id': 0, 'kind': 'init', 'data': data, 'urls': urls}),
+    );
+    await initialized.future.timeout(const Duration(seconds: 20));
+    return port;
+  }();
+  boot.ignore();
+  calls.listen((message) async {
+    final (id, kind, request) = message as (int, String, Object?);
+    if (kind == 'native-error') {
+      if (!host.isCompleted) host.completeError(StateError('$request'));
+      return;
+    }
+    if (kind == 'cancel') {
+      generation++;
+      if (host.isCompleted) {
+        try {
+          (await host.future).send(jsonEncode({'id': 0, 'kind': 'cancel'}));
+        } catch (_) {}
+      }
+      return;
+    }
+    if (kind == 'abort') {
+      aborted.add(id);
+      if (host.isCompleted) {
+        try {
+          (await host.future).send(jsonEncode({'id': id, 'kind': 'abort'}));
+        } catch (_) {}
+      }
+      return;
+    }
+    if (kind == 'dispose') {
+      disposed = true;
+      generation++;
+      try {
+        (await host.future.timeout(const Duration(seconds: 5)))
+            .send(jsonEncode({'id': 0, 'kind': 'dispose'}));
+      } catch (_) {
+        close();
+      }
+      return;
+    }
+    final current = generation;
+    try {
+      final port = await boot;
+      if (disposed || aborted.remove(id)) return;
+      if (current != generation) {
+        if (request is EngineRequest) {
+          ui.send((
+            id,
+            'result',
+            emptyResponse(request)..stopReason = 'cancelled',
+          ));
+        } else {
+          ui.send((id, 'cancelled', null));
+        }
+        return;
+      }
+      kinds[id] = kind;
+      final value = switch (request) {
+        EngineRequest() => request.toJson(),
+        EvaluateRequest() => request.toJson(),
+        TimelineRequest() => request.toJson(),
+        _ => throw StateError('engine-request'),
+      };
+      port.send(jsonEncode({'id': id, 'kind': kind, 'request': value}));
+    } catch (error) {
+      ui.send((id, 'error', '$error'));
+    }
+  });
+}
+
+/// Linux runs a separate application process: even VM-wide pauses and runtime
+/// worker threads are kept out of the process handling input and drawing.
+Future<void> _processTransport(SendPort replies) async {
+  final directory = await Directory.systemTemp.createTemp('haneoka-engine-');
+  final path = '${directory.path}/ipc';
+  final server = await ServerSocket.bind(
+    InternetAddress(path, type: InternetAddressType.unix),
+    0,
+  );
+  Process? process;
+  Socket? socket;
+  final proxy = ReceivePort();
+  var closing = false;
+  Future<void> cleanup() async {
+    if (closing) return;
+    closing = true;
+    proxy.close();
+    socket?.destroy();
+    await server.close();
+    process?.kill();
+    if (await directory.exists()) await directory.delete(recursive: true);
+  }
+
+  try {
+    process = await Process.start(
+      Platform.resolvedExecutable,
+      ['--haneoka-team-engine-process=$path'],
+      environment: {'HANEOKA_COMPUTE_PROCESS': '1'},
+    );
+    process.stdout.drain<void>().ignore();
+    process.stderr.drain<void>().ignore();
+    process.exitCode.then((code) {
+      if (!closing) {
+        replies.send(
+          jsonEncode({
+            'id': 0,
+            'kind': 'fatal',
+            'message': 'engine-process-exit:$code',
+          }),
+        );
+        cleanup().ignore();
+      }
+    });
+    socket = await server.first.timeout(const Duration(seconds: 20));
+    await server.close();
+    proxy.listen((message) {
+      socket!.writeln(message as String);
+    });
+    socket
+        .cast<List<int>>()
+        .transform(utf8.decoder)
+        .transform(const LineSplitter())
+        .listen(
+          (line) {
+            final value = objectRow(jsonDecode(line));
+            if (value['kind'] == 'disposed') {
+              cleanup().then((_) => replies.send(line));
+            } else {
+              replies.send(line);
+            }
+          },
+          onError: (Object error) {
+            if (!closing) {
+              replies.send(
+                jsonEncode({
+                  'id': 0,
+                  'kind': 'fatal',
+                  'message': 'engine-process-io:$error',
+                }),
+              );
+            }
+            cleanup().ignore();
+          },
+          onDone: () => cleanup().ignore(),
+        );
+    replies.send(proxy.sendPort);
+  } catch (_) {
+    await cleanup();
+    rethrow;
+  }
+}
+
+Future<void> runTeamEngineProcess(String path) async {
+  final socket = await Socket.connect(
+    InternetAddress(path, type: InternetAddressType.unix),
+    0,
+  );
+  final replies = ReceivePort(), lifetime = ReceivePort();
+  final ready = Completer<SendPort>();
+  final worker = await Isolate.spawn(
+    _engineHostWorker,
+    (replies.sendPort, lifetime.sendPort),
+    errorsAreFatal: true,
+    onError: lifetime.sendPort,
+    onExit: lifetime.sendPort,
+  );
+  replies.listen((message) {
+    if (message is SendPort) {
+      ready.complete(message);
+      return;
+    }
+    socket.writeln(message as String);
+  });
+  socket.done.then((_) => exit(0), onError: (Object _) => exit(0));
+  final port = await ready.future;
+  socket
+      .cast<List<int>>()
+      .transform(utf8.decoder)
+      .transform(const LineSplitter())
+      .listen(port.send, onError: (Object _) => exit(0), onDone: () => exit(0));
+  await lifetime.first;
+  await socket.flush();
+  socket.destroy();
+  replies.close();
+  lifetime.close();
+  worker.kill();
+  exit(0);
+}
+
+/// Booted by a separate native FlutterEngine, not FlutterEngineGroup.spawn.
+/// Its root only starts a background coordinator, so platform threads also
+/// never parse master data, merge results or run the solver.
+Future<void> runTeamEngineHost(String key) async {
+  final reply = IsolateNameServer.lookupPortByName(key);
+  if (reply == null) return;
+  final lifetime = ReceivePort();
+  await Isolate.spawn(
+    _engineHostWorker,
+    (reply, lifetime.sendPort),
+    errorsAreFatal: true,
+    onError: lifetime.sendPort,
+    onExit: lifetime.sendPort,
+  );
+  final exit = await lifetime.first;
+  lifetime.close();
+  if (exit is List) {
+    reply.send(
+      jsonEncode({
+        'id': 0,
+        'kind': 'fatal',
+        'message': 'engine-crashed:${exit.first}',
+      }),
+    );
+  }
+}
+
+void _engineHostWorker((SendPort, SendPort) ports) {
+  final (reply, _) = ports;
+  final calls = ReceivePort();
+  reply.send(calls.sendPort);
+  _EngineCoordinator? engine;
+  final requests = <int, EngineRequest>{};
+  void send(int id, String kind, [Object? result]) => reply.send(
+    jsonEncode({
+      'id': id,
+      'kind': kind,
+      if (kind == 'result') 'result': result,
+    }),
+  );
+  calls.listen((message) async {
+    final row = objectRow(jsonDecode(message as String));
+    final id = intOf(row['id']), kind = '${row['kind']}';
+    try {
+      if (kind == 'init') {
+        final data = objectRow(row['data']), urls = objectRow(row['urls']);
+        engine = _EngineCoordinator(data, (song) => urls[song.key] as String?)
+          ..warm();
+        send(0, 'ready');
+        return;
+      }
+      if (kind == 'dispose') {
+        engine?.dispose();
+        send(0, 'disposed');
+        calls.close();
+        return;
+      }
+      if (kind == 'cancel') {
+        engine?.cancel();
+        return;
+      }
+      if (kind == 'abort') {
+        final request = requests[id];
+        if (request != null) engine?.abort(request.requestId!);
+        return;
+      }
+      final current = engine ?? (throw StateError('engine-not-ready'));
+      final input = objectRow(row['request']);
+      switch (kind) {
+        case 'run':
+          final request = EngineRequest.fromJson(input);
+          requests[id] = request;
+          var shownAt = -double.infinity;
+          var showedCandidate = false;
+          final result = await current.run(
+            request,
+            (done, total) => reply.send(
+              jsonEncode({
+                'id': id,
+                'kind': 'progress',
+                'done': done,
+                'total': total,
+              }),
+            ),
+            (snapshot) {
+              final now = executionClock();
+              final first =
+                  !showedCandidate && snapshot.response.overall.isNotEmpty;
+              if (!first &&
+                  snapshot.stopReason == null &&
+                  now - shownAt < 250) {
+                return;
+              }
+              shownAt = now;
+              showedCandidate |= snapshot.response.overall.isNotEmpty;
+              reply.send(
+                jsonEncode({
+                  'id': id,
+                  'kind': 'snapshot',
+                  'snapshot': snapshot.toJson(),
+                }),
+              );
+            },
+          );
+          requests.remove(id);
+          send(id, 'result', result.toJson());
+        case 'evaluate':
+          send(id, 'result', [
+            for (final value in await current.evaluate(
+              EvaluateRequest.fromJson(input),
+            ))
+              value.toJson(),
+          ]);
+        case 'timeline':
+          send(
+            id,
+            'result',
+            (await current.timeline(TimelineRequest.fromJson(input))).toJson(),
+          );
+        default:
+          throw StateError('engine-call:$kind');
+      }
+    } catch (error) {
+      requests.remove(id);
+      reply.send(
+        jsonEncode({
+          'id': id,
+          'kind': error is EngineCancelled ? 'cancelled' : 'error',
+          'message': '$error',
+        }),
+      );
+    }
+  });
+}
+
+/// One engine isolate: compiles the release once, then serves calls.
+class _Worker {
+  _Worker(this.serializedData, this.chartUrls);
+  final Future<String> serializedData;
+  final Map<String, String> chartUrls;
   Isolate? _isolate;
   SendPort? _port;
   ReceivePort? _replies;
@@ -117,9 +808,11 @@ class _Worker {
 
   Future<void> _spawn() => _ready ??= () async {
     _setPhase('initializationMs');
+    final generation = _generation;
+    final payload = await serializedData;
+    if (generation != _generation) throw const EngineCancelled();
     final replies = _replies = ReceivePort();
     final ready = _spawnReady = Completer<SendPort>();
-    final generation = _generation;
     final failures = _failures = ReceivePort();
     failures.listen((failure) {
       final error = StateError(
@@ -171,22 +864,7 @@ class _Worker {
     try {
       isolate = await Isolate.spawn(
         _main,
-        (
-          replies.sendPort,
-          jsonEncode(data),
-          {
-            for (final value in objectRow(data['songs']).values)
-              for (final difficulty in dataRows(objectRow(value)['difficulty']))
-                '${intOf(objectRow(value)['musicId'])}:${intOf(difficulty['difficulty'])}':
-                    chartUrl(
-                      SongRef(
-                        intOf(objectRow(value)['musicId']),
-                        intOf(difficulty['difficulty']),
-                      ),
-                    ) ??
-                    '',
-          },
-        ),
+        (replies.sendPort, payload, chartUrls),
         errorsAreFatal: true,
         onError: failures.sendPort,
         onExit: failures.sendPort,
@@ -266,9 +944,23 @@ const _shardsPerWorker = 4;
 
 /// The engine isolates (`engine/client.ts`): a search runs one song at a
 /// time; quick proofs spread over the pool, harder songs split by leader.
-class EngineClient {
-  EngineClient(this.data, this.chartUrl)
-    : _pool = [for (var i = 0; i < _poolSize(); i++) _Worker(data, chartUrl)];
+class _EngineCoordinator {
+  _EngineCoordinator(this.data, this.chartUrl) {
+    final encoded = _encodeData(data);
+    final urls = {
+      for (final value in objectRow(data['songs']).values)
+        for (final difficulty in dataRows(objectRow(value)['difficulty']))
+          '${intOf(objectRow(value)['musicId'])}:${intOf(difficulty['difficulty'])}':
+              chartUrl(
+                SongRef(
+                  intOf(objectRow(value)['musicId']),
+                  intOf(difficulty['difficulty']),
+                ),
+              ) ??
+              '',
+    };
+    _pool = [for (var i = 0; i < _poolSize(); i++) _Worker(encoded, urls)];
+  }
 
   /// The merged release document.
   final Doc data;
@@ -276,8 +968,9 @@ class EngineClient {
   /// The pinned chart address of a song difficulty, or null when unknown.
   final String? Function(SongRef song) chartUrl;
 
-  final List<_Worker> _pool;
+  late final List<_Worker> _pool;
   final _bytes = <String, Uint8List>{};
+  final _chartClient = http.Client();
 
   /// Compiles the release ahead of the first call; the other isolates
   /// compile only when a search fans out.
@@ -311,7 +1004,7 @@ class EngineClient {
           await Future<void>.delayed(Duration(milliseconds: 500 * attempt));
         }
         try {
-          response = await netClient.get(Uri.parse(url));
+          response = await _chartClient.get(Uri.parse(url));
           if (response.statusCode < 500) break;
         } catch (_) {
           response = null;
@@ -335,6 +1028,7 @@ class EngineClient {
   Future<void> _queue = Future.value();
   int _generation = 0, _requestId = 0;
   void Function(String)? _activeStop;
+  String? _activeRequestId;
 
   Future<EngineResponse> run(
     EngineRequest request, [
@@ -349,7 +1043,11 @@ class EngineClient {
           'native-${DateTime.now().microsecondsSinceEpoch}-${++_requestId}',
       contextKey:
           request.contextKey ??
-          jsonEncode([data['identity'], data['crossServer'], request.toJson()]),
+          jsonEncode([
+            data['identity'],
+            objectRow(data['crossServer'])['identities'],
+            request.toJson(),
+          ]),
     );
     var expired = false;
     Timer? timer;
@@ -508,6 +1206,7 @@ class EngineClient {
       latest.stopReason = reason;
       publish(latest, true);
       stopped = true;
+      cancelNativeComputations();
       for (final worker in _pool) {
         worker.cancel();
       }
@@ -515,6 +1214,7 @@ class EngineClient {
     }
 
     _activeStop = stop;
+    _activeRequestId = request.requestId;
     final deadline = request.deadline!;
     final timer = deadline.isFinite
         ? Timer(
@@ -534,9 +1234,16 @@ class EngineClient {
       _Worker worker,
       EngineRequest task, [
       void Function(EngineSnapshot)? onSnapshot,
+      bool forwardProgress = true,
     ]) async {
       if (stopped || remaining(task.deadline!) == 0) return emptyResponse(task);
-      return worker.call('run', task, const {}, progress, onSnapshot ?? accept);
+      return worker.call(
+        'run',
+        task,
+        const {},
+        forwardProgress ? progress : null,
+        onSnapshot ?? accept,
+      );
     }
 
     Future<EngineResponse> work() async {
@@ -582,7 +1289,7 @@ class EngineClient {
               }
               parts[index] = value.response.results.firstOrNull ?? parts[index];
               publish(merged());
-            });
+            }, false);
             if (stopped) return;
             parts[index] = response.results.firstOrNull ?? parts[index];
             publish(merged());
@@ -650,6 +1357,7 @@ class EngineClient {
               responses[index] = value.response;
               publish(merge());
             },
+            false,
           );
           if (stopped) return;
           responses[index] = response;
@@ -688,7 +1396,10 @@ class EngineClient {
       rethrow;
     } finally {
       timer?.cancel();
-      if (_activeStop == stop) _activeStop = null;
+      if (_activeStop == stop) {
+        _activeStop = null;
+        _activeRequestId = null;
+      }
     }
   }
 
@@ -711,8 +1422,16 @@ class EngineClient {
         _pool.first.call('timeline', request, await _charts([request.song])),
   );
 
+  void abort(String requestId) {
+    if (_activeRequestId == requestId) {
+      cancelNativeComputations();
+      _activeStop?.call('budget');
+    }
+  }
+
   /// Stops every call in flight.
   void cancel() {
+    cancelNativeComputations();
     _generation++;
     _activeStop?.call('cancelled');
     for (final worker in _pool) {
@@ -720,7 +1439,10 @@ class EngineClient {
     }
   }
 
-  void dispose() => cancel();
+  void dispose() {
+    cancel();
+    _chartClient.close();
+  }
 }
 
 class EvaluateRequest {
@@ -735,6 +1457,52 @@ class EvaluateRequest {
     required this.challengeEventId,
     required this.event,
   });
+  factory EvaluateRequest.fromJson(Map<String, Object?> json) =>
+      EvaluateRequest(
+        members: [
+          for (final row in json['members'] as List)
+            MemberInput.fromJson(objectRow(row)),
+        ],
+        snaps: [
+          for (final row in json['snaps'] as List)
+            SnapInput.fromJson(objectRow(row)),
+        ],
+        player: PlayerInput.fromJson(objectRow(json['player'])),
+        unknownPolicy: UnknownPolicy.values.byName('${json['unknownPolicy']}'),
+        team: TeamSpec.fromJson(objectRow(json['team'])),
+        songs: [
+          for (final row in json['songs'] as List)
+            SongRef.fromJson(objectRow(row)),
+        ],
+        play: PlayModel.fromJson(objectRow(json['play'])),
+        challengeEventId: (json['challengeEventId'] as num?)?.toInt(),
+        event: json['event'] is Map
+            ? (
+                eventId: intOf(objectRow(json['event'])['eventId']),
+                route: RouteKind.values.byName(
+                  '${objectRow(json['event'])['route']}',
+                ),
+                consumption: intOf(objectRow(json['event'])['consumption']),
+              )
+            : null,
+      );
+  Map<String, Object?> toJson() => {
+    'members': [for (final r in members) r.toJson()],
+    'snaps': [for (final r in snaps) r.toJson()],
+    'player': player.toJson(),
+    'unknownPolicy': unknownPolicy.name,
+    'team': team.toJson(),
+    'songs': [for (final r in songs) r.toJson()],
+    'play': play.toJson(),
+    'challengeEventId': challengeEventId,
+    'event': event == null
+        ? null
+        : {
+            'eventId': event!.eventId,
+            'route': event!.route.name,
+            'consumption': event!.consumption,
+          },
+  };
   final List<MemberInput> members;
   final List<SnapInput> snaps;
   final PlayerInput player;

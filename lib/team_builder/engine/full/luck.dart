@@ -11,6 +11,7 @@ import 'dart:typed_data';
 
 import '../master.dart' show GekisouTables;
 import '../num.dart';
+import '../native_luck.dart';
 import 'core.dart';
 import 'model.dart';
 
@@ -185,6 +186,44 @@ class _Rows {
   }
 }
 
+class _LuckScratch {
+  _LuckScratch(this.width, bool wide) {
+    a = _Rows(width, pool, wide);
+    b = _Rows(width, pool, wide);
+  }
+  final int width;
+  final pool = <Float64List>[];
+  late final _Rows a, b;
+  bool busy = false;
+  void release() {
+    for (final rows in [a, b]) {
+      for (var i = 0; i < rows.vecs.length; i++) {
+        rows.free(rows.vecs[i], rows.lo[i], rows.hi[i]);
+      }
+      rows.reset();
+    }
+    final keep = (4 * 1024 * 1024) ~/ math.max(1, width * 8);
+    if (pool.length > keep) pool.removeRange(0, pool.length - keep);
+  }
+}
+
+// One scratch pair per vector layout in each compute isolate. Reusing the
+// tables avoids megabyte allocations for every lottery curve and GC pauses
+// across Flutter's isolate group; all probabilities are cleared on release.
+final _scratchCache = <(int, bool), _LuckScratch>{};
+_LuckScratch _scratchOf(int width, bool wide) {
+  final key = (width, wide), known = _scratchCache[key];
+  if (known != null && !known.busy) return known;
+  final scratch = _LuckScratch(width, wide);
+  if (known == null) {
+    if (_scratchCache.length >= 2) {
+      _scratchCache.remove(_scratchCache.keys.first);
+    }
+    _scratchCache[key] = scratch;
+  }
+  return scratch;
+}
+
 LuckCurve luckCurve(
   GekisouTables tables,
   LuckRecord record,
@@ -193,6 +232,85 @@ LuckCurve luckCurve(
   List<MissRule> missRules, [
   LuckSettlement? settlement,
 ]) {
+  if (nativeLuckAvailable) {
+    final output = nativeLuck({
+      'maximum': tables.gaugeMax,
+      'rush_maximum': tables.gaugeMaxRush,
+      'base': [
+        for (final r in tables.luckBasePoints)
+          [r.category, r.judgement, r.weight, r.point],
+      ],
+      'lots': [
+        for (final r in tables.luckBonusLots) [r.lotType, r.result, r.weight],
+      ],
+      'ranges': luckRanges,
+      'miss': [
+        for (final r in missRules) [r.value, r.chance],
+      ],
+      'modulus': settlement?.modulus ?? 0,
+      'initial': settlement?.initial ?? 0,
+      'frames': [
+        for (var i = 0; i < record.frames.length; i++)
+          {
+            'time': frames[i].timeMs,
+            'states': record.frames[i].states,
+            'updates': record.frames[i].updates,
+            'playing': record.frames[i].playing,
+            'judged': [
+              for (final n in frames[i].judged)
+                {
+                  'id': n.noteId,
+                  'time': n.timeMs,
+                  'scores': settlement == null
+                      ? [0, 0, 0, 0]
+                      : [
+                          settlement.noteScore(n.noteId, false, false),
+                          settlement.noteScore(n.noteId, true, false),
+                          settlement.noteScore(n.noteId, false, true),
+                          settlement.noteScore(n.noteId, true, true),
+                        ],
+                },
+            ],
+          },
+      ],
+      'notes': [
+        for (final n in record.notes)
+          {
+            'frame': n.frame,
+            'range': n.range,
+            'op': n.op,
+            'judgement': n.judgement,
+            'time': n.timeMs,
+            'speed': n.speed,
+            'buff': n.buff,
+          },
+      ],
+      'actions': [
+        for (final a in record.actions)
+          {
+            'frame': a.frame,
+            'range': a.range,
+            'kind': a.type,
+            'value': a.value,
+            'chance': a.chance,
+          },
+      ],
+    });
+    final curve = LuckCurve();
+    for (final entry in objectRow(output['curve']).entries) {
+      final id = int.parse(entry.key), values = entry.value as List;
+      curve.rush[id] = (values[0] as num).toDouble();
+      curve.skill[id] = (values[1] as num).toDouble();
+      curve.both[id] = (values[2] as num).toDouble();
+    }
+    if (settlement != null) {
+      final residues = output['residues'] as List;
+      for (var i = 0; i < residues.length; i++) {
+        settlement.residues[i] += (residues[i] as num).toDouble();
+      }
+    }
+    return curve;
+  }
   final good = <_Item>[],
       great = <_Item>[],
       perfect = <_Item>[],
@@ -289,466 +407,483 @@ LuckCurve luckCurve(
   final curve = LuckCurve();
   int gaugeMaxOf(int rush) => rush > 0 ? tables.gaugeMaxRush : tables.gaugeMax;
   final width = math.max(tables.gaugeMax, tables.gaugeMaxRush);
-  final pool = <Float64List>[];
-  var dist = _Rows(width, pool, settlement != null);
-  var spare = _Rows(width, pool, settlement != null);
-  var steadyAt = -1;
-  int Function(int)? pending;
-  int keyAt(int index) {
-    final key = dist.keys[index];
-    if (pending == null) return key;
-    final high = key & _high;
-    return key - high + (pending!(high << 8) >> 8);
-  }
-
-  void pass(
-    bool? Function(int key, Float64List vec, int low, int high, _Rows out) step,
-  ) {
-    final from = dist, out = spare;
-    for (var index = 0; index < from.keys.length; index++) {
-      if (step(
-            keyAt(index),
-            from.vecs[index],
-            from.lo[index],
-            from.hi[index],
-            out,
-          ) !=
-          true) {
-        out.free(from.vecs[index], from.lo[index], from.hi[index]);
-      }
+  final scratch = _scratchOf(width, settlement != null)..busy = true;
+  var completed = false;
+  try {
+    var dist = scratch.a;
+    var spare = scratch.b;
+    var steadyAt = -1;
+    int Function(int)? pending;
+    int keyAt(int index) {
+      final key = dist.keys[index];
+      if (pending == null) return key;
+      final high = key & _high;
+      return key - high + (pending!(high << 8) >> 8);
     }
-    pending = null;
-    from.reset();
-    spare = from;
-    dist = out;
-    steadyAt = -1;
-  }
 
-  void axpy(
-    _Rows out,
-    int key,
-    Float64List vec,
-    double scale,
-    int low,
-    int high,
-  ) {
-    if (!(scale > 0)) return;
-    final index = out.at(key), into = out.vecs[index];
-    for (var gauge = low; gauge < high; gauge++) {
-      into[gauge] += vec[gauge] * scale;
-    }
-    out.touch(index, low, high);
-  }
-
-  void shift(
-    _Rows out,
-    int key,
-    Float64List vec,
-    double scale,
-    int add,
-    int low,
-    int high,
-  ) {
-    if (!(scale > 0)) return;
-    final highState = key & _high,
-        maximum = gaugeMaxOf(_rushOf(highState << 8)),
-        lots = highState & 7;
-    for (var overflow = (low + add) ~/ maximum; ; overflow++) {
-      final a = math.max(low, overflow * maximum - add),
-          b = math.min(high, (overflow + 1) * maximum - add);
-      if (a >= high) break;
-      if (b <= a) continue;
-      final index = out.at(
-        overflow == 0 ? key : key - lots + math.min(lots + overflow, 7),
-      );
-      final into = out.vecs[index], offset = add - overflow * maximum;
-      for (var gauge = a; gauge < b; gauge++) {
-        into[gauge + offset] += vec[gauge] * scale;
-      }
-      out.touch(index, a + offset, b + offset);
-    }
-  }
-
-  void unary(int Function(int) fn) {
-    final before = pending;
-    pending = before != null ? (state) => fn(before(state)) : fn;
-    steadyAt = -1;
-  }
-
-  final lotCache = <int, Map<int, List<(int, double, int)>>>{};
-  List<(int, double, int)> lotRows(int high, int buff) {
-    final byRow = lotCache.putIfAbsent(buff, () => {});
-    return byRow.putIfAbsent(high, () {
-      final state = high << 8, lots = _lotsOf(state) - 1;
-      var minimum = _minimumOf(state);
-      List<(double, int)> first;
-      if (_nextOf(state) == _invalid) {
-        first = draw(0, buff, minimum);
-        minimum = 0;
-      } else {
-        first = [(1.0, _nextOf(state))];
-      }
-      final out = <(int, double, int)>[];
-      for (final (pn, result) in first) {
-        var flags = _flagsOf(state), rush = _rushOf(state);
-        if (rush == 0 || result != _critical) {
-          flags = result == _critical ? flags | _bonus : flags & ~_bonus;
-        }
-        final before = gaugeMaxOf(rush);
-        rush = result >= 0 && result < _critical
-            ? 0
-            : result == _critical
-            ? math.min(rush + 1, 4)
-            : rush;
-        final after = gaugeMaxOf(rush);
-        flags |= _frameLot;
-        if (result == 0) flags |= _frameMiss;
-        final type = rush < 4 ? _lotTypeByRush[rush] : 1;
-        for (final (pr, value) in draw(type, buff, minimum)) {
-          out.add((
-            _pack(0, lots, value, rush, 0, flags) >> 8,
-            pn * pr,
-            before != after && after >= 1 ? after : 0,
-          ));
+    void pass(
+      bool? Function(int key, Float64List vec, int low, int high, _Rows out)
+      step,
+    ) {
+      final from = dist, out = spare;
+      for (var index = 0; index < from.keys.length; index++) {
+        if (step(
+              keyAt(index),
+              from.vecs[index],
+              from.lo[index],
+              from.hi[index],
+              out,
+            ) !=
+            true) {
+          out.free(from.vecs[index], from.lo[index], from.hi[index]);
         }
       }
-      return out;
-    });
-  }
+      pending = null;
+      from.reset();
+      spare = from;
+      dist = out;
+      steadyAt = -1;
+    }
 
-  void consume(
-    _Rows out,
-    int key,
-    Float64List vec,
-    int low,
-    int high,
-    int buff,
-  ) {
-    final highState = key & _high, residuePart = key - (key & _high);
-    for (final (next, chance, after) in lotRows(highState, buff)) {
-      final to = residuePart + next;
-      if (after == 0 || high <= after + 1) {
-        axpy(out, to, vec, chance, low, high);
-        continue;
+    void axpy(
+      _Rows out,
+      int key,
+      Float64List vec,
+      double scale,
+      int low,
+      int high,
+    ) {
+      if (!(scale > 0)) return;
+      final index = out.at(key), into = out.vecs[index];
+      for (var gauge = low; gauge < high; gauge++) {
+        into[gauge] += vec[gauge] * scale;
       }
-      final lots = to & 7;
-      if (low <= after) axpy(out, to, vec, chance, low, after + 1);
-      for (var gauge = math.max(low, after + 1); gauge < high; gauge++) {
-        final value = vec[gauge];
-        if (value == 0) continue;
-        final index = out.at(to - lots + math.min(lots + gauge ~/ after, 7));
-        final remainder = gauge.remainder(after);
-        out.vecs[index][remainder] += value * chance;
-        out.touch(index, remainder, remainder + 1);
-      }
+      out.touch(index, low, high);
     }
-  }
 
-  double total(Float64List vec, int low, int high) {
-    var sum = 0.0;
-    for (var gauge = low; gauge < high; gauge++) {
-      sum += vec[gauge];
-    }
-    return sum;
-  }
-
-  bool missHit(int high) =>
-      ((high << 8) & (_prevMiss | _missUsed)) == _prevMiss;
-  bool anyRow(bool Function(int high) fn) {
-    for (var index = 0; index < dist.keys.length; index++) {
-      if (fn(keyAt(index) & _high)) return true;
-    }
-    return false;
-  }
-
-  void missPass() {
-    if (!anyRow(missHit)) return;
-    for (final rule in missRules) {
-      pass((key, vec, low, high, out) {
-        final highState = key & _high;
-        if (!missHit(highState)) {
-          out.adopt(key, vec, low, high);
-          return true;
-        }
-        final gauge = i32(gaugeMaxOf(_rushOf(highState << 8)) * rule.value);
-        shift(
-          out,
-          key,
-          vec,
-          rule.chance,
-          floorToI32(f(f(gauge) / 10000)),
-          low,
-          high,
+    void shift(
+      _Rows out,
+      int key,
+      Float64List vec,
+      double scale,
+      int add,
+      int low,
+      int high,
+    ) {
+      if (!(scale > 0)) return;
+      final highState = key & _high,
+          maximum = gaugeMaxOf(_rushOf(highState << 8)),
+          lots = highState & 7;
+      for (var overflow = (low + add) ~/ maximum; ; overflow++) {
+        final a = math.max(low, overflow * maximum - add),
+            b = math.min(high, (overflow + 1) * maximum - add);
+        if (a >= high) break;
+        if (b <= a) continue;
+        final index = out.at(
+          overflow == 0 ? key : key - lots + math.min(lots + overflow, 7),
         );
-        axpy(out, key, vec, 1 - rule.chance, low, high);
-        return null;
+        final into = out.vecs[index], offset = add - overflow * maximum;
+        for (var gauge = a; gauge < b; gauge++) {
+          into[gauge + offset] += vec[gauge] * scale;
+        }
+        out.touch(index, a + offset, b + offset);
+      }
+    }
+
+    void unary(int Function(int) fn) {
+      final before = pending;
+      pending = before != null ? (state) => fn(before(state)) : fn;
+      steadyAt = -1;
+    }
+
+    final lotCache = <int, Map<int, List<(int, double, int)>>>{};
+    List<(int, double, int)> lotRows(int high, int buff) {
+      final byRow = lotCache.putIfAbsent(buff, () => {});
+      return byRow.putIfAbsent(high, () {
+        final state = high << 8, lots = _lotsOf(state) - 1;
+        var minimum = _minimumOf(state);
+        List<(double, int)> first;
+        if (_nextOf(state) == _invalid) {
+          first = draw(0, buff, minimum);
+          minimum = 0;
+        } else {
+          first = [(1.0, _nextOf(state))];
+        }
+        final out = <(int, double, int)>[];
+        for (final (pn, result) in first) {
+          var flags = _flagsOf(state), rush = _rushOf(state);
+          if (rush == 0 || result != _critical) {
+            flags = result == _critical ? flags | _bonus : flags & ~_bonus;
+          }
+          final before = gaugeMaxOf(rush);
+          rush = result >= 0 && result < _critical
+              ? 0
+              : result == _critical
+              ? math.min(rush + 1, 4)
+              : rush;
+          final after = gaugeMaxOf(rush);
+          flags |= _frameLot;
+          if (result == 0) flags |= _frameMiss;
+          final type = rush < 4 ? _lotTypeByRush[rush] : 1;
+          for (final (pr, value) in draw(type, buff, minimum)) {
+            out.add((
+              _pack(0, lots, value, rush, 0, flags) >> 8,
+              pn * pr,
+              before != after && after >= 1 ? after : 0,
+            ));
+          }
+        }
+        return out;
       });
     }
-    unary(
-      (state) => (state & (_prevMiss | _missUsed)) == _prevMiss
-          ? state | _missUsed
-          : state,
-    );
-  }
 
-  bool pendingLots(int high) {
-    final state = high << 8;
-    return _lotsOf(state) > 0 && state & _frameLot == 0;
-  }
-
-  void consumePending(int buff) {
-    if (!anyRow(pendingLots)) return;
-    pass((key, vec, low, high, out) {
-      if (!pendingLots(key & _high)) {
-        out.adopt(key, vec, low, high);
-        return true;
-      }
-      consume(out, key, vec, low, high, buff);
-      return null;
-    });
-  }
-
-  final basePointCache = <int, List<(double, int)>>{};
-  final notesByFrame = <int, List<LuckNote>>{};
-  for (final note in record.notes) {
-    (notesByFrame[note.frame] ??= []).add(note);
-  }
-  for (final range in luckRanges) {
-    final first = record.frames.indexWhere(
-      (frame) => frame.states[range] == _sStart,
-    );
-    if (first < 0) continue;
-    var last = -1;
-    for (var index = first + 1; index < record.frames.length; index++) {
-      if (record.frames[index].states[range] == _sFinish) {
-        last = index;
-        break;
+    void consume(
+      _Rows out,
+      int key,
+      Float64List vec,
+      int low,
+      int high,
+      int buff,
+    ) {
+      final highState = key & _high, residuePart = key - (key & _high);
+      for (final (next, chance, after) in lotRows(highState, buff)) {
+        final to = residuePart + next;
+        if (after == 0 || high <= after + 1) {
+          axpy(out, to, vec, chance, low, high);
+          continue;
+        }
+        final lots = to & 7;
+        if (low <= after) axpy(out, to, vec, chance, low, after + 1);
+        for (var gauge = math.max(low, after + 1); gauge < high; gauge++) {
+          final value = vec[gauge];
+          if (value == 0) continue;
+          final index = out.at(to - lots + math.min(lots + gauge ~/ after, 7));
+          final remainder = gauge.remainder(after);
+          out.vecs[index][remainder] += value * chance;
+          out.touch(index, remainder, remainder + 1);
+        }
       }
     }
-    if (last < 0) last = record.frames.length - 1;
-    for (var index = 0; index < dist.vecs.length; index++) {
-      dist.free(dist.vecs[index], dist.lo[index], dist.hi[index]);
+
+    double total(Float64List vec, int low, int high) {
+      var sum = 0.0;
+      for (var gauge = low; gauge < high; gauge++) {
+        sum += vec[gauge];
+      }
+      return sum;
     }
-    dist.reset();
-    pending = null;
-    final start = dist.at(
-      (settlement?.initial ?? 0) * _row + (_pack(0, 0, _invalid, 0, 0, 0) >> 8),
-    );
-    dist.vecs[start][0] = 1;
-    dist.touch(start, 0, 1);
-    steadyAt = -1;
-    for (var k = first; k <= last; k++) {
-      final frame = record.frames[k],
-          time = frames[k].timeMs,
-          state = frame.states[range];
-      final changed = frame.updates.contains(range),
-          finishing = frame.updates.contains(range) && state == _sFinish,
-          playing = frame.playing == range;
-      for (final action in record.actions) {
-        if (action.frame != k || action.range != range) continue;
+
+    bool missHit(int high) =>
+        ((high << 8) & (_prevMiss | _missUsed)) == _prevMiss;
+    bool anyRow(bool Function(int high) fn) {
+      for (var index = 0; index < dist.keys.length; index++) {
+        if (fn(keyAt(index) & _high)) return true;
+      }
+      return false;
+    }
+
+    void missPass() {
+      if (!anyRow(missHit)) return;
+      for (final rule in missRules) {
         pass((key, vec, low, high, out) {
-          final highState = key & _high, packed = highState << 8;
-          if (action.type == 11005) {
-            final result = action.value - 2 >= 0 && action.value - 2 <= 2
-                ? action.value - 1
-                : 0;
-            axpy(
-              out,
-              key -
-                  highState +
-                  (_pack(
-                        0,
-                        _lotsOf(packed),
-                        _nextOf(packed),
-                        _rushOf(packed),
-                        math.max(_minimumOf(packed), result),
-                        _flagsOf(packed),
-                      ) >>
-                      8),
-              vec,
-              action.chance,
-              low,
-              high,
-            );
-          } else {
-            final gauge = i32(gaugeMaxOf(_rushOf(packed)) * action.value);
-            shift(
-              out,
-              key,
-              vec,
-              action.chance,
-              floorToI32(f(f(gauge) / 10000)),
-              low,
-              high,
-            );
+          final highState = key & _high;
+          if (!missHit(highState)) {
+            out.adopt(key, vec, low, high);
+            return true;
           }
-          axpy(out, key, vec, 1 - action.chance, low, high);
+          final gauge = i32(gaugeMaxOf(_rushOf(highState << 8)) * rule.value);
+          shift(
+            out,
+            key,
+            vec,
+            rule.chance,
+            floorToI32(f(f(gauge) / 10000)),
+            low,
+            high,
+          );
+          axpy(out, key, vec, 1 - rule.chance, low, high);
           return null;
         });
       }
-      final gateOpen = changed || playing;
-      final luckNotes = (notesByFrame[k] ?? const <LuckNote>[])
-          .where((note) => note.range == range)
-          .toList();
-      final judged = frames[k].judged;
-      int skillStep(int packed) {
-        var skill = packed & _skill != 0;
-        if (playing) skill = _rushOf(packed) != 0;
-        if (changed && (state == _sComplete || state == _sFinish)) {
-          skill = false;
+      unary(
+        (state) => (state & (_prevMiss | _missUsed)) == _prevMiss
+            ? state | _missUsed
+            : state,
+      );
+    }
+
+    bool pendingLots(int high) {
+      final state = high << 8;
+      return _lotsOf(state) > 0 && state & _frameLot == 0;
+    }
+
+    void consumePending(int buff) {
+      if (!anyRow(pendingLots)) return;
+      pass((key, vec, low, high, out) {
+        if (!pendingLots(key & _high)) {
+          out.adopt(key, vec, low, high);
+          return true;
         }
-        var next = packed & ~(_skill | _skillPrev);
-        if (packed & _skill != 0) next |= _skillPrev;
-        if (skill) next |= _skill;
-        return next;
-      }
+        consume(out, key, vec, low, high, buff);
+        return null;
+      });
+    }
 
-      int end(int packed) {
-        var next = packed & ~(_prevMiss | _frameMiss | _frameLot);
-        if (packed & _frameMiss != 0) next |= _prevMiss;
-        if (changed && state == _sComplete) next &= ~_missUsed;
-        return next;
+    final basePointCache = <int, List<(double, int)>>{};
+    final notesByFrame = <(int, int), List<LuckNote>>{};
+    for (final note in record.notes) {
+      (notesByFrame[(note.frame, note.range)] ??= []).add(note);
+    }
+    for (final range in luckRanges) {
+      final first = record.frames.indexWhere(
+        (frame) => frame.states[range] == _sStart,
+      );
+      if (first < 0) continue;
+      var last = -1;
+      for (var index = first + 1; index < record.frames.length; index++) {
+        if (record.frames[index].states[range] == _sFinish) {
+          last = index;
+          break;
+        }
       }
+      if (last < 0) last = record.frames.length - 1;
+      for (var index = 0; index < dist.vecs.length; index++) {
+        dist.free(dist.vecs[index], dist.lo[index], dist.hi[index]);
+      }
+      dist.reset();
+      pending = null;
+      final start = dist.at(
+        (settlement?.initial ?? 0) * _row +
+            (_pack(0, 0, _invalid, 0, 0, 0) >> 8),
+      );
+      dist.vecs[start][0] = 1;
+      dist.touch(start, 0, 1);
+      steadyAt = -1;
+      for (var k = first; k <= last; k++) {
+        final frame = record.frames[k],
+            time = frames[k].timeMs,
+            state = frame.states[range];
+        final changed = frame.updates.contains(range),
+            finishing = frame.updates.contains(range) && state == _sFinish,
+            playing = frame.playing == range;
+        for (final action in record.actions) {
+          if (action.frame != k || action.range != range) continue;
+          pass((key, vec, low, high, out) {
+            final highState = key & _high, packed = highState << 8;
+            if (action.type == 11005) {
+              final result = action.value - 2 >= 0 && action.value - 2 <= 2
+                  ? action.value - 1
+                  : 0;
+              axpy(
+                out,
+                key -
+                    highState +
+                    (_pack(
+                          0,
+                          _lotsOf(packed),
+                          _nextOf(packed),
+                          _rushOf(packed),
+                          math.max(_minimumOf(packed), result),
+                          _flagsOf(packed),
+                        ) >>
+                        8),
+                vec,
+                action.chance,
+                low,
+                high,
+              );
+            } else {
+              final gauge = i32(gaugeMaxOf(_rushOf(packed)) * action.value);
+              shift(
+                out,
+                key,
+                vec,
+                action.chance,
+                floorToI32(f(f(gauge) / 10000)),
+                low,
+                high,
+              );
+            }
+            axpy(out, key, vec, 1 - action.chance, low, high);
+            return null;
+          });
+        }
+        final gateOpen = changed || playing;
+        final luckNotes = notesByFrame[(k, range)] ?? const <LuckNote>[];
+        final judged = frames[k].judged;
+        int skillStep(int packed) {
+          var skill = packed & _skill != 0;
+          if (playing) skill = _rushOf(packed) != 0;
+          if (changed && (state == _sComplete || state == _sFinish)) {
+            skill = false;
+          }
+          var next = packed & ~(_skill | _skillPrev);
+          if (packed & _skill != 0) next |= _skillPrev;
+          if (skill) next |= _skill;
+          return next;
+        }
 
-      if (luckNotes.isEmpty && judged.isEmpty) {
-        if (!changed) {
-          final at = state * 2 + (playing ? 1 : 0);
-          if (steadyAt == at) continue;
-          final missGate = missRules.isNotEmpty && playing;
-          var steady = true;
-          for (var index = 0; index < dist.keys.length; index++) {
-            final packed = (keyAt(index) & _high) << 8,
-                skill = ((keyAt(index) & _high) << 8) & _skill != 0;
-            if (!(packed & (_prevMiss | _frameMiss | _frameLot) == 0 &&
-                skill == (packed & _skillPrev != 0) &&
-                (!playing || skill == (_rushOf(packed) != 0)) &&
-                !(missGate &&
-                    packed & _missUsed == 0 &&
-                    packed & _prevMiss != 0) &&
-                !(state == _sPlaying && _lotsOf(packed) > 0))) {
-              steady = false;
-              break;
+        int end(int packed) {
+          var next = packed & ~(_prevMiss | _frameMiss | _frameLot);
+          if (packed & _frameMiss != 0) next |= _prevMiss;
+          if (changed && state == _sComplete) next &= ~_missUsed;
+          return next;
+        }
+
+        if (luckNotes.isEmpty && judged.isEmpty) {
+          if (!changed) {
+            final at = state * 2 + (playing ? 1 : 0);
+            if (steadyAt == at) continue;
+            final missGate = missRules.isNotEmpty && playing;
+            var steady = true;
+            for (var index = 0; index < dist.keys.length; index++) {
+              final packed = (keyAt(index) & _high) << 8,
+                  skill = ((keyAt(index) & _high) << 8) & _skill != 0;
+              if (!(packed & (_prevMiss | _frameMiss | _frameLot) == 0 &&
+                  skill == (packed & _skillPrev != 0) &&
+                  (!playing || skill == (_rushOf(packed) != 0)) &&
+                  !(missGate &&
+                      packed & _missUsed == 0 &&
+                      packed & _prevMiss != 0) &&
+                  !(state == _sPlaying && _lotsOf(packed) > 0))) {
+                steady = false;
+                break;
+              }
+            }
+            if (steady) {
+              steadyAt = at;
+              continue;
             }
           }
-          if (steady) {
-            steadyAt = at;
-            continue;
-          }
+          if (missRules.isNotEmpty && gateOpen) missPass();
+          unary(skillStep);
+          if (state == _sPlaying) consumePending(0);
+          unary(finishing ? (packed) => end(packed & ~_bonus) : end);
+          continue;
         }
         if (missRules.isNotEmpty && gateOpen) missPass();
         unary(skillStep);
-        if (state == _sPlaying) consumePending(0);
-        unary(finishing ? (packed) => end(packed & ~_bonus) : end);
-        continue;
-      }
-      if (missRules.isNotEmpty && gateOpen) missPass();
-      unary(skillStep);
-      void observe(int id, bool atFrameTime) {
-        final skillBit = atFrameTime ? _skill : _skillPrev;
-        if (settlement != null) {
-          pass((key, vec, low, high, out) {
-            final highState = key & _high, packed = highState << 8;
-            final residue =
-                ((key >> 18) +
-                        settlement.noteScore(
-                          id,
-                          packed & _bonus != 0,
-                          packed & skillBit != 0,
-                        ))
-                    .remainder(settlement.modulus);
-            out.adopt(residue * _row + highState, vec, low, high);
-            return true;
-          });
-          return;
+        void observe(int id, bool atFrameTime) {
+          final skillBit = atFrameTime ? _skill : _skillPrev;
+          if (settlement != null) {
+            pass((key, vec, low, high, out) {
+              final highState = key & _high, packed = highState << 8;
+              final residue =
+                  ((key >> 18) +
+                          settlement.noteScore(
+                            id,
+                            packed & _bonus != 0,
+                            packed & skillBit != 0,
+                          ))
+                      .remainder(settlement.modulus);
+              out.adopt(residue * _row + highState, vec, low, high);
+              return true;
+            });
+            return;
+          }
+          var rush = 0.0, skill = 0.0, both = 0.0;
+          for (var index = 0; index < dist.keys.length; index++) {
+            final packed = (keyAt(index) & _high) << 8;
+            final bonus = packed & _bonus != 0,
+                reading = packed & skillBit != 0;
+            if (!bonus && !reading) continue;
+            final probability = total(
+              dist.vecs[index],
+              dist.lo[index],
+              dist.hi[index],
+            );
+            if (bonus) rush += probability;
+            if (reading) skill += probability;
+            if (bonus && reading) both += probability;
+          }
+          curve.rush[id] = (curve.rush[id] ?? 0) + rush;
+          curve.skill[id] = (curve.skill[id] ?? 0) + skill;
+          curve.both[id] = (curve.both[id] ?? 0) + both;
         }
-        var rush = 0.0, skill = 0.0, both = 0.0;
+
+        void luckNote(LuckNote note) {
+          final key =
+              note.op * 1000 + note.judgement * 100 + jsRound(note.speed * 10);
+          final points = basePointCache.putIfAbsent(
+            key,
+            () => [
+              for (final (probability, value) in basePoints(
+                note.op,
+                note.judgement,
+              ))
+                (probability, floorToI32(f(f(note.speed + 1) * f(value)))),
+            ],
+          );
+          pass((key, vec, low, high, out) {
+            for (final (probability, add) in points) {
+              shift(out, key, vec, probability, add, low, high);
+            }
+            return null;
+          });
+          if (state <= _sEnd) {
+            pass((key, vec, low, high, out) {
+              if (key & 7 == 0) {
+                out.adopt(key, vec, low, high);
+                return true;
+              }
+              consume(out, key, vec, low, high, note.buff);
+              return null;
+            });
+          }
+        }
+
+        final times = {
+          for (final note in luckNotes) note.timeMs,
+          for (final note in judged) note.timeMs,
+        }.toList()..sort();
+        for (final at in times) {
+          if (at >= time) continue;
+          for (final note in luckNotes) {
+            if (note.timeMs == at) luckNote(note);
+          }
+          for (final note in judged) {
+            if (note.timeMs == at) observe(note.noteId, false);
+          }
+        }
+        for (final note in luckNotes) {
+          if (note.timeMs >= time) luckNote(note);
+        }
+        if (state == _sPlaying) {
+          consumePending(
+            luckNotes.where((note) => note.timeMs >= time).firstOrNull?.buff ??
+                luckNotes.lastOrNull?.buff ??
+                0,
+          );
+        }
+        if (finishing) unary((packed) => packed & ~_bonus);
+        for (final note in judged) {
+          if (note.timeMs >= time) observe(note.noteId, true);
+        }
+        unary(end);
+      }
+      if (settlement != null) {
         for (var index = 0; index < dist.keys.length; index++) {
-          final packed = (keyAt(index) & _high) << 8;
-          final bonus = packed & _bonus != 0, reading = packed & skillBit != 0;
-          if (!bonus && !reading) continue;
-          final probability = total(
+          settlement.residues[dist.keys[index] >> 18] += total(
             dist.vecs[index],
             dist.lo[index],
             dist.hi[index],
           );
-          if (bonus) rush += probability;
-          if (reading) skill += probability;
-          if (bonus && reading) both += probability;
         }
-        curve.rush[id] = (curve.rush[id] ?? 0) + rush;
-        curve.skill[id] = (curve.skill[id] ?? 0) + skill;
-        curve.both[id] = (curve.both[id] ?? 0) + both;
-      }
-
-      void luckNote(LuckNote note) {
-        final key =
-            note.op * 1000 + note.judgement * 100 + jsRound(note.speed * 10);
-        final points = basePointCache.putIfAbsent(
-          key,
-          () => [
-            for (final (probability, value) in basePoints(
-              note.op,
-              note.judgement,
-            ))
-              (probability, floorToI32(f(f(note.speed + 1) * f(value)))),
-          ],
-        );
-        pass((key, vec, low, high, out) {
-          for (final (probability, add) in points) {
-            shift(out, key, vec, probability, add, low, high);
-          }
-          return null;
-        });
-        if (state <= _sEnd) {
-          pass((key, vec, low, high, out) {
-            if (key & 7 == 0) {
-              out.adopt(key, vec, low, high);
-              return true;
-            }
-            consume(out, key, vec, low, high, note.buff);
-            return null;
-          });
-        }
-      }
-
-      final times = {
-        for (final note in luckNotes) note.timeMs,
-        for (final note in judged) note.timeMs,
-      }.toList()..sort();
-      for (final at in times) {
-        if (at >= time) continue;
-        for (final note in luckNotes) {
-          if (note.timeMs == at) luckNote(note);
-        }
-        for (final note in judged) {
-          if (note.timeMs == at) observe(note.noteId, false);
-        }
-      }
-      for (final note in luckNotes) {
-        if (note.timeMs >= time) luckNote(note);
-      }
-      if (state == _sPlaying) {
-        consumePending(
-          luckNotes.where((note) => note.timeMs >= time).firstOrNull?.buff ??
-              luckNotes.lastOrNull?.buff ??
-              0,
-        );
-      }
-      if (finishing) unary((packed) => packed & ~_bonus);
-      for (final note in judged) {
-        if (note.timeMs >= time) observe(note.noteId, true);
-      }
-      unary(end);
-    }
-    if (settlement != null) {
-      for (var index = 0; index < dist.keys.length; index++) {
-        settlement.residues[dist.keys[index] >> 18] += total(
-          dist.vecs[index],
-          dist.lo[index],
-          dist.hi[index],
-        );
       }
     }
+    completed = true;
+    return curve;
+  } finally {
+    if (completed) {
+      scratch.release();
+    } else {
+      if (identical(_scratchCache[(width, settlement != null)], scratch)) {
+        _scratchCache.remove((width, settlement != null));
+      }
+      scratch.pool.clear();
+      scratch.a.reset();
+      scratch.b.reset();
+    }
+    scratch.busy = false;
   }
-  return curve;
 }

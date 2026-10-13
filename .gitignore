@@ -57,3 +57,5 @@ build/
 *.pfx
 *.p12
 *.key
+
+/native/team_engine/target/

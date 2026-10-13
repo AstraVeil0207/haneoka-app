@@ -40,7 +40,7 @@ class ResultsView extends StatefulWidget {
 class _ResultsViewState extends State<ResultsView> {
   String _tab = 'overall';
   final _compare = <String>[];
-  EngineResponse? _shown;
+  int _shownGeneration = -1;
 
   TeamBuilderController get c => widget.controller;
 
@@ -52,9 +52,8 @@ class _ResultsViewState extends State<ResultsView> {
     final results = activityResult == c.activity ? c.results : null;
     final theme = Theme.of(context);
     final locale = c.state.text.locale;
-    if (!identical(results, _shown)) {
-      _shown = results;
-      _tab = 'overall';
+    if (_shownGeneration != c.runGeneration) {
+      _shownGeneration = c.runGeneration;
       _compare.clear();
     }
     if (results == null) {
@@ -256,7 +255,7 @@ class _ResultsViewState extends State<ResultsView> {
           for (final (index, hit) in shown.indexed) ...[
             if (index > 0) const SizedBox(height: 12),
             _HitCard(
-              key: ValueKey(hitKey(hit)),
+              key: ValueKey((c.runGeneration, hitKey(hit))),
               controller: c,
               hit: hit,
               index: index,

@@ -88,6 +88,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
       - run: |
           sudo apt-get update
           if [[ "${{ matrix.arch }}" == "x64" ]]; then sudo apt-get remove -y libunwind-14-dev; fi

@@ -104,6 +104,12 @@ class EngineTiming {
     this.computationMs = 0,
     this.wallMs = 0,
   });
+  factory EngineTiming.fromJson(Map<String, Object?> json) => EngineTiming(
+    initializationMs: (json['initializationMs'] as num?)?.toDouble() ?? 0,
+    networkMs: (json['networkMs'] as num?)?.toDouble() ?? 0,
+    computationMs: (json['computationMs'] as num?)?.toDouble() ?? 0,
+    wallMs: (json['wallMs'] as num?)?.toDouble() ?? 0,
+  );
   double initializationMs;
   double networkMs;
   double computationMs;
@@ -125,6 +131,24 @@ class EngineSnapshot {
     required this.total,
     this.stopReason,
   });
+  factory EngineSnapshot.fromJson(Map<String, Object?> json) => EngineSnapshot(
+    requestId: '${json['requestId']}',
+    contextKey: '${json['contextKey']}',
+    response: EngineResponse.fromJson(
+      (json['response'] as Map).cast<String, Object?>(),
+    ),
+    completed: ((json['completed'] as num?) ?? 0).toInt(),
+    total: ((json['total'] as num?) ?? 0).toInt(),
+    stopReason: json['stopReason'] as String?,
+  );
+  Map<String, Object?> toJson() => {
+    'requestId': requestId,
+    'contextKey': contextKey,
+    'response': response.toJson(),
+    'completed': completed,
+    'total': total,
+    'stopReason': stopReason,
+  };
   final String requestId;
   final String contextKey;
   final EngineResponse response;

@@ -21,3 +21,16 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze
+
+  rust:
+    name: Rust native and WASM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - run: cargo clippy --locked --manifest-path native/team_engine/Cargo.toml --lib -- -D warnings
+      - run: cargo build --release --locked --manifest-path native/team_engine/Cargo.toml
+      - run: cargo build --release --locked --manifest-path native/team_engine/Cargo.toml --target wasm32-unknown-unknown

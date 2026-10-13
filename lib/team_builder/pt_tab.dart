@@ -18,12 +18,40 @@ import 'pt_recommendation.dart';
 import 'results_view.dart' show Formation;
 import 'widgets.dart';
 
-class PtTab extends StatelessWidget {
+class PtTab extends StatefulWidget {
   const PtTab({super.key, required this.controller, required this.openTab});
   final TeamBuilderController controller;
 
   /// Opens `box` or `account` for an unmet input.
   final ValueChanged<String> openTab;
+
+  @override
+  State<PtTab> createState() => _PtTabState();
+}
+
+class _PtTabState extends State<PtTab> {
+  TeamBuilderController get controller => widget.controller;
+  void Function(String) get openTab => widget.openTab;
+  Object? _setupStamp;
+  List<Widget> _setupCache = const [];
+  List<Widget> _cachedSetup(BuildContext context) {
+    final stamp = (
+      c.settings,
+      c.catalog,
+      c.view,
+      pt.measure,
+      pt.showIssues,
+      pt.issues,
+      Theme.of(context),
+      c.state.text,
+      MediaQuery.textScalerOf(context),
+    );
+    if (stamp != _setupStamp) {
+      _setupStamp = stamp;
+      _setupCache = _setup(context);
+    }
+    return _setupCache;
+  }
 
   TeamBuilderController get c => controller;
   PtController get pt => controller.pt;
@@ -57,7 +85,7 @@ class PtTab extends StatelessWidget {
     final settings = [
       modes,
       const SizedBox(height: 16),
-      ..._setup(context),
+      ..._cachedSetup(context),
       if (pt.showIssues && pt.issues.isNotEmpty) ...[
         const SizedBox(height: 16),
         _issues(context),

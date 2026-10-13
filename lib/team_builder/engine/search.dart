@@ -8,6 +8,8 @@
 /// evaluated exactly.
 library;
 
+import 'worker_policy.dart';
+
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -309,6 +311,15 @@ double maxAssignment(
   Int32List? rowColumn,
 ]) {
   final n = weights.length;
+  if (n == 0) return 0;
+  if (columns < n) return -inf;
+  for (final row in weights) {
+    if (row.length < columns) return -inf;
+    for (var column = 0; column < columns; column++) {
+      if (!row[column].isFinite) return rowColumn == null ? inf : -inf;
+    }
+  }
+
   if (rowColumn == null && n <= 4 && columns <= _smallUsed.length) {
     return _smallAssignment(weights, columns);
   }
@@ -458,6 +469,7 @@ SearchOutput<D> searchTeams<D>({
   void Function(int done, int total)? progress,
   bool Function()? cancelled,
 }) {
+  computeThreadPolicy();
   final clock = Stopwatch()..start();
   double now() => clock.elapsedMicroseconds / 1000;
   k = math.max(1, k);
@@ -935,8 +947,9 @@ SearchOutput<D> searchTeams<D>({
     ) {
       if (bonus + B < need) return false;
       if ((x + P) * (y + S) < product) return false;
-      if (bonus >= need) return true;
+      if (bonus >= need || product <= 0) return true;
       final lambda = math.sqrt((y + S) / math.max(1e-9, x + P));
+      if (!lambda.isFinite || lambda <= 0) return true;
       final K = 2 * math.sqrt(product) - lambda * x - y / lambda;
       final linear = blend(t, lambda);
       var spread = 0.0;
@@ -992,6 +1005,12 @@ SearchOutput<D> searchTeams<D>({
         );
       }
       final x = power, y = base + weight;
+      if (y + S <= 0 || x + P <= 0 || !(y + S).isFinite || !(x + P).isFinite) {
+        return bound(
+          Totals(power: x + P, skill: weight + S, bonus: bonus + B),
+          from,
+        );
+      }
       var product = (x + P) * (y + S);
       if (bound(
             Totals(
@@ -1056,7 +1075,9 @@ SearchOutput<D> searchTeams<D>({
       final x = baseTotal;
       final l = math.sqrt((objective.productBase! + S) / math.max(1e-9, x + P));
       final rowColumn = Int32List(5);
-      if (maxAssignment(blend(t, l), t.columns, rowColumn) > none / 2) {
+      if (l.isFinite &&
+          l > 0 &&
+          maxAssignment(blend(t, l), t.columns, rowColumn) > none / 2) {
         final snapOf = t.columnSnap.sublist(0, t.count);
         for (var row = 0; row < 5; row++) {
           final column = rowColumn[row];

@@ -788,6 +788,7 @@ class SongResult {
     proven: json['proven'] == true,
     bound: (json['bound'] as num?)?.toDouble(),
     stats: SearchStats.fromJson(objectRow(json['stats'])),
+    floor: (json['floor'] as num?)?.toDouble(),
     excludedBelow: (json['excludedBelow'] as num?)?.toDouble(),
     exclusion: json['exclusion'] is Map
         ? RewardCutoff.fromJson(objectRow(json['exclusion']))
@@ -812,6 +813,7 @@ class SongResult {
     'bound': bound?.isFinite == true ? bound : null,
     'exclusion': exclusion?.toJson(),
     'excludedBelow': ?excludedBelow,
+    'floor': ?floor,
     'stats': stats.toJson(),
     'hits': [for (final hit in hits) hit.toJson()],
   };
@@ -828,6 +830,20 @@ class PlanSummary {
     required this.eventPoints,
     required this.perBoost,
   });
+  factory PlanSummary.fromJson(Map<String, Object?> json) => PlanSummary(
+    normal: json['normal'] is Map
+        ? EngineHit.fromJson(objectRow(json['normal']))
+        : null,
+    challenge: json['challenge'] is Map
+        ? EngineHit.fromJson(objectRow(json['challenge']))
+        : null,
+    normalLives: intOf(json['normalLives']),
+    challengeLives: intOf(json['challengeLives']),
+    challengePointsEarned: intOf(json['challengePointsEarned']),
+    leftoverChallengePoints: intOf(json['leftoverChallengePoints']),
+    eventPoints: numOf(json['eventPoints']),
+    perBoost: numOf(json['perBoost']),
+  );
   final EngineHit? normal;
   final EngineHit? challenge;
   final int normalLives;
@@ -861,6 +877,28 @@ class EngineResponse {
     this.error,
     this.timing,
   });
+  factory EngineResponse.fromJson(Map<String, Object?> json) => EngineResponse(
+    results: [
+      for (final result in json['results'] as List? ?? const [])
+        SongResult.fromJson(objectRow(result)),
+    ],
+    overall: [
+      for (final hit in json['overall'] as List? ?? const [])
+        EngineHit.fromJson(objectRow(hit)),
+    ],
+    unknownCards: [
+      for (final key in json['unknownCards'] as List? ?? const []) '$key',
+    ],
+    elapsedMs: numOf(json['elapsedMs']),
+    plan: json['plan'] is Map
+        ? PlanSummary.fromJson(objectRow(json['plan']))
+        : null,
+    stopReason: json['stopReason'] as String?,
+    error: json['error'] as String?,
+    timing: json['timing'] is Map
+        ? EngineTiming.fromJson(objectRow(json['timing']))
+        : null,
+  );
   final PlanSummary? plan;
   String? stopReason;
   String? error;
@@ -2318,6 +2356,16 @@ Future<EngineResponse> _runPlan(
 /// A fixed team across songs (team check / comparison).
 class TeamSpec {
   TeamSpec(this.members, this.snaps, this.leader);
+  factory TeamSpec.fromJson(Map<String, Object?> json) => TeamSpec(
+    [for (final key in json['members'] as List) '$key'],
+    [for (final key in json['snaps'] as List) key as String?],
+    '${json['leader']}',
+  );
+  Map<String, Object?> toJson() => {
+    'members': members,
+    'snaps': snaps,
+    'leader': leader,
+  };
   final List<String> members;
   final List<String?> snaps;
   final String leader;
@@ -2332,6 +2380,38 @@ class TeamEvaluation {
     required this.skipScore,
     required this.event,
   });
+  factory TeamEvaluation.fromJson(Map<String, Object?> json) => TeamEvaluation(
+    song: SongRef.fromJson(objectRow(json['song'])),
+    power: intOf(json['power']),
+    slotPowers: intListOf(json['slotPowers']),
+    score: HitScore.fromJson(objectRow(json['score'])),
+    skipScore: intOf(json['skipScore']),
+    event: json['event'] is Map
+        ? (
+            points: numOf(objectRow(json['event'])['points']),
+            items: numOf(objectRow(json['event'])['items']),
+            bonusPercent: numOf(objectRow(json['event'])['bonusPercent']),
+            itemBonusPercent: numOf(
+              objectRow(json['event'])['itemBonusPercent'],
+            ),
+          )
+        : null,
+  );
+  Map<String, Object?> toJson() => {
+    'song': song.toJson(),
+    'power': power,
+    'slotPowers': slotPowers,
+    'score': score.toJson(),
+    'skipScore': skipScore,
+    'event': event == null
+        ? null
+        : {
+            'points': event!.points,
+            'items': event!.items,
+            'bonusPercent': event!.bonusPercent,
+            'itemBonusPercent': event!.itemBonusPercent,
+          },
+  };
   final SongRef song;
   final int power;
   final List<int> slotPowers;
@@ -2478,6 +2558,22 @@ class SkillWindow {
     this.percent,
     this.perfectPercent,
   );
+  factory SkillWindow.fromJson(Map<String, Object?> json) => SkillWindow(
+    '${json['member']}',
+    intOf(json['event']),
+    intOf(json['startMs']),
+    intOf(json['endMs']),
+    numOf(json['percent']),
+    numOf(json['perfectPercent']),
+  );
+  Map<String, Object?> toJson() => {
+    'member': member,
+    'event': event,
+    'startMs': startMs,
+    'endMs': endMs,
+    'percent': percent,
+    'perfectPercent': perfectPercent,
+  };
   final String member;
   final int event;
   final int startMs;

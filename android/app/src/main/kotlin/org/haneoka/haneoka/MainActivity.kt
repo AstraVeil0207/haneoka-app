@@ -6,10 +6,12 @@ import io.flutter.embedding.engine.FlutterEngine
 
 class MainActivity : FlutterActivity() {
     private lateinit var saves: SaveChannel
+    private lateinit var teamEngine: TeamEngineChannel
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         saves = SaveChannel(this, flutterEngine.dartExecutor.binaryMessenger)
+        teamEngine = TeamEngineChannel(this, flutterEngine.dartExecutor.binaryMessenger)
     }
 
     @Deprecated("Activity results from the system folder picker")
@@ -19,6 +21,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         if (::saves.isInitialized) saves.dispose()
+        if (::teamEngine.isInitialized) teamEngine.dispose()
         super.onDestroy()
     }
 }

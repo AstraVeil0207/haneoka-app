@@ -8,6 +8,8 @@
 /// below, and survivors are scored by whole-live simulation. The proving pass uses safe bounds for deterministic and nominal Luck results.
 library;
 
+import 'worker_policy.dart';
+
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -265,6 +267,7 @@ GekisoSearchOutput gekisoSearch({
   void Function(int done, int total)? progress,
   bool Function()? cancelled,
 }) {
+  computeThreadPolicy();
   final clock = Stopwatch()..start();
   double now() => clock.elapsedMicroseconds / 1000;
   final deadline = timeLimitMs ?? inf;

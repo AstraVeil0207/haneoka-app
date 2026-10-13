@@ -63,6 +63,7 @@ class TeamBuilderController extends ChangeNotifier {
       : settings;
   String resultsFor = '';
   bool running = false;
+  int runGeneration = 0;
   (int, int)? progress;
   String? error;
 
@@ -310,15 +311,28 @@ class TeamBuilderController extends ChangeNotifier {
     );
   }
 
+  Object? _contextStamp;
+  String _contextValue = '';
+
   /// What the request depends on, to tell stale results.
   String _fingerprint() {
+    final stamp = (
+      settings,
+      catalog,
+      view,
+      store?.owner,
+      state.server,
+      activity,
+    );
+    if (stamp == _contextStamp) return _contextValue;
+    _contextStamp = stamp;
     final request = this.request();
-    if (request == null) return '';
-    return jsonEncode([
+    if (request == null) return _contextValue = '';
+    return _contextValue = jsonEncode([
       store?.owner,
       state.server,
       catalog?.data['identity'],
-      catalog?.data['crossServer'],
+      objectRow(catalog?.data['crossServer'])['identities'],
       request.toJson(),
     ]);
   }
@@ -343,6 +357,7 @@ class TeamBuilderController extends ChangeNotifier {
       );
     }
     final settings = searchSettings;
+    final generation = ++runGeneration;
     running = true;
     error = null;
     progress = (0, 1);
@@ -351,18 +366,33 @@ class TeamBuilderController extends ChangeNotifier {
       final response = await engine.run(
         request.copyWith(contextKey: fingerprint),
         (done, total) {
+          if (generation != runGeneration || fingerprint != _fingerprint()) {
+            return;
+          }
           progress = (done, total);
           notifyListeners();
         },
         (snapshot) {
-          if (fingerprint != _fingerprint()) return;
+          if (generation != runGeneration || fingerprint != _fingerprint()) {
+            return;
+          }
+          if (snapshot.response.stopReason == 'error') {
+            error = tb('searchFailed', 'The search failed: {reason}', {
+              'reason': snapshot.response.error ?? 'engine-error',
+            });
+          }
           results = snapshot.response;
           resultsFor = fingerprint;
           resultSettings = settings;
           notifyListeners();
         },
       );
-      if (fingerprint == _fingerprint()) {
+      if (generation == runGeneration && fingerprint == _fingerprint()) {
+        if (response.stopReason == 'error') {
+          error = tb('searchFailed', 'The search failed: {reason}', {
+            'reason': response.error ?? 'engine-error',
+          });
+        }
         results = response;
         resultsFor = fingerprint;
         resultSettings = settings;
@@ -374,9 +404,11 @@ class TeamBuilderController extends ChangeNotifier {
         'reason': '$failure',
       });
     } finally {
-      running = false;
-      progress = null;
-      notifyListeners();
+      if (generation == runGeneration) {
+        running = false;
+        progress = null;
+        notifyListeners();
+      }
     }
   }
 

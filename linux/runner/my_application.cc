@@ -1,6 +1,8 @@
 #include "my_application.h"
 
 #include <flutter_linux/flutter_linux.h>
+#include <sys/resource.h>
+#include <sched.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
 #endif
@@ -19,9 +21,49 @@ static void first_frame_cb(MyApplication* self, FlView* view) {
   gtk_widget_show(gtk_widget_get_toplevel(GTK_WIDGET(view)));
 }
 
+// Configure the helper before the VM starts, so every runtime thread inherits
+// the same priority and leaves a physical core available for drawing and input.
+static void configure_compute_process() {
+  setpriority(PRIO_PROCESS, 0, 8);
+  cpu_set_t allowed;
+  if (sched_getaffinity(0, sizeof(allowed), &allowed) != 0) return;
+  gint reserved_core = -1, reserved_package = -1;
+  cpu_set_t compute = allowed;
+  for (gint cpu = 0; cpu < CPU_SETSIZE; cpu++) {
+    if (!CPU_ISSET(cpu, &allowed)) continue;
+    g_autofree gchar* core_path = g_strdup_printf("/sys/devices/system/cpu/cpu%d/topology/core_id", cpu);
+    g_autofree gchar* package_path = g_strdup_printf("/sys/devices/system/cpu/cpu%d/topology/physical_package_id", cpu);
+    g_autofree gchar* core = nullptr;
+    g_autofree gchar* package = nullptr;
+    if (!g_file_get_contents(core_path, &core, nullptr, nullptr) ||
+        !g_file_get_contents(package_path, &package, nullptr, nullptr)) continue;
+    gint core_id = atoi(core), package_id = atoi(package);
+    if (reserved_core < 0) {
+      reserved_core = core_id;
+      reserved_package = package_id;
+    }
+    if (core_id == reserved_core && package_id == reserved_package) CPU_CLR(cpu, &compute);
+  }
+  if (CPU_COUNT(&compute) > 0) sched_setaffinity(0, sizeof(compute), &compute);
+}
+
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
+  if (self->dart_entrypoint_arguments && self->dart_entrypoint_arguments[0] &&
+      g_str_has_prefix(self->dart_entrypoint_arguments[0], "--haneoka-team-engine-process=")) {
+    configure_compute_process();
+    g_application_hold(application);
+    g_setenv("FLUTTER_LINUX_RENDERER", "software", TRUE);
+    g_autoptr(FlDartProject) project = fl_dart_project_new();
+    fl_dart_project_set_dart_entrypoint_arguments(project, self->dart_entrypoint_arguments);
+    GtkWidget* hidden = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    FlView* view = fl_view_new(project);
+    gtk_container_add(GTK_CONTAINER(hidden), GTK_WIDGET(view));
+    gtk_widget_realize(hidden);
+    gtk_widget_realize(GTK_WIDGET(view));
+    return;
+  }
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
@@ -74,7 +116,6 @@ static void my_application_activate(GApplication* application) {
   gtk_widget_realize(GTK_WIDGET(view));
 
   fl_register_plugins(FL_PLUGIN_REGISTRY(view));
-
   gtk_widget_grab_focus(GTK_WIDGET(view));
 }
 
@@ -133,7 +174,9 @@ static void my_application_class_init(MyApplicationClass* klass) {
   G_OBJECT_CLASS(klass)->dispose = my_application_dispose;
 }
 
-static void my_application_init(MyApplication* self) {}
+static void my_application_init(MyApplication* self) {
+  (void)self;
+}
 
 MyApplication* my_application_new() {
   // Set the program name to the application ID, which helps various systems
