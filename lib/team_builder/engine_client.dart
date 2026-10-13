@@ -1579,6 +1579,26 @@ void _main((SendPort, String, Map<String, String>, int?) args) {
     master,
     (song) async => RuntimeChart.fromBytes(await loadBytes(song)),
   );
+  Future<List<Doc>> nativeSources(List<SongRef> songs) async {
+    final needed = native!.chartsToLoad([for (final song in songs) song.key]);
+    final sources = <Doc>[];
+    for (final song in songs) {
+      if (!needed.contains(song.key)) {
+        bytes.remove(song.key);
+        continue;
+      }
+      final raw = await loadBytes(song);
+      final decoded = raw.length >= 2 && raw[0] == 0x1f && raw[1] == 0x8b
+          ? gzip.decode(raw)
+          : raw;
+      sources.add({
+        'song': song.toJson(),
+        'chart': jsonDecode(utf8.decode(decoded)),
+      });
+    }
+    return sources;
+  }
+
   final port = ReceivePort();
   reply.send(port.sendPort);
   port.listen((message) async {
@@ -1590,26 +1610,10 @@ void _main((SendPort, String, Map<String, String>, int?) args) {
       switch (kind) {
         case 'run':
           final r = request as EngineRequest;
-          if (native != null &&
-              (r.goal is PowerGoal ||
-                  r.goal is ScoreGoal ||
-                  r.goal is GekisoGoal)) {
-            final sources = <Doc>[];
-            for (final song in requestSongs(r).whereType<SongRef>()) {
-              if (native.hasChart(song.key)) {
-                bytes.remove(song.key);
-                continue;
-              }
-              final raw = await loadBytes(song);
-              final decoded =
-                  raw.length >= 2 && raw[0] == 0x1f && raw[1] == 0x8b
-                  ? gzip.decode(raw)
-                  : raw;
-              sources.add({
-                'song': song.toJson(),
-                'chart': jsonDecode(utf8.decode(decoded)),
-              });
-            }
+          if (native != null) {
+            final sources = await nativeSources(
+              requestSongs(r).whereType<SongRef>().toList(),
+            );
             result = EngineResponse.fromJson(
               native.run(r.toJson(), sources, (value) {
                 final song = value['song'] is Map
@@ -1663,6 +1667,18 @@ void _main((SendPort, String, Map<String, String>, int?) args) {
           );
         case 'evaluate':
           final r = request as EvaluateRequest;
+          if (native != null) {
+            final resultJson = native.call(
+              'evaluateAll',
+              r.toJson(),
+              await nativeSources(r.songs),
+            );
+            result = [
+              for (final row in resultJson['evaluations'] as List)
+                TeamEvaluation.fromJson(objectRow(row)),
+            ];
+            break;
+          }
           result = await evaluateTeam(
             master,
             charts,
@@ -1677,6 +1693,17 @@ void _main((SendPort, String, Map<String, String>, int?) args) {
             event: r.event,
           );
         case 'timeline':
+          if (native != null) {
+            final r = request as TimelineRequest;
+            result = Timeline.fromJson(
+              native.call(
+                'timeline',
+                r.toJson(),
+                await nativeSources([r.song]),
+              ),
+            );
+            break;
+          }
           result = await _timeline(master, charts, request as TimelineRequest);
         default:
           throw UnsupportedError(kind);

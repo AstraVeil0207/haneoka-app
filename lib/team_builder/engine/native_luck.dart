@@ -129,7 +129,36 @@ class NativeTeamEngine {
   final int handle;
   NativeTeamEngine.fromHandle(this.handle);
   final _charts = <String>[];
-  bool hasChart(String key) => _charts.contains(key);
+  Set<String> chartsToLoad(List<String> keys) {
+    final staged = [..._charts];
+    final needed = <String>{};
+    for (final key in keys) {
+      if (!staged.contains(key)) needed.add(key);
+      staged.remove(key);
+      staged.add(key);
+      if (staged.length > 4) staged.removeAt(0);
+    }
+    return needed;
+  }
+
+  void _syncCharts(Doc result) {
+    _charts
+      ..clear()
+      ..addAll([
+        for (final key in result['cachedCharts'] as List? ?? const []) '$key',
+      ]);
+  }
+
+  Doc call(String op, Doc request, List<Doc> charts) {
+    final result = _invoke({
+      'op': op,
+      'handle': handle,
+      'request': request,
+      'charts': charts,
+    }, _kernel!.context);
+    _syncCharts(result);
+    return result;
+  }
 
   Doc run(Doc request, List<Doc> charts, void Function(Doc) onCandidate) {
     final callback = NativeCallable<Void Function(Pointer<Uint8>)>.isolateLocal(
@@ -142,11 +171,7 @@ class NativeTeamEngine {
         'request': request,
         'charts': charts,
       }, (input) => _kernel!.stream(input, callback.nativeFunction));
-      _charts
-        ..clear()
-        ..addAll([
-          for (final key in result['cachedCharts'] as List? ?? const []) '$key',
-        ]);
+      _syncCharts(result);
       return result;
     } finally {
       callback.close();
