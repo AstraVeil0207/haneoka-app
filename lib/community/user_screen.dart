@@ -38,6 +38,7 @@ class _CommunityUserScreenState extends State<CommunityUserScreen> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     try {
       final data = await communityRequest('GET', _path);
       if (!mounted) return;

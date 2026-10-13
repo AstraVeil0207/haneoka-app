@@ -118,9 +118,14 @@ class AppUpdates extends ChangeNotifier {
               if (metadata is Map && metadata['version'] == version) {
                 buildNumber = int.tryParse('${metadata['buildNumber']}');
                 var installedBuild = int.tryParse(package.buildNumber) ?? 0;
-                // Flutter's split APKs add 1000 * ABI_VERSION to versionCode.
-                if (Platform.isAndroid && installedBuild >= 1000) {
-                  installedBuild %= 1000;
+                if (Platform.isAndroid) {
+                  // New releases share a versionCode across all APK variants.
+                  // Older split APKs used Flutter's 1000 * ABI_VERSION offset.
+                  if (installedBuild >= 10000) {
+                    installedBuild -= 10000;
+                  } else if (installedBuild >= 1000) {
+                    installedBuild %= 1000;
+                  }
                 }
                 newer = (buildNumber ?? 0) > installedBuild;
               }
@@ -133,11 +138,18 @@ class AppUpdates extends ChangeNotifier {
             !newer) {
           available = null;
         } else {
-          final arch = Platform.version.toLowerCase().contains('arm64')
-              ? 'arm64'
-              : 'x64';
+          final platform = Platform.version.toLowerCase();
+          final arch = platform.contains('arm64') ? 'arm64' : 'x64';
+          final androidAbi = platform.contains('arm64')
+              ? 'arm64-v8a'
+              : platform.contains('android_arm')
+              ? 'armeabi-v7a'
+              : 'x86_64';
           final assetNames = switch (Platform.operatingSystem) {
-            'android' => ['haneoka-android.apk'],
+            'android' => [
+              'haneoka-android-$androidAbi.apk',
+              'haneoka-android.apk',
+            ],
             'linux' => [
               'haneoka-linux-$arch.AppImage',
               'haneoka-linux-$arch.tar.gz',

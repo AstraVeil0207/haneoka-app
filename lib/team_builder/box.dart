@@ -156,6 +156,7 @@ class BoxStore extends ChangeNotifier {
   int get pending => _replica.outbox.length;
 
   Future<void> start() async {
+    if (_disposed) return;
     final prefs = await SharedPreferences.getInstance();
     var client = prefs.getString('haneoka:team-box:client');
     if (client == null || !RegExp(r'^[A-Za-z0-9_-]{6,40}$').hasMatch(client)) {
@@ -167,8 +168,11 @@ class BoxStore extends ChangeNotifier {
       await prefs.setString('haneoka:team-box:client', client);
     }
     _client = client;
+    if (_disposed) return;
     await _account.load();
+    if (_disposed) return;
     await _useOwner(_ownerOfAccount());
+    if (_disposed) return;
     _account.addListener(_accountChanged);
     _pullTimer = Timer.periodic(const Duration(seconds: 90), (_) => pull());
     await refresh();

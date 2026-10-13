@@ -127,6 +127,7 @@ class _EntityCommentsState extends State<EntityComments> {
   int _count = 0;
   String _sort = 'hot';
   bool _loading = true;
+  bool _initialLoadStarted = false;
   Object? _error;
   final _expanded = <String>{};
   final _replyLoading = <String>{};
@@ -137,7 +138,8 @@ class _EntityCommentsState extends State<EntityComments> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_loading && _comments.isEmpty && _error == null) {
+    if (!_initialLoadStarted) {
+      _initialLoadStarted = true;
       HaneokaAccount.instance.load().then((_) => _load());
     }
   }
@@ -149,6 +151,7 @@ class _EntityCommentsState extends State<EntityComments> {
   };
 
   Future<void> _load({bool append = false}) async {
+    if (!mounted) return;
     setState(() {
       _loading = true;
       _error = null;

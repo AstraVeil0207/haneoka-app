@@ -57,6 +57,7 @@ class TeamBuilderController extends ChangeNotifier {
   BuildSettings settings = BuildSettings(const {});
   Object? loadError;
   String _server = '';
+  bool _disposed = false;
   int _boxVersion = -1;
 
   EngineResponse? results;
@@ -87,6 +88,7 @@ class TeamBuilderController extends ChangeNotifier {
   ]) => state.text('tools.teamBuilder.$key', fallback, values);
 
   Future<void> load() async {
+    if (_disposed) return;
     final server = this.server;
     if (_server == server && catalog != null) return;
     _server = server;
@@ -94,7 +96,9 @@ class TeamBuilderController extends ChangeNotifier {
     notifyListeners();
     try {
       final data = await loadTeamData(server);
+      if (_disposed || _server != server) return;
       final master = await _compileMaster(data);
+      if (_disposed || _server != server) return;
       final visuals = await CatalogVisuals.of(state.apiFor(server))
           .then<CatalogVisuals?>((v) => v, onError: (Object _) => null);
       if (_server != server) return;
@@ -105,6 +109,7 @@ class TeamBuilderController extends ChangeNotifier {
       store?.dispose();
       store = BoxStore(server)..addListener(_adopt);
       await store!.start();
+      if (_disposed || _server != server) return;
       _adopt();
     } catch (error) {
       if (_server == server) {
@@ -112,7 +117,7 @@ class TeamBuilderController extends ChangeNotifier {
         _server = '';
       }
     }
-    notifyListeners();
+    if (!_disposed) notifyListeners();
   }
 
   void _adopt() {
@@ -132,6 +137,9 @@ class TeamBuilderController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
+    _server = '';
+    ++runGeneration;
     pt.dispose();
     store?.removeListener(_adopt);
     store?.dispose();
@@ -418,7 +426,9 @@ class TeamBuilderController extends ChangeNotifier {
   }
 
   /// Repaints after a change made outside the controller's own methods.
-  void changed() => notifyListeners();
+  void changed() {
+    if (!_disposed) notifyListeners();
+  }
 
   /// Saves a formation to Teams; the leader comes first.
   void saveTeam(

@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../core/app_state.dart';
@@ -31,8 +32,13 @@ class _PageNavigationObserver extends NavigatorObserver {
   _PageNavigationObserver(this.onChange);
   final ValueChanged<String> onChange;
   final _routes = <Route<dynamic>>[];
+  Route<dynamic>? _visibleRoute;
+  Route<dynamic>? get current => _routes.lastOrNull;
   void _changed() {
-    VoicePlayback.stopAll();
+    if (_visibleRoute != current) {
+      _visibleRoute = current;
+      VoicePlayback.stopAll();
+    }
     final route = _routes.reversed
         .map((route) => route.settings.name)
         .whereType<String>()
@@ -82,6 +88,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late var _observer = _PageNavigationObserver(_routeChanged);
   bool _nestedCanPop = false;
   bool _drawerCollapsed = false;
+  final _routeHistory = <String>[];
+  Route<dynamic>? _rootRoute;
+  bool _handlingBack = false;
   (String, String)? _dataKey;
   void _routeChanged(String value) {
     if (mounted && _route != value) setState(() => _route = value);
@@ -161,27 +170,65 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.scheduleFrame();
   }
 
-  void _navigate(String route) {
+  void _navigate(String route, {bool remember = true}) {
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _navigate(route, remember: remember);
+      });
+      return;
+    }
     if (route == '/catalog/stories') route = '/catalog/stories/band';
     _scaffold.currentState?.closeDrawer();
     if (route == _route) return;
+    if (remember) {
+      _routeHistory.add(_route);
+      if (_routeHistory.length > 16) _routeHistory.removeAt(0);
+    }
     final destination = route;
-    _pages.currentState?.push(
-      MaterialPageRoute<void>(
-        settings: RouteSettings(name: destination),
-        builder: (_) =>
-            screenFor(destination, navigate: _navigate) ??
-            PendingScreen(label: destination),
-      ),
+    final page = MaterialPageRoute<void>(
+      settings: RouteSettings(name: destination),
+      builder: (_) =>
+          screenFor(destination, navigate: _navigate) ??
+          PendingScreen(label: destination),
     );
+    _rootRoute = page;
+    _pages.currentState?.pushAndRemoveUntil(page, (_) => false);
   }
 
   Future<void> _back() async {
-    if (_scaffold.currentState?.isDrawerOpen ?? false) {
-      _scaffold.currentState?.closeDrawer();
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_back());
+      });
       return;
     }
-    await _pages.currentState?.maybePop();
+    if (_handlingBack) return;
+    _handlingBack = true;
+    try {
+      if (_scaffold.currentState?.isDrawerOpen ?? false) {
+        _scaffold.currentState?.closeDrawer();
+        return;
+      }
+      // During a replacement animation Navigator briefly retains the outgoing
+      // route. It is not a detail level and must not be popped as one.
+      final atRoot =
+          _observer.current == _rootRoute &&
+          _rootRoute?.popDisposition != RoutePopDisposition.doNotPop;
+      final popped = atRoot
+          ? false
+          : await _pages.currentState?.maybePop() ?? false;
+      if (!popped && mounted) {
+        if (_routeHistory.isNotEmpty) {
+          _navigate(_routeHistory.removeLast(), remember: false);
+        } else if (_route != '/') {
+          _navigate('/', remember: false);
+        }
+      }
+    } finally {
+      _handlingBack = false;
+    }
   }
 
   @override
@@ -238,16 +285,20 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       child: Navigator(
         key: _pages,
         observers: [_observer],
-        onGenerateRoute: (_) => MaterialPageRoute<void>(
-          settings: RouteSettings(name: destinationRoute),
-          builder: (_) =>
-              screenFor(destinationRoute, navigate: _navigate) ??
-              PendingScreen(label: destinationRoute),
-        ),
+        onGenerateRoute: (_) {
+          final route = MaterialPageRoute<void>(
+            settings: RouteSettings(name: destinationRoute),
+            builder: (_) =>
+                screenFor(destinationRoute, navigate: _navigate) ??
+                PendingScreen(label: destinationRoute),
+          );
+          _rootRoute = route;
+          return route;
+        },
       ),
     );
     return PopScope<void>(
-      canPop: !_nestedCanPop,
+      canPop: !_nestedCanPop && _routeHistory.isEmpty && _route == '/',
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) unawaited(_back());
       },
@@ -267,6 +318,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                 : () => setState(() => _drawerCollapsed = true),
           );
           final body = ShellScope(
+            back: () => unawaited(_back()),
+            canGoBack: _routeHistory.isNotEmpty || _route != '/',
             compact: compact,
             openNavigation: () => _scaffold.currentState?.openDrawer(),
             navigate: _navigate,

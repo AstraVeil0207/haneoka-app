@@ -12,6 +12,8 @@ class ShellScope extends InheritedWidget {
     required this.openNavigation,
     required this.compact,
     required this.navigate,
+    required this.back,
+    required this.canGoBack,
     required super.child,
   });
   final VoidCallback openNavigation;
@@ -19,10 +21,13 @@ class ShellScope extends InheritedWidget {
 
   /// Opens a website route in the shell (`/catalog/songs`, `/calendar`).
   final ValueChanged<String> navigate;
+  final VoidCallback back;
+  final bool canGoBack;
   static ShellScope? of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<ShellScope>();
   @override
-  bool updateShouldNotify(ShellScope old) => old.compact != compact;
+  bool updateShouldNotify(ShellScope old) =>
+      old.compact != compact || old.canGoBack != canGoBack;
 }
 
 /// One control in the title bar. It draws as an icon button while it fits and
@@ -247,9 +252,10 @@ class _ShellPageState extends State<ShellPage> {
   Widget _bar(BuildContext context, bool compact) {
     final shell = ShellScope.of(context);
     final theme = Theme.of(context);
-    final canPop = _detail(context);
+    final detail = _detail(context);
+    final canPop = detail || shell?.canGoBack == true;
     final leading = canPop
-        ? const BackButton()
+        ? BackButton(onPressed: shell?.back)
         : compact && shell != null
         ? IconButton(
             tooltip: MaterialLocalizations.of(context).openAppDrawerTooltip,

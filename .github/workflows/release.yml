@@ -41,6 +41,9 @@ jobs:
           version=$(sed -n 's/^version: \([^+]*\).*/\1/p' pubspec.yaml)
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; fi
           echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+          # Start above the legacy split-APK ABI offsets. Every APK variant
+          # uses the same monotonically increasing code so either can update it.
+          echo "ANDROID_BUILD_NUMBER=$((10000 + ${{ github.run_number }}))" >> "$GITHUB_ENV"
       - name: Release key
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -60,9 +63,9 @@ jobs:
             echo "keyAlias=$KEY_ALIAS"
             echo "keyPassword=$KEY_PASSWORD"
           } > android/key.properties
-      - run: flutter build apk --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ github.run_number }}" --split-per-abi --dart-define=cronetHttpNoPlay=true
-      - run: flutter build apk --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ github.run_number }}" --dart-define=cronetHttpNoPlay=true
-      - run: flutter build appbundle --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ github.run_number }}" --dart-define=cronetHttpNoPlay=true
+      - run: flutter build apk --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ env.ANDROID_BUILD_NUMBER }}" --android-project-arg=force-version-code-ignoring-abi=true --split-per-abi --dart-define=cronetHttpNoPlay=true
+      - run: flutter build apk --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ env.ANDROID_BUILD_NUMBER }}" --android-project-arg=force-version-code-ignoring-abi=true --dart-define=cronetHttpNoPlay=true
+      - run: flutter build appbundle --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ env.ANDROID_BUILD_NUMBER }}" --android-project-arg=force-version-code-ignoring-abi=true --dart-define=cronetHttpNoPlay=true
       - name: Collect
         run: |
           mkdir dist

@@ -51,6 +51,7 @@ class _PostScreenState extends State<PostScreen> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     try {
       final data = await communityRequest(
         'GET',
