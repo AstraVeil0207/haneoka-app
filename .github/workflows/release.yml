@@ -310,7 +310,19 @@ jobs:
           brew install ldid
           mkdir -p dist build/ios-packages/standard/Payload build/ios-packages/trollstore/Payload
           ditto build/ios/iphoneos/Runner.app build/ios-packages/standard/Payload/Runner.app
-          ditto build/ios/iphoneos/Runner.app build/ios-packages/trollstore/Payload/Runner.app
+          # AltSign/ldid requires a coherent signature layout in Flutter's
+          # embedded frameworks. Ad-hoc signatures are replaced by the user's
+          # sideloading tool; they require no distribution certificate.
+          app=build/ios-packages/standard/Payload/Runner.app
+          while IFS= read -r -d '' binary; do
+            codesign --force --sign - --timestamp=none "$binary"
+          done < <(find "$app" -type f -name '*.dylib' -print0)
+          while IFS= read -r -d '' bundle; do
+            codesign --force --sign - --timestamp=none "$bundle"
+          done < <(find "$app" -depth -type d \( -name '*.framework' -o -name '*.appex' \) -print0)
+          codesign --force --sign - --timestamp=none "$app"
+          codesign --verify --deep --strict "$app"
+          ditto "$app" build/ios-packages/trollstore/Payload/Runner.app
           (cd build/ios-packages/standard && zip -qry "$GITHUB_WORKSPACE/dist/haneoka-ios-unsigned.ipa" Payload)
           ldid -Spackaging/ios-trollstore.entitlements build/ios-packages/trollstore/Payload/Runner.app/Runner
           (cd build/ios-packages/trollstore && zip -qry "$GITHUB_WORKSPACE/dist/haneoka-ios-trollstore.tipa" Payload)
