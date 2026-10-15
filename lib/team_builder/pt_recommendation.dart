@@ -19,7 +19,7 @@ import 'engine/execution.dart';
 import 'engine/num.dart';
 import 'engine/objectives.dart' show CpExchange, RouteKind;
 
-const ptVersion = 'reward-deadline-v3';
+const ptVersion = 'reward-mean-score-v4';
 
 class PtCycle {
   PtCycle(this.songs, this.consumption);
@@ -210,17 +210,6 @@ PtJob createPtJob(
   );
 }
 
-int _compareHit(EngineHit a, EngineHit b) {
-  final key = b.key.compareTo(a.key);
-  if (key != 0) return key;
-  if (a.song!.songId != b.song!.songId) return a.song!.songId - b.song!.songId;
-  if (a.song!.difficulty != b.song!.difficulty) {
-    return a.song!.difficulty - b.song!.difficulty;
-  }
-  return canonical([a.members, a.snaps])
-      .compareTo(canonical([b.members, b.snaps]));
-}
-
 /// The best hit of each song, best first.
 List<EngineHit> ptSongRanking(
   PtJob job,
@@ -237,12 +226,12 @@ List<EngineHit> ptSongRanking(
         continue;
       }
       final previous = songs[hit.song!.songId];
-      if (previous == null || _compareHit(hit, previous) < 0) {
+      if (previous == null || compareHits(hit, previous) < 0) {
         songs[hit.song!.songId] = hit;
       }
     }
   }
-  return stableSorted(songs.values, _compareHit);
+  return stableSorted(songs.values, compareHits);
 }
 
 EngineHit? ptChallengeBest(PtJob job, String measure) {
@@ -265,12 +254,8 @@ RewardCutoff? ptTaskCutoff(PtJob job, PtTask task) {
   final ranking = ptSongRanking(job, task.measure),
       count = job.scope == 'top-one' ? 1 : 5;
   if (ranking.length < count) return null;
-  final last = ranking[count - 1];
-  final later =
-      task.song.songId > last.song!.songId ||
-      (task.song.songId == last.song!.songId &&
-          task.song.difficulty >= last.song!.difficulty);
-  return RewardCutoff(last.key, later ? 'gt' : 'gte', job.fingerprint);
+  // Equal rewards remain eligible: their mean score can still improve the rank.
+  return RewardCutoff(ranking[count - 1].key, 'gte', job.fingerprint);
 }
 
 bool ptAllComplete(PtJob job) =>

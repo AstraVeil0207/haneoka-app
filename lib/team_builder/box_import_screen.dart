@@ -504,7 +504,7 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
     final preview = _preview!, confirmation = _confirmation!;
     final choice = confirmation.map(map.key);
     final blocked = preview.mapBlocked(map);
-    final review = reviewMap(map, choice, confirmation.policy);
+    final review = reviewMap(map, choice);
     final current = switch (choice.value) {
       KeepChoice() => 'keep',
       ValueChoice(:final value) => '$value',
@@ -555,10 +555,7 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
               DropdownMenuEntry(
                 value: 'auto',
                 label: review.defaultValue == null
-                    ? map.exists &&
-                              confirmation.policy != ExistingPolicy.overwrite
-                          ? _t('unknown', 'Unknown')
-                          : _t('chooseValue', 'Choose a value')
+                    ? _t('chooseValue', 'Choose a value')
                     : '${review.defaultValue}',
               ),
               if (map.exists)

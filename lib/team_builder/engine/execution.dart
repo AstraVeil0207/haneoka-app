@@ -19,7 +19,7 @@ class RewardCutoff {
     this.key,
     this.comparison,
     this.contextKey, [
-    this.ranking = 'reward-song-difficulty-v1',
+    this.ranking = 'reward-mean-score-v2',
   ]);
   factory RewardCutoff.fromJson(Map<String, Object?> json) => RewardCutoff(
     (json['key'] as num).toDouble(),

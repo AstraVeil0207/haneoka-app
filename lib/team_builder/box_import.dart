@@ -1102,15 +1102,11 @@ class BoxConfirmation {
   CardChoice card(String key) => cards[key] ??= CardChoice();
   MapChoice map(String key) => maps[key] ??= MapChoice();
 
-  /// `setBoxExistingValues`: a new default drops value choices on entries
-  /// already in the box.
+  /// Existing-card defaults leave individual account-bonus choices intact.
   void setPolicy(BoxPreview preview, ExistingPolicy value) {
     policy = value;
     for (final card in preview.cards) {
       if (card.owned != null) cards[card.key]?.fields.clear();
-    }
-    for (final map in preview.maps) {
-      if (map.exists) maps[map.key]?.value = null;
     }
   }
 
@@ -1217,21 +1213,8 @@ List<ReviewField> reviewCard(
   ];
 }
 
-ReviewMap reviewMap(
-  BoxMapProposal proposal,
-  MapChoice choice,
-  ExistingPolicy policy,
-) {
-  final keep =
-      proposal.exists &&
-      (policy == ExistingPolicy.keep ||
-          (policy == ExistingPolicy.updates &&
-              proposal.values.length == 1 &&
-              proposal.existing != null &&
-              proposal.values.first <= proposal.existing!));
-  final defaultValue = keep
-      ? proposal.existing
-      : proposal.values.length == 1
+ReviewMap reviewMap(BoxMapProposal proposal, MapChoice choice) {
+  final defaultValue = proposal.values.length == 1
       ? proposal.values.first
       : null;
   final value = switch (choice.value) {
@@ -1241,14 +1224,13 @@ ReviewMap reviewMap(
   };
   final requiresChoice = switch (choice.value) {
     KeepChoice() => !proposal.exists,
-    null when keep => false,
     _ => value == null || !proposal.values.contains(value),
   };
   return ReviewMap(
     value: value,
     defaultValue: defaultValue,
     requiresChoice: requiresChoice,
-    keep: keep,
+    keep: choice.value is KeepChoice,
   );
 }
 
@@ -1272,8 +1254,7 @@ bool canConfirmReview(BoxPreview preview, BoxConfirmation confirmation) {
     final choice = confirmation.map(map.key);
     if (!choice.include) continue;
     included++;
-    if (preview.mapBlocked(map) ||
-        reviewMap(map, choice, confirmation.policy).requiresChoice) {
+    if (preview.mapBlocked(map) || reviewMap(map, choice).requiresChoice) {
       return false;
     }
   }
@@ -1367,8 +1348,6 @@ List<(String, Object?)> applyBoxImport(
       case KeepChoice():
         if (!map.exists) throw const BoxImportError('box_unconfirmed_value');
         continue;
-      case null when map.exists && policy == ExistingPolicy.keep:
-        continue;
       default:
     }
     final selected = switch (choice.value) {
@@ -1377,13 +1356,6 @@ List<(String, Object?)> applyBoxImport(
     };
     if (selected == null || !map.values.contains(selected)) {
       throw const BoxImportError('box_conflict_required');
-    }
-    if (choice.value == null &&
-        map.exists &&
-        policy == ExistingPolicy.updates &&
-        map.existing != null &&
-        selected <= map.existing!) {
-      continue;
     }
     out.add(('$prefix.${map.id}', selected));
   }

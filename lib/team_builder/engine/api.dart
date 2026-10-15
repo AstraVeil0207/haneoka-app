@@ -1157,14 +1157,86 @@ HitScore scoreSummary(
   );
 }
 
+/// Keep the best mean for each member set when a tie pass reaches its budget.
+List<SearchHit<D>> _scoreTiedHits<D>(
+  List<SearchHit<D>> original,
+  List<SearchHit<D>> reranked,
+  double target,
+  int k,
+  double Function(D detail) mean,
+) => _mergeRewardCandidates(
+  [
+    for (final hit in original)
+      if (hit.key == target) hit,
+  ],
+  reranked,
+  target,
+  k,
+  mean,
+);
+
+List<SearchHit<D>> _mergeRewardCandidates<D>(
+  List<SearchHit<D>> original,
+  List<SearchHit<D>> reranked,
+  double target,
+  int k,
+  double Function(D detail) mean,
+) {
+  final hits = [
+    ...original,
+    for (final hit in reranked)
+      if (hit.key >= 0)
+        SearchHit(
+          hit.team,
+          hit.power,
+          hit.slotPowers,
+          hit.totals,
+          target,
+          hit.detail,
+        ),
+  ];
+  hits.sort((a, b) {
+    final reward = b.key.compareTo(a.key);
+    if (reward != 0) return reward;
+    final score = mean(b.detail).compareTo(mean(a.detail));
+    return score != 0
+        ? score
+        : jsonEncode([a.team.members, a.team.snaps])
+              .compareTo(jsonEncode([b.team.members, b.team.snaps]));
+  });
+  final seen = <String>{};
+  return [
+    for (final hit in hits)
+      if (seen.add(([...hit.team.members]..sort()).join(',')))
+        SearchHit(
+          hit.team,
+          hit.power,
+          hit.slotPowers,
+          hit.totals,
+          hit.key,
+          hit.detail,
+        ),
+  ].take(k).toList();
+}
+
+double _rewardMean(Object? detail) => switch (detail) {
+  EventDetail() => detail.live?.scores.mean ?? 0,
+  GekisoRewardDetail() => detail.scores.mean,
+  _ => 0,
+};
+
 /// Higher key first; equal keys prefer the higher mean score.
 int compareHits(EngineHit a, EngineHit b) {
   var d = b.key.compareTo(a.key);
   if (d != 0) return d;
+  d = (b.score?.mean ?? 0).compareTo(a.score?.mean ?? 0);
+  if (d != 0) return d;
   d = (a.song?.songId ?? 0).compareTo(b.song?.songId ?? 0);
   if (d != 0) return d;
   d = (a.song?.difficulty ?? 0).compareTo(b.song?.difficulty ?? 0);
-  return d != 0 ? d : (b.score?.mean ?? 0).compareTo(a.score?.mean ?? 0);
+  if (d != 0) return d;
+  return jsonEncode([a.members, a.snaps])
+      .compareTo(jsonEncode([b.members, b.snaps]));
 }
 
 List<EngineHit> _overall(List<SongResult> results, int k) => stableSorted([
@@ -1373,6 +1445,8 @@ Future<EngineResponse> runEngine(
     List<Team>? seeds,
     double? limitMs,
     double? floor,
+    double? rewardKey,
+    List<SearchHit<D>>? rewardBaseline,
     bool unsharded = false,
   }) => searchTeams(
     // Gekisou rewards also read support-skill effects the dominance
@@ -1387,7 +1461,19 @@ Future<EngineResponse> runEngine(
     constraints: constraints,
     k: k ?? request.k,
     seeds: [...savedSeeds, ...?seeds],
-    onCandidate: targets.contains(objective) ? publish : null,
+    onCandidate: rewardKey != null
+        ? (hits) => publish(
+            _mergeRewardCandidates(
+              rewardBaseline ?? [],
+              hits,
+              rewardKey,
+              request.k,
+              _rewardMean,
+            ),
+          )
+        : targets.contains(objective)
+        ? publish
+        : null,
     floor: floor,
     floorExclusive:
         targets.contains(objective) &&
@@ -1562,12 +1648,17 @@ Future<EngineResponse> runEngine(
         );
         final points = goal.measure != 'items';
         final exchange = goal.cpExchange;
+        final gekisoChart = await charts.gekiso(
+          song,
+          Accuracy(just: gekiso.just),
+          1,
+        );
         final adapter = gekisoRewardObjective(
           master: master,
           members: members,
           snaps: snaps,
           chart: chart,
-          gekiso: await charts.gekiso(song, Accuracy(just: gekiso.just), 1),
+          gekiso: gekisoChart,
           route: route,
           points: points,
           luckSamples: gekiso.luckSamples,
@@ -1594,14 +1685,52 @@ Future<EngineResponse> runEngine(
           seeds: seeds,
           floor: rewardFloor.isFinite ? rewardFloor : null,
         );
+        var hits = out.hits;
+        var proven = out.proven;
+        var bound = out.bound;
+        if (hits.isNotEmpty) {
+          final target = hits.first.key;
+          final tie = run(
+            gekisoRewardObjective(
+              master: master,
+              members: members,
+              snaps: snaps,
+              chart: chart,
+              gekiso: gekisoChart,
+              route: route,
+              points: points,
+              luckSamples: gekiso.luckSamples,
+              exchange: exchange,
+              rewardTarget: target,
+            ),
+            music,
+            const [],
+            seeds: [for (final hit in hits) hit.team],
+            floor: 0,
+            rewardKey: target,
+            rewardBaseline: hits,
+          );
+          out.stats.add(tie.stats);
+          if (!tie.proven) {
+            proven = false;
+            bound = math.max(bound ?? -inf, target);
+          }
+          hits = _scoreTiedHits(
+            hits,
+            tie.hits,
+            target,
+            request.k,
+            (detail) => detail.scores.mean,
+          );
+        }
         results.add(
           SongResult(
             song: song,
-            proven: out.proven,
-            bound: out.bound,
+            proven: proven,
+            bound: bound,
             stats: out.stats,
             hits: [
-              for (final hit in out.hits)
+              for (final hit in hits)
                 () {
                   final d = hit.detail.settlement;
                   return toHit(song, hit)
@@ -1658,7 +1787,7 @@ Future<EngineResponse> runEngine(
             points,
             master.params.skipRank,
             ptOnly: goal.ptOnly,
-            primaryOnly: goal.primaryOnly,
+            primaryOnly: true,
             exchange: goal.cpExchange,
           );
           final probe = run(
@@ -1693,7 +1822,7 @@ Future<EngineResponse> runEngine(
           points,
           master.params.skipRank,
           ptOnly: goal.ptOnly,
-          primaryOnly: goal.primaryOnly,
+          primaryOnly: true,
           exchange: goal.cpExchange,
         );
         final earlySeeds = <Team>[];
@@ -1740,7 +1869,7 @@ Future<EngineResponse> runEngine(
           master.params.skipRank,
           scoreCap: scoreCap,
           ptOnly: goal.ptOnly,
-          primaryOnly: goal.primaryOnly,
+          primaryOnly: true,
           exchange: goal.cpExchange,
         );
         var adapter = objective;
@@ -1831,7 +1960,7 @@ Future<EngineResponse> runEngine(
         var hits = out.hits;
         var proven = out.proven;
         var bound = out.bound;
-        if (hits.isNotEmpty && measured && !goal.primaryOnly) {
+        if (hits.isNotEmpty && measured) {
           final ordered = <SearchHit<EventDetail>>[];
           final keys = {for (final hit in hits) hit.key}.toList()
             ..sort((a, b) => b.compareTo(a));
@@ -1850,25 +1979,23 @@ Future<EngineResponse> runEngine(
               k: request.k - ordered.length,
               seeds: group,
               floor: 0,
+              rewardKey: key,
+              rewardBaseline: [...hits, ...ordered],
             );
             if (!tie.proven) {
               proven = false;
               bound = math.max(bound ?? -inf, key);
             }
             out.stats.add(tie.stats);
-            for (final hit in tie.hits) {
-              if (hit.key < 0) continue;
-              ordered.add(
-                SearchHit(
-                  hit.team,
-                  hit.power,
-                  hit.slotPowers,
-                  hit.totals,
-                  key,
-                  objective.exact(hit.team, hit.power, hit.slotPowers).detail,
-                ),
-              );
-            }
+            ordered.addAll(
+              _scoreTiedHits(
+                hits,
+                tie.hits,
+                key,
+                request.k - ordered.length,
+                (detail) => detail.live?.scores.mean ?? 0,
+              ),
+            );
           }
           hits = ordered.take(request.k).toList();
         }
@@ -2232,6 +2359,7 @@ Future<EngineResponse> _runPlan(
       master.params.skipRank,
       challengePointWeight: weight,
       scoreCap: scoreCap,
+      primaryOnly: true,
     );
     EngineHit planHit(SearchHit<EventDetail> hit) {
       final detail = hit.detail;
@@ -2263,7 +2391,9 @@ Future<EngineResponse> _runPlan(
     }
 
     void candidate(List<SearchHit<EventDetail>> hits) {
-      if (now() - lastSnapshot < 100 || onSnapshot == null) return;
+      if (hits.isEmpty || now() - lastSnapshot < 100 || onSnapshot == null) {
+        return;
+      }
       lastSnapshot = now();
       final results = [
         ...challenge.results,
@@ -2300,13 +2430,65 @@ Future<EngineResponse> _runPlan(
       timeLimitMs: math.min(songBudget, remaining(budgetEnd)),
       cancelled: cancelled,
     );
+    final ordered = <SearchHit<EventDetail>>[];
+    var proven = out.proven;
+    var bound = out.bound;
+    final keys = {for (final hit in out.hits) hit.key}.toList()
+      ..sort((a, b) => b.compareTo(a));
+    for (final key in keys) {
+      if (ordered.length >= request.k) break;
+      final tie = searchTeams(
+        master: master,
+        player: player,
+        members: box.members,
+        snaps: box.snaps,
+        music: music,
+        objective: eventScoreTieObjective(context, objective, key, [
+          for (final hit in ordered) hit.team,
+        ]),
+        constraints: constraints,
+        k: request.k - ordered.length,
+        seeds: [
+          for (final hit in out.hits)
+            if (hit.key == key) hit.team,
+        ],
+        floor: 0,
+        onCandidate: (hits) => candidate(
+          _mergeRewardCandidates(
+            [...out.hits, ...ordered],
+            hits,
+            key,
+            request.k,
+            (detail) => detail.live?.scores.mean ?? 0,
+          ),
+        ),
+        timeLimitMs: math
+            .min(songBudget - out.stats.elapsedMs, remaining(budgetEnd))
+            .clamp(0, inf),
+        cancelled: cancelled,
+      );
+      out.stats.add(tie.stats);
+      if (!tie.proven) {
+        proven = false;
+        bound = math.max(bound ?? -inf, key);
+      }
+      ordered.addAll(
+        _scoreTiedHits(
+          out.hits,
+          tie.hits,
+          key,
+          request.k - ordered.length,
+          (detail) => detail.live?.scores.mean ?? 0,
+        ),
+      );
+    }
     normalResults.add(
       SongResult(
         song: song,
-        proven: out.proven,
-        bound: out.bound,
+        proven: proven,
+        bound: bound,
         stats: out.stats,
-        hits: out.hits.map(planHit).toList(),
+        hits: ordered.map(planHit).toList(),
       ),
     );
   }

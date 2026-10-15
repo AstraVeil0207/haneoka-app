@@ -512,6 +512,7 @@ ObjectiveAdapter<GekisoRewardDetail> gekisoRewardObjective({
   required bool points,
   required int luckSamples,
   CpExchange? exchange,
+  double? rewardTarget,
 }) {
   final bonusType = points ? 0 : 1;
   int memberBonus(int i) =>
@@ -650,15 +651,20 @@ ObjectiveAdapter<GekisoRewardDetail> gekisoRewardObjective({
           : null,
     );
     if (settlement == null) return null;
+    final meanScore = scores.fold(0.0, (a, b) => a + b) / orders.length;
     return Exact(
-      settlement.mean,
+      rewardTarget == null
+          ? settlement.mean
+          : settlement.mean == rewardTarget
+          ? meanScore
+          : -1,
       GekisoRewardDetail(
         settlement: settlement,
         bonus: bonus,
         scores: OrderScores(
           power,
           scores,
-          scores.fold(0.0, (a, b) => a + b) / orders.length,
+          meanScore,
           min,
           max,
           minOrder,
@@ -675,15 +681,41 @@ ObjectiveAdapter<GekisoRewardDetail> gekisoRewardObjective({
     skill: (_, _) => (0, 0),
     memberBonus: memberBonus,
     snapBonus: snapBonus,
+    preserveSnapOptions: rewardTarget != null,
     // No empirical score bound or capped shortlist participates in pruning.
-    bound: (totals) => ceiling(totals.power, totals.bonus),
-    leafBound: (team, totals) =>
-        ceiling(totals.power, totals.bonus, teamBound(team)),
-    interval: (team, totals) => (
-      ranks.map((rank) => value(totals.bonus, rank)).reduce(math.min),
-      ceiling(totals.power, totals.bonus, teamBound(team)),
+    bound: (totals) => rewardTarget == null
+        ? ceiling(totals.power, totals.bonus)
+        : ceiling(totals.power, totals.bonus) < rewardTarget
+        ? -1
+        : scoreCeiling(totals.power.toInt()),
+    leafBound: (team, totals) {
+      final bound = teamBound(team);
+      final reward = ceiling(totals.power, totals.bonus, bound);
+      return rewardTarget == null
+          ? reward
+          : reward < rewardTarget
+          ? -1
+          : bound(totals.power.toInt());
+    },
+    interval: (team, totals) {
+      final bound = teamBound(team);
+      final low = ranks
+          .map((rank) => value(totals.bonus, rank))
+          .reduce(math.min);
+      final high = ceiling(totals.power, totals.bonus, bound);
+      return rewardTarget == null
+          ? (low, high)
+          : low > rewardTarget || high < rewardTarget
+          ? (-1, -1)
+          : (-1, bound(totals.power.toInt()));
+    },
+    // The equality pass compares scores; progressive settlement still compares
+    // rewards and keeps every outcome that can reach the target reward.
+    evaluate: (team, power, _, cutoff) => evaluate(
+      team,
+      power,
+      rewardTarget == null ? cutoff : (key: rewardTarget, pruneEqual: false),
     ),
-    evaluate: (team, power, _, cutoff) => evaluate(team, power, cutoff),
     exact: (team, power, _) =>
         evaluate(team, power) ??
         (throw StateError('gekiso-reward-unexpected-cutoff')),
