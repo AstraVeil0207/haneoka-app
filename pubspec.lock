@@ -1285,8 +1285,8 @@ packages:
     dependency: "direct main"
     description:
       path: dart
-      ref: "37e938ab095ab28406ddb33177ef0a50724cb91e"
-      resolved-ref: "37e938ab095ab28406ddb33177ef0a50724cb91e"
+      ref: "5cec3bd8792d924620b2fd7a64d0490f1ceefa5a"
+      resolved-ref: "5cec3bd8792d924620b2fd7a64d0490f1ceefa5a"
       url: "https://github.com/haneoka-gakuen/vega-plugin-haneoka.git"
     source: git
     version: "0.1.0"

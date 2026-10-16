@@ -12,6 +12,7 @@
 struct _MyApplication {
   GtkApplication parent_instance;
   char** dart_entrypoint_arguments;
+  GtkWidget* window;
 };
 
 G_DEFINE_TYPE(MyApplication, my_application, GTK_TYPE_APPLICATION)
@@ -47,6 +48,25 @@ static void configure_compute_process() {
   if (CPU_COUNT(&compute) > 0) sched_setaffinity(0, sizeof(compute), &compute);
 }
 
+// GTK retains toplevels until destruction, including after System.exitApplication
+// detaches them from GtkApplication. Track only this runner's own window.
+static void track_window(MyApplication* self, GtkWidget* window) {
+  self->window = window;
+  g_object_add_weak_pointer(G_OBJECT(window),
+                           reinterpret_cast<gpointer*>(&self->window));
+}
+
+static void destroy_owned_window(MyApplication* self) {
+  if (self->window != nullptr) {
+    GtkWidget* window = self->window;
+    g_object_remove_weak_pointer(G_OBJECT(window),
+                                reinterpret_cast<gpointer*>(&self->window));
+    self->window = nullptr;
+    // Destroy FlView and shut down its engine before process-wide GL teardown.
+    gtk_widget_destroy(window);
+  }
+}
+
 // Implements GApplication::activate.
 static void my_application_activate(GApplication* application) {
   MyApplication* self = MY_APPLICATION(application);
@@ -58,6 +78,7 @@ static void my_application_activate(GApplication* application) {
     g_autoptr(FlDartProject) project = fl_dart_project_new();
     fl_dart_project_set_dart_entrypoint_arguments(project, self->dart_entrypoint_arguments);
     GtkWidget* hidden = gtk_window_new(GTK_WINDOW_TOPLEVEL);
+    track_window(self, hidden);
     FlView* view = fl_view_new(project);
     gtk_container_add(GTK_CONTAINER(hidden), GTK_WIDGET(view));
     gtk_widget_realize(hidden);
@@ -66,6 +87,7 @@ static void my_application_activate(GApplication* application) {
   }
   GtkWindow* window =
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
+  track_window(self, GTK_WIDGET(window));
 
   // Use a header bar when running in GNOME as this is the common style used
   // by applications and is the setup most users will be using (e.g. Ubuntu
@@ -152,9 +174,8 @@ static void my_application_startup(GApplication* application) {
 
 // Implements GApplication::shutdown.
 static void my_application_shutdown(GApplication* application) {
-  // MyApplication* self = MY_APPLICATION(object);
-
-  // Perform any actions required at application shutdown.
+  MyApplication* self = MY_APPLICATION(application);
+  destroy_owned_window(self);
 
   G_APPLICATION_CLASS(my_application_parent_class)->shutdown(application);
 }
@@ -162,6 +183,7 @@ static void my_application_shutdown(GApplication* application) {
 // Implements GObject::dispose.
 static void my_application_dispose(GObject* object) {
   MyApplication* self = MY_APPLICATION(object);
+  destroy_owned_window(self);
   g_clear_pointer(&self->dart_entrypoint_arguments, g_strfreev);
   G_OBJECT_CLASS(my_application_parent_class)->dispose(object);
 }

@@ -105,10 +105,15 @@ final class NativeStoryChatText {
       component: request.component,
       localizeComponent: request.localizeComponent,
     );
+    final margin = request.component['m_margin'] as Map;
+    final innerHeight =
+        rect.height -
+        (margin['y'] as num).toDouble() -
+        (margin['w'] as num).toDouble();
     final offset = switch (textData.vertical) {
       256 => 0.0,
-      512 => (rect.height - glyphs.height) / 2,
-      1024 => rect.height - glyphs.height,
+      512 => (innerHeight - glyphs.height) / 2,
+      1024 => innerHeight - glyphs.height,
       final value => throw UnsupportedError('story_chat_text_vertical:$value'),
     };
     while (start < visible.length) {
