@@ -14,6 +14,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST
+  cassiopeia_runtime
   flutter_soloud
   jni
   vega_plugin_cubism

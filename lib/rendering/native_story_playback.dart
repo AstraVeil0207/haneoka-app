@@ -217,6 +217,8 @@ final class NativeStoryPlayback extends ChangeNotifier {
   List<StoryMediaObservation> _observations = const [];
   List<StoryMediaObservation> get mediaObservations => _observations;
   bool get voiceShortcut => _seekReplaying;
+  StoryPresentationTiming get visualTiming =>
+      StoryPresentationTiming(shortcut: _seekReplaying);
   int _transportIntent = 0;
   bool _wantsPlayback = false;
   final _acks = <StoryAcknowledgement>[];

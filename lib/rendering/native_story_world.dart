@@ -33,6 +33,7 @@ final class NativeStoryWorld {
     required this.epoch,
     required this.current,
     required this.currentStamp,
+    required this.timing,
     required this.fetch,
   });
   final HaneokaApi api;
@@ -40,6 +41,9 @@ final class NativeStoryWorld {
   final int epoch;
   final bool Function() current;
   final NativeStoryUpdateStamp Function() currentStamp;
+  final StoryPresentationTiming Function() timing;
+  int _durationUs(StoryDecodedCommand command, {int? overrideUs}) =>
+      timing().durationUs(overrideUs ?? command.durationUs);
   final Future<Uint8List> Function(Uri) fetch;
   Future<MotionSyncController>? _voiceEngine;
   final _voiceChannels = <_WorldActor, Future<MotionSyncController>>{};
@@ -1020,6 +1024,7 @@ final class NativeStoryWorld {
       actors: _actors,
       visible: visible,
       atUs: _sceneUs.round(),
+      timing: timing(),
       apply: _applyCharacterPresentation,
     );
   }
@@ -1342,7 +1347,7 @@ final class NativeStoryWorld {
       final intent = ++actor.lookIntent;
       actor.lookStopPending = !enabled;
       void write() {
-        if (command.durationUs <= 0) {
+        if (_durationUs(command) <= 0) {
           actor.model.forceEyeLook(actor.lookX, actor.lookY);
         } else {
           actor.model.setEyeLook(actor.lookX, actor.lookY);
@@ -1493,7 +1498,7 @@ final class NativeStoryWorld {
     required int executionId,
   }) {
     _cameraTweens.remove(key)?.finish();
-    final duration = durationUs ?? command.durationUs;
+    final duration = _durationUs(command, overrideUs: durationUs);
     if (duration <= 0) {
       write(to);
       return Future.value();
@@ -1826,7 +1831,7 @@ final class NativeStoryWorld {
     }
     update(currentStamp());
     void write() {
-      if (command.durationUs <= 0) {
+      if (_durationUs(command) <= 0) {
         actor.model.forceAngleOffsets(actor.headAngle, actor.bodyAngle);
       } else {
         actor.model.setAngleOffsets(actor.headAngle, actor.bodyAngle);
@@ -1884,13 +1889,14 @@ final class NativeStoryWorld {
       if (movement.sortDepth) _sortCharacterDepths(resetPriority: true);
     }
 
-    if (command.durationUs <= 0) {
+    final durationUs = _durationUs(command);
+    if (durationUs <= 0) {
       write(1);
       return;
     }
     final tween = _WorldTween(
       _sceneUs.round(),
-      command.durationUs,
+      durationUs,
       0,
       1,
       StoryCharacterMovement.ease,

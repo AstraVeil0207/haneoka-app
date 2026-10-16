@@ -395,6 +395,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
         epoch: epoch,
         current: () => mounted && epoch == _epoch,
         currentStamp: () => _player!.actualUpdateStamp,
+        timing: () => _player!.visualTiming,
         fetch: _fetch,
       );
       _ui = sourceUi;
