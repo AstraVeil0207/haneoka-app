@@ -3924,7 +3924,9 @@ final class _StoryUiTween {
     this.executionId,
     this.commandIndex,
     this.waitForCompletion,
-  }) : durationUs = (seconds * 1000000).round();
+  }) : durationUs = (seconds * 1000000).round() {
+    unawaited(done.future.catchError((Object _) {}));
+  }
   final int atUs, durationUs;
   final double from, to;
   final bool Function() current;
