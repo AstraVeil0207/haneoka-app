@@ -18,6 +18,7 @@ import '../core/app_state.dart';
 import '../core/net.dart';
 import '../shell/page.dart';
 import '../ui/playback_pane.dart';
+import '../ui/player_orientation.dart';
 import '../ui/player_settings_sheet.dart';
 import 'native_chart_document.dart';
 import 'native_chart_playback.dart';
@@ -806,7 +807,12 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => PlayerOrientationScope(
+    landscape: _watchMode,
+    child: _buildPlayer(context),
+  );
+
+  Widget _buildPlayer(BuildContext context) {
     final state = AppScope.of(context), t = state.text, player = _player;
     final title =
         _document?.title ??

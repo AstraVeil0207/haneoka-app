@@ -26,6 +26,7 @@ import '../core/voice.dart';
 import '../shell/page.dart';
 import '../ui/adv_text.dart';
 import '../ui/playback_pane.dart';
+import '../ui/player_orientation.dart';
 import '../ui/story_player_menu.dart';
 import '../ui/player_preparation_indicator.dart';
 import '../ui/player_settings_sheet.dart';
@@ -3418,7 +3419,10 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      PlayerOrientationScope(landscape: true, child: _buildPlayer(context));
+
+  Widget _buildPlayer(BuildContext context) {
     final state = AppScope.of(context), t = state.text;
     final player = _player;
     final title = t.text(_document?.chapter.document['title'] ?? widget.title);

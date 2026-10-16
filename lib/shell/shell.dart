@@ -12,6 +12,7 @@ import '../core/voice.dart';
 import '../core/storage.dart';
 import '../ui/app_updates.dart';
 import '../ui/player.dart';
+import '../ui/player_orientation.dart';
 import '../ui/theme.dart';
 import '../ui/import_screen.dart';
 import 'links.dart';
@@ -100,6 +101,9 @@ class _PageNavigationObserver extends NavigatorObserver {
   }
 
   void _changed() {
+    playerOrientation.setActiveRoute(
+      _routes.whereType<PageRoute<dynamic>>().lastOrNull,
+    );
     if (_visibleRoute != current) {
       _visibleRoute = current;
       VoicePlayback.stopAll();
@@ -376,7 +380,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final width = constraints.maxWidth;
-          final compact = width < ShellMetrics.compact;
+          final compact =
+              width < ShellMetrics.compact ||
+              ((Platform.isAndroid || Platform.isIOS) &&
+                  constraints.maxHeight < ShellMetrics.compact);
           AppScope.of(context).audio.compact = compact;
           final destination = _destination;
           Widget drawer(bool modal) => _Drawer(
