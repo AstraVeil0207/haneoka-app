@@ -9,7 +9,7 @@ import '../catalog/cross_server.dart' show serverMark;
 import '../catalog/visuals.dart';
 import '../core/app_state.dart';
 import '../core/i18n.dart';
-import '../ui/tile.dart';
+import '../ui/card_artwork.dart';
 import 'box.dart';
 import 'engine/api.dart';
 import 'engine/box.dart';
@@ -138,26 +138,6 @@ class TeamCatalog {
   int attribute(bool members, int id) => intOf(card(members, id)['attribute']);
   String cardImage(bool members, int id) => asset(card(members, id)['image']);
 
-  /// The card's catalogue tile marks: attribute and rarity emblems.
-  List<TileMark> cardMarks(bool members, int id) {
-    final attribute = attributeIcon(this.attribute(members, id));
-    final rarity = rarityIcon(this.rarity(members, id));
-    return [
-      if (attribute != null)
-        TileMark.image(
-          MarkAt.start,
-          attribute,
-          label: attributeName(this.attribute(members, id)),
-        ),
-      if (rarity != null)
-        TileMark.image(
-          MarkAt.end,
-          rarity,
-          label: cardRarityName(this.rarity(members, id)),
-        ),
-    ];
-  }
-
   String cardSubtitle(bool members, int id) => [
     for (final character in characterIds(members, id)) characterName(character),
   ].where((name) => name.isNotEmpty).join(' · ');
@@ -190,35 +170,110 @@ class TeamCatalog {
     );
   }
 
-  /// Short growth caption: Lv · training · awakening · skill.
-  String growthCaption(bool members, Object? owned, UnknownPolicy policy) {
-    String unknown(int? value) =>
-        value == null ? (policy == UnknownPolicy.max ? '★' : '?') : '$value';
-    String tb(String key, String fallback) =>
+  CardGrowthDisplay _growth(
+    bool members,
+    int id, {
+    int? level,
+    int? training,
+    int? rank,
+    int? liveSkill,
+    int? gekisoSkill,
+    String unknown = '?',
+  }) {
+    String label(String key, String fallback) =>
         t('tools.teamBuilder.$key', fallback);
+    CardSkillMark? skill(String kind, int? value, String name) {
+      final source = objectRow(objectRow(data['skills'])[kind]);
+      final skillId = member(
+        id,
+      )[kind == 'live' ? 'liveSkillId' : 'gekisoSkillId'];
+      final icon = asset(objectRow(source['$skillId'])['icon']);
+      return icon.isEmpty ? null : CardSkillMark(icon, value, name);
+    }
+
+    return CardGrowthDisplay(
+      level: level,
+      rank: rank,
+      rankIcon: visuals?.mark(
+        members ? 'CardRank${rank ?? 0}.png' : 'snaplimit_${rank ?? 0}.png',
+      ),
+      rankLabel: label('awakening', 'Awakening'),
+      training: training,
+      trainingIcon: visuals?.mark('SpecialTraining.png'),
+      trainingLabel: label('training', 'Training'),
+      liveSkill: members
+          ? skill('live', liveSkill, label('liveSkill', 'Live skill'))
+          : null,
+      gekisoSkill: members
+          ? skill('gekiso', gekisoSkill, label('gekisoSkill', 'GEKISO skill'))
+          : null,
+      unknown: unknown,
+    );
+  }
+
+  CardGrowthDisplay? ownedGrowth(
+    bool members,
+    Object? owned,
+    UnknownPolicy policy,
+  ) {
+    final unknown = policy == UnknownPolicy.max ? '★' : '?';
     if (owned is OwnedMember) {
       final cap = memberLimits(owned.cardId, owned.awake)?.levelCap;
-      final level = owned.level == null || cap == null
-          ? owned.level
-          : (owned.level! < cap ? owned.level : cap);
-      return [
-        'Lv${unknown(level)}',
-        '${tb('trainingShort', 'T')}${unknown(owned.awake)}',
-        '${tb('rankShort', 'A')}${unknown(owned.rank)}',
-        '${tb('skillShort', 'SL')}${unknown(owned.skill)}',
-      ].join(' ');
+      return _growth(
+        true,
+        owned.cardId,
+        level: owned.level == null || cap == null
+            ? owned.level
+            : owned.level!.clamp(1, cap),
+        training: owned.awake,
+        rank: owned.rank,
+        liveSkill: owned.skill,
+        gekisoSkill: owned.gekisoSkill,
+        unknown: unknown,
+      );
     }
     if (owned is OwnedSnap) {
       final cap = snapLimits(owned.cardId, owned.rank)?.levelCap;
-      final level = owned.level == null || cap == null
-          ? owned.level
-          : (owned.level! < cap ? owned.level : cap);
-      return [
-        'Lv${unknown(level)}',
-        '${tb('rankShort', 'A')}${unknown(owned.rank)}',
-      ].join(' ');
+      return _growth(
+        false,
+        owned.cardId,
+        level: owned.level == null || cap == null
+            ? owned.level
+            : owned.level!.clamp(1, cap),
+        rank: owned.rank,
+        unknown: unknown,
+      );
     }
-    return '';
+    return null;
+  }
+
+  CardGrowthDisplay? resolvedGrowth(Object input, UnknownPolicy policy) {
+    if (input is MemberInput) {
+      final card = master.members[input.cardId];
+      if (card == null) return null;
+      final growth = memberGrowth(master, card, input, policy);
+      return _growth(
+        true,
+        input.cardId,
+        level: growth.level,
+        training: growth.awake,
+        rank: growth.rank,
+        liveSkill: growth.liveSkillLevel,
+        gekisoSkill: growth.gekisoSkillLevel,
+      );
+    }
+    if (input is SnapInput) {
+      final card = master.snaps[input.cardId];
+      if (card == null) return null;
+      final growth = snapGrowth(master, card, input, policy);
+      return _growth(
+        false,
+        input.cardId,
+        level: growth.level,
+        rank: growth.rank,
+      );
+    }
+    return null;
   }
 
   Doc song(int id) => _row('songs', id);
@@ -302,4 +357,12 @@ class TeamCatalog {
     for (final row in master.challengeMusics)
       if (eventId == null || row.eventId == eventId) row,
   ];
+
+  List<int> normalEventSongIds(int? eventId) {
+    final eventSong = master.events[eventId]?.musicId;
+    return [
+      for (final key in objectRow(data['songs']).keys)
+        if (int.tryParse(key) case final id? when id != eventSong) id,
+    ];
+  }
 }

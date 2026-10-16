@@ -5,6 +5,7 @@ import 'package:material_symbols_icons/symbols.dart';
 import '../core/app_state.dart';
 import '../shell/page.dart';
 import '../ui/app_image.dart';
+import '../ui/card_artwork.dart';
 import '../ui/detail.dart';
 import '../ui/theme.dart';
 import '../ui/tile.dart';
@@ -277,7 +278,27 @@ class PlayerProfileView extends StatelessWidget {
                     height: 160,
                     child: art.image == null
                         ? null
-                        : AppImage(candidates: [art.image!], fit: BoxFit.cover),
+                        : CardArtwork(
+                            kind: GameCardKind.member,
+                            image: art.image!,
+                            attribute: art.attribute,
+                            rarity: art.rarityMark,
+                            growth: cards.growth(
+                              art,
+                              t,
+                              support: false,
+                              level: favoriteLevel,
+                              training: (favorite['awakeCount'] as num?)
+                                  ?.toInt(),
+                              rank: (favorite['cardRank'] as num?)?.toInt(),
+                              showSkills: true,
+                              liveSkillLevel:
+                                  (favorite['liveSkillLevel'] as num?)?.toInt(),
+                              gekisoSkillLevel:
+                                  (favorite['performanceSkillLevel'] as num?)
+                                      ?.toInt(),
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -288,33 +309,6 @@ class PlayerProfileView extends StatelessWidget {
                       Text(
                         t.text(art.name),
                         style: theme.textTheme.titleMedium,
-                      ),
-                      const SizedBox(height: 12),
-                      SpecList(
-                        facts: [
-                          if (favoriteLevel != null)
-                            Fact(t.label('level', 'Level'), '$favoriteLevel'),
-                          if (favorite['awakeCount'] != null)
-                            Fact(
-                              t('catalog.cards.fields.awakening', ''),
-                              '${favorite['awakeCount']}',
-                            ),
-                          if (favorite['cardRank'] != null)
-                            Fact(
-                              t('catalog.cards.fields.training', ''),
-                              '${favorite['cardRank']}',
-                            ),
-                          if (favorite['liveSkillLevel'] != null)
-                            Fact(
-                              t.label('liveSkill', 'Live skill'),
-                              '${favorite['liveSkillLevel']}',
-                            ),
-                          if (favorite['performanceSkillLevel'] != null)
-                            Fact(
-                              t.label('gekisouSkill', 'Gekisou skill'),
-                              '${favorite['performanceSkillLevel']}',
-                            ),
-                        ],
                       ),
                     ],
                   ),

@@ -1037,7 +1037,26 @@
       "missionCount": "{count} missions",
       "missionNoEnd": "No end date",
       "missionDailyReset": "Resets daily",
-      "missionRewardTotal": "Total rewards"
+      "missionRewardTotal": "Total rewards",
+      "permanent": "Permanent missions",
+      "releaseDay": "Day {day}",
+      "categoryOther": "Other missions",
+      "categoryDaily": "Daily",
+      "categoryPeriod": "Limited Time",
+      "categoryEvent": "Event",
+      "categoryNormal": "Normal",
+      "categoryBeginner": "Beginner",
+      "categoryComeback": "Comeback",
+      "categoryCharacter": "Character",
+      "categoryInvitation": "Friend Invite",
+      "categorySecret": "Hidden missions",
+      "categoryEventDaily": "Event Daily",
+      "categoryCircle": "Group",
+      "categoryCircleDaily": "Group Daily",
+      "categoryEventCircle": "Group Event",
+      "categoryEventCircleDaily": "Group Event Daily",
+      "categoryUnlockMusic": "Song Unlock",
+      "categoryUnlockHome": "Home Unlock"
     },
     "resources": {
       "types": {
@@ -1145,7 +1164,9 @@
       "resources": "Story resources",
       "preparing": "Preparing playback",
       "sceneIndex": "Scene index",
-      "preparationTasks": "preparation tasks"
+      "preparationTasks": "preparation tasks",
+      "live2dUnavailable": "Live2D playback is unavailable on this device.",
+      "loadFailed": "Story playback could not be loaded."
     },
     "reading": {
       "speakers": "Speakers",
@@ -1307,7 +1328,9 @@
       "gekisouLuck": "Gekisou · LUCK",
       "gekisouTop": "Gekisou · top rank",
       "gacha": "Recruitment",
-      "title": "Voice"
+      "title": "Voice",
+      "playGroup": "Play dialogue",
+      "birthdayOf": "{0}’s birthday"
     },
     "chartPlayer": {
       "play": "Play",
@@ -2266,7 +2289,8 @@
       "continueOptimal": "Continue verifying optimality",
       "noCandidate": "No recommendation yet",
       "cpCycle": "Long-term CP conversion",
-      "fullRanking": "Full reward ranking"
+      "fullRanking": "Full reward ranking",
+      "syncSignIn": "Sign in to sync"
     },
     "calendar": {
       "title": "Calendar",

@@ -124,7 +124,7 @@ class _PtTabState extends State<PtTab> {
   }
 
   List<Widget> _setup(BuildContext context) {
-    final s = c.settings;
+    final s = c.searchSettings;
     final catalog = c.catalog!;
     final master = catalog.master;
     final request = pt.request();
@@ -277,7 +277,12 @@ class _PtTabState extends State<PtTab> {
                 Symbols.library_music_rounded,
                 s.songs.length,
                 () async {
-                  final picked = await pickSongs(context, catalog, s.songs);
+                  final picked = await pickSongs(
+                    context,
+                    catalog,
+                    s.songs,
+                    allowed: catalog.normalEventSongIds(s.eventId),
+                  );
                   if (picked != null) {
                     c.updateSettings({
                       'songs': [for (final song in picked) song.toJson()],

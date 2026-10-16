@@ -302,7 +302,11 @@ class _Html extends StatelessWidget {
           'background-color': hex(scheme.tertiaryContainer),
           'color': hex(scheme.onTertiaryContainer),
         },
-        'a' => {'color': hex(scheme.primary)},
+        'a' => {
+          'color': hex(scheme.primary),
+          'text-decoration': 'underline',
+          'text-decoration-thickness': '1.5px',
+        },
         _ => null,
       },
       customWidgetBuilder: (element) {

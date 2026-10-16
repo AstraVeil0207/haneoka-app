@@ -1,71 +1,41 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:intl/intl.dart';
 import 'package:material_new_shapes/material_new_shapes.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../core/app_state.dart';
 import '../core/i18n.dart';
-import '../core/relative_time.dart';
 import '../shell/links.dart';
 import '../shell/page.dart';
 import '../ui/app_image.dart';
 import '../ui/shapes.dart';
 import '../ui/theme.dart';
 import '../ui/tile.dart';
+import 'cross_server.dart';
+import 'mission_groups.dart';
 
-const _categoryIcons = {
-  'limited': Symbols.schedule_rounded,
-  'daily': Symbols.event_repeat_rounded,
-  'unlocks': Symbols.lock_open_rounded,
-  'story': Symbols.menu_book_rounded,
-  'performance': Symbols.mic_rounded,
-  'growth': Symbols.trending_up_rounded,
-  'hidden': Symbols.visibility_off_rounded,
-};
-const _categoryLabels = {
-  'daily': ('missionDaily', 'Daily missions'),
-  'unlocks': ('missionUnlocks', 'Song & scene unlocks'),
-  'story': ('missionStory', 'Story reading'),
-  'performance': ('missionPerformance', 'Performance challenges'),
-  'growth': ('missionGrowth', 'Growth'),
-  'hidden': ('missionHidden', 'Hidden missions'),
-};
-const _categoryOrder = [
-  'limited',
-  'daily',
-  'unlocks',
-  'story',
-  'performance',
-  'growth',
-  'hidden',
+const _categoryLabels = [
+  ('categoryOther', 'Other missions'),
+  ('categoryDaily', 'Daily missions'),
+  ('categoryPeriod', 'Limited missions'),
+  ('categoryEvent', 'Event missions'),
+  ('categoryNormal', 'Normal missions'),
+  ('categoryBeginner', 'Beginner missions'),
+  ('categoryComeback', 'Comeback missions'),
+  ('categoryCharacter', 'Character missions'),
+  ('categoryInvitation', 'Friend invitation missions'),
+  ('categorySecret', 'Hidden missions'),
+  ('categoryEventDaily', 'Daily event missions'),
+  ('categoryCircle', 'Circle missions'),
+  ('categoryCircleDaily', 'Daily circle missions'),
+  ('categoryEventCircle', 'Circle event missions'),
+  ('categoryEventCircleDaily', 'Daily circle event missions'),
+  ('categoryUnlockMusic', 'Song unlock missions'),
+  ('categoryUnlockHome', 'Scene unlock missions'),
 ];
-
-num _time(Object? value) => RelativeTime.timestamp(value) ?? 0;
-
-/// Standing missions carry their MasterMission category in the id
-/// (`regular-mission-<category><sequence>`): 10 daily, 15/16 song and scene
-/// unlocks, 90/95 hidden; the rest split by mission type.
-String _category(Map mission) {
-  if (mission['kind'] == 'limited-mission') return 'limited';
-  final digits = RegExp(r'(\d+)$').firstMatch('${mission['id']}')?[1] ?? '';
-  final prefix = int.tryParse(digits.length >= 2 ? digits.substring(0, 2) : '');
-  if (prefix == 10) return 'daily';
-  if (prefix == 15 || prefix == 16) return 'unlocks';
-  if (prefix == 90 || prefix == 95) return 'hidden';
-  final type = mission['missionType'];
-  if (type == 104 || type == 105) return 'story';
-  if (type == 122 || type == 124) return 'performance';
-  return 'growth';
-}
-
-class _Group {
-  _Group(this.key, this.title, this.category, this.rows);
-  final String key;
-  final String title;
-  final String category;
-  List<Map> rows;
-  num start = 0, end = 0;
-}
 
 String _label(
   SiteText t,
@@ -74,14 +44,40 @@ String _label(
   Map<String, Object?> values = const {},
 ]) => t.system(key, fallback, values);
 
+String _categoryLabel(SiteText t, int category) {
+  final entry =
+      _categoryLabels[category >= 0 && category < _categoryLabels.length
+          ? category
+          : 0];
+  return t('catalog.missions.${entry.$1}', entry.$2);
+}
+
+IconData _categoryIcon(int category) => switch (category) {
+  1 || 10 || 12 || 14 => Symbols.event_repeat_rounded,
+  2 || 3 || 13 => Symbols.schedule_rounded,
+  15 || 16 => Symbols.lock_open_rounded,
+  9 => Symbols.visibility_off_rounded,
+  8 || 11 => Symbols.group_rounded,
+  _ => Symbols.fact_check_rounded,
+};
+
+String _title(SiteText t, MissionGroup group) {
+  final name = t.text(group.rows.first['group']);
+  return name.isEmpty ? _categoryLabel(t, group.category) : name;
+}
+
 String _date(SiteText t, num value) => value <= 0
     ? ''
-    : DateFormat.yMMMd(t.locale)
-          .format(DateTime.fromMillisecondsSinceEpoch(value.toInt()));
+    : '${DateFormat.yMMMd(t.locale).add_jm().format(DateTime.fromMillisecondsSinceEpoch(value.toInt(), isUtc: true).add(const Duration(hours: 9)))} JST';
 
-String _window(SiteText t, _Group group) {
-  if (group.category == 'daily') {
+String _window(SiteText t, MissionGroup group) {
+  if (const [1, 12].contains(group.category) && !group.timed) {
     return _label(t, 'missionDailyReset', 'Resets daily');
+  }
+  if (group.releaseDay > 0) {
+    return t('catalog.missions.releaseDay', 'Day {day}', {
+      'day': group.releaseDay,
+    });
   }
   if (group.start == 0 && group.end == 0) {
     return _label(t, 'missionNoEnd', 'No end date');
@@ -89,6 +85,44 @@ String _window(SiteText t, _Group group) {
   return group.start > 0 && group.end > 0
       ? '${_date(t, group.start)} – ${_date(t, group.end)}'
       : _date(t, group.start > 0 ? group.start : group.end);
+}
+
+String _statusLabel(SiteText t, String status) =>
+    _label(t, status, switch (status) {
+      'ended' => 'Ended',
+      'upcoming' => 'Upcoming',
+      _ => 'Ongoing',
+    });
+
+Widget _goal(SiteText t, Map mission) {
+  final goal = num.tryParse('${mission['goal']}') ?? 0;
+  if (goal <= 0) return const SizedBox.shrink();
+  return Text.rich(
+    TextSpan(
+      children: [
+        TextSpan(text: '${t('catalog.missions.goal', 'Goal')} · '),
+        TextSpan(
+          text: NumberFormat.decimalPattern(t.locale).format(goal),
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ],
+    ),
+  );
+}
+
+Widget _serverMark(SiteText t, Map mission) {
+  final mark = serverMark(mission, (key, fallback) => t(key, fallback));
+  return mark == null
+      ? const SizedBox.shrink()
+      : Tooltip(
+          message: mark.$2,
+          child: SvgPicture.asset(
+            mark.$1,
+            width: 18,
+            height: 18,
+            semanticsLabel: mark.$2,
+          ),
+        );
 }
 
 /// One reward as the website's `.mission-chip`: emblem, name, quantity.
@@ -156,9 +190,7 @@ class RewardChip extends StatelessWidget {
   }
 }
 
-/// Missions (`mission-workspace`): an overview of mission groups — limited
-/// windows first, then the standing categories — each opening its list of
-/// one-line conditions with rewards.
+/// Formal mission categories and effective windows, shared with the web view.
 class MissionsScreen extends StatefulWidget {
   const MissionsScreen({super.key});
   @override
@@ -166,97 +198,131 @@ class MissionsScreen extends StatefulWidget {
 }
 
 class _MissionsScreenState extends State<MissionsScreen> {
-  Future<Object?>? _data;
+  Future<List<Map<String, Object?>>>? _data;
+  String? _server;
   String _mode = 'all';
+  late final Timer _clock;
+
+  @override
+  void initState() {
+    super.initState();
+    _clock = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _clock.cancel();
+    super.dispose();
+  }
+
+  Future<List<Map<String, Object?>>> _load(AppState state) =>
+      crossServerCollection(
+        resource: 'missions',
+        selected: state.server,
+        apis: state.catalogApis,
+        rowsPath: 'entries',
+      );
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _data ??= AppScope.of(context).api.catalog('missions');
-  }
-
-  /// Limited groups first (newest window first), then the standing
-  /// categories in game order.
-  List<_Group> _groups(SiteText t, List<Map> missions) {
-    final buckets = <String, _Group>{};
-    for (final mission in missions) {
-      final limited = mission['kind'] == 'limited-mission';
-      if (_mode == 'limited' && !limited || _mode == 'regular' && limited) {
-        continue;
-      }
-      final category = _category(mission);
-      final title = category == 'limited'
-          ? (t.text(mission['group']).isEmpty
-                ? _label(t, 'limitedMission', 'Limited mission')
-                : t.text(mission['group']))
-          : _label(
-              t,
-              _categoryLabels[category]!.$1,
-              _categoryLabels[category]!.$2,
-            );
-      final key = category == 'limited'
-          ? 'limited-${t.textIn(mission['group'], 'ja').isEmpty ? title : t.textIn(mission['group'], 'ja')}'
-          : category;
-      (buckets[key] ??= _Group(key, title, category, [])).rows.add(mission);
+    final state = AppScope.of(context);
+    if (_data == null || _server != state.server) {
+      _server = state.server;
+      _data = _load(state);
     }
-    for (final group in buckets.values) {
-      if (group.category != 'limited') continue;
-      group.start = group.rows
-          .map((row) => _time(row['startAt']))
-          .fold(0, (a, b) => a > b ? a : b);
-      group.end = group.rows
-          .map((row) => _time(row['endAt']))
-          .fold(0, (a, b) => a > b ? a : b);
-      final indexed = [for (final (i, row) in group.rows.indexed) (i, row)]
-        ..sort((a, b) {
-          final order = _time(b.$2['startAt'])
-              .compareTo(_time(a.$2['startAt']));
-          return order != 0 ? order : a.$1 - b.$1;
-        });
-      group.rows = [for (final (_, row) in indexed) row];
-    }
-    final ordered =
-        [for (final (i, group) in buckets.values.indexed) (i, group)]
-          ..sort((a, b) {
-            final category = _categoryOrder
-                .indexOf(a.$2.category)
-                .compareTo(_categoryOrder.indexOf(b.$2.category));
-            if (category != 0) return category;
-            final start = b.$2.start.compareTo(a.$2.start);
-            return start != 0 ? start : a.$1 - b.$1;
-          });
-    return [for (final (_, group) in ordered) group];
   }
 
   @override
   Widget build(BuildContext context) {
-    final state = AppScope.of(context);
-    final t = state.text;
+    final state = AppScope.of(context), t = state.text;
     return ShellPage(
       title: t('navigation.missions', 'Missions'),
+      actions: [
+        BarAction.choice(
+          label: t('navigation.missions', 'Missions'),
+          options: [
+            for (final entry in [
+              ('all', Symbols.apps_rounded, t('common.states.all', 'All')),
+              (
+                'regular',
+                Symbols.fact_check_rounded,
+                t('catalog.missions.permanent', 'Permanent missions'),
+              ),
+              (
+                'limited',
+                Symbols.schedule_rounded,
+                _label(t, 'limitedMission', 'Limited missions'),
+              ),
+            ])
+              BarChoice(
+                icon: entry.$2,
+                label: entry.$3,
+                selected: _mode == entry.$1,
+                onSelected: () => setState(() => _mode = entry.$1),
+              ),
+          ],
+        ),
+      ],
       body: FutureBuilder(
         future: _data,
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return Center(
               child: FilledButton.tonal(
-                onPressed: () =>
-                    setState(() => _data = state.api.catalog('missions')),
+                onPressed: () => setState(() => _data = _load(state)),
                 child: Text(t('common.actions.retry', 'Retry')),
               ),
             );
           }
-          final document = snapshot.data;
-          if (document == null) {
+          if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
-          final entries = document is Map ? document['entries'] : null;
-          final missions = switch (entries) {
-            Map() => entries.values.whereType<Map>().toList(),
-            List() => entries.whereType<Map>().toList(),
-            _ => <Map>[],
-          };
-          final groups = _groups(t, missions);
+          final now = DateTime.now().millisecondsSinceEpoch;
+          final groups =
+              groupMissions(
+                    snapshot.data!,
+                    SiteText.tupleOrder.indexOf(t.locale),
+                  )
+                  .where(
+                    (g) =>
+                        _mode == 'all' ||
+                        (_mode == 'limited' ? g.timed : !g.timed),
+                  )
+                  .toList();
+          List<MissionGroup> timed(String status) =>
+              groups
+                  .where((g) => g.timed && missionGroupStatus(g, now) == status)
+                  .toList()
+                ..sort(
+                  (a, b) => status == 'upcoming'
+                      ? a.start.compareTo(b.start)
+                      : b.start.compareTo(a.start),
+                );
+          final sections = [
+            (
+              _label(t, 'missionDaily', 'Daily missions'),
+              groups.where((g) => g.category == 1 && !g.timed).toList(),
+            ),
+            (
+              '${_label(t, 'limitedMission', 'Limited missions')} · ${_statusLabel(t, 'ongoing')}',
+              timed('ongoing'),
+            ),
+            (
+              '${_label(t, 'limitedMission', 'Limited missions')} · ${_statusLabel(t, 'upcoming')}',
+              timed('upcoming'),
+            ),
+            (
+              t('catalog.missions.permanent', 'Permanent missions'),
+              groups.where((g) => !g.timed && g.category != 1).toList(),
+            ),
+            (
+              '${_label(t, 'limitedMission', 'Limited missions')} · ${_statusLabel(t, 'ended')}',
+              timed('ended'),
+            ),
+          ].where((s) => s.$2.isNotEmpty);
           return LayoutBuilder(
             builder: (context, constraints) {
               final padding = pagePadding(context);
@@ -266,45 +332,24 @@ class _MissionsScreenState extends State<MissionsScreen> {
               return ListView(
                 padding: padding,
                 children: [
-                  Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      child: SegmentedButton<String>(
-                        showSelectedIcon: false,
-                        segments: [
-                          ButtonSegment(
-                            value: 'all',
-                            icon: const Icon(Symbols.apps_rounded),
-                            label: Text(t('common.states.all', 'All')),
-                          ),
-                          ButtonSegment(
-                            value: 'regular',
-                            icon: const Icon(Symbols.fact_check_rounded),
-                            label: Text(_label(t, 'regularMission', 'Mission')),
-                          ),
-                          ButtonSegment(
-                            value: 'limited',
-                            icon: const Icon(Symbols.schedule_rounded),
-                            label: Text(
-                              _label(t, 'limitedMission', 'Limited mission'),
-                            ),
-                          ),
-                        ],
-                        selected: {_mode},
-                        onSelectionChanged: (value) =>
-                            setState(() => _mode = value.single),
+                  for (final section in sections) ...[
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8, bottom: 16),
+                      child: Text(
+                        section.$1,
+                        style: Theme.of(context).textTheme.titleLarge,
                       ),
                     ),
-                  ),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      for (final group in groups)
-                        SizedBox(width: card, child: _GroupCard(group)),
-                    ],
-                  ),
+                    Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        for (final group in section.$2)
+                          SizedBox(width: card, child: _GroupCard(group)),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                  ],
                 ],
               );
             },
@@ -339,7 +384,7 @@ List<Map> _rewardTotals(SiteText t, List<Map> rows) {
 
 class _GroupCard extends StatelessWidget {
   const _GroupCard(this.group);
-  final _Group group;
+  final MissionGroup group;
 
   @override
   Widget build(BuildContext context) {
@@ -347,7 +392,7 @@ class _GroupCard extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final totals = _rewardTotals(t, group.rows);
-    final limited = group.category == 'limited';
+    final limited = group.timed;
     return Material(
       color: scheme.surfaceContainerLow,
       borderRadius: BorderRadius.circular(Corner.extraLarge),
@@ -368,7 +413,7 @@ class _GroupCard extends StatelessWidget {
                     size: 48,
                     color: limited ? scheme.tertiaryContainer : null,
                     foreground: limited ? scheme.onTertiaryContainer : null,
-                    child: Icon(_categoryIcons[group.category], size: 24),
+                    child: Icon(_categoryIcon(group.category), size: 24),
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(
@@ -393,11 +438,27 @@ class _GroupCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                group.title,
+                _title(t, group),
                 style: theme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
               ),
+              if (group.timed)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text(
+                    _statusLabel(
+                      t,
+                      missionGroupStatus(
+                        group,
+                        DateTime.now().millisecondsSinceEpoch,
+                      ),
+                    ),
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: scheme.tertiary,
+                    ),
+                  ),
+                ),
               const SizedBox(height: 8),
               Row(
                 children: [
@@ -448,7 +509,7 @@ class _GroupCard extends StatelessWidget {
 /// One group's missions: each condition on a line with its rewards.
 class _GroupScreen extends StatelessWidget {
   const _GroupScreen(this.group);
-  final _Group group;
+  final MissionGroup group;
 
   @override
   Widget build(BuildContext context) {
@@ -456,7 +517,8 @@ class _GroupScreen extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     return ShellPage(
-      title: group.title,
+      title: _title(t, group),
+      showBack: true,
       status: Text('${group.rows.length}'),
       body: ListView(
         padding: pagePadding(context),
@@ -476,7 +538,7 @@ class _GroupScreen extends StatelessWidget {
                         ShapedIcon(
                           shape: MaterialShapes.cookie9Sided,
                           size: 40,
-                          child: Icon(_categoryIcons[group.category], size: 20),
+                          child: Icon(_categoryIcon(group.category), size: 20),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -484,7 +546,7 @@ class _GroupScreen extends StatelessWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                group.title,
+                                _title(t, group),
                                 style: theme.textTheme.titleLarge?.copyWith(
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -505,21 +567,156 @@ class _GroupScreen extends StatelessWidget {
                     if (index > 0)
                       Divider(height: 1, color: scheme.outlineVariant),
                     Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(minHeight: 40),
-                        child: Wrap(
-                          alignment: WrapAlignment.spaceBetween,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          spacing: 16,
-                          runSpacing: 8,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 8,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(
+                                    Corner.small,
+                                  ),
+                                  onTap: () => Navigator.of(context).push(
+                                    MaterialPageRoute<void>(
+                                      builder: (_) => MissionDetailScreen(
+                                        id: '${mission['id']}',
+                                        server:
+                                            '${mission[serverKey] ?? AppScope.of(context).server}',
+                                      ),
+                                    ),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 4,
+                                    ),
+                                    child: Text(
+                                      t.text(mission['title']).isEmpty
+                                          ? '—'
+                                          : t.text(mission['title']),
+                                      style: theme.textTheme.bodyLarge
+                                          ?.copyWith(color: scheme.primary),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              _serverMark(t, mission),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          _goal(t, mission),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: [
+                              for (final reward
+                                  in (mission['rewards'] as List? ?? const [])
+                                      .whereType<Map>())
+                                RewardChip(reward),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Mission links and the group's condition list open this same detail view.
+class MissionDetailScreen extends StatefulWidget {
+  const MissionDetailScreen({super.key, required this.id, this.server});
+  final String id;
+  final String? server;
+  @override
+  State<MissionDetailScreen> createState() => _MissionDetailScreenState();
+}
+
+class _MissionDetailScreenState extends State<MissionDetailScreen> {
+  Future<Object?>? _data;
+  String? _server;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final state = AppScope.of(context), server = widget.server ?? state.server;
+    if (_data == null || _server != server) {
+      _server = server;
+      _data = state.apiFor(server).catalog('missions', widget.id);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = AppScope.of(context),
+        t = state.text,
+        theme = Theme.of(context);
+    return FutureBuilder(
+      future: _data,
+      builder: (context, snapshot) {
+        final mission = snapshot.data is Map ? snapshot.data as Map : null;
+        final title = mission == null ? '' : t.text(mission['title']);
+        return ShellPage(
+          title: title.isEmpty ? t('navigation.missions', 'Missions') : title,
+          showBack: true,
+          body: snapshot.hasError
+              ? Center(
+                  child: FilledButton.tonal(
+                    onPressed: () => setState(() {
+                      _data = state
+                          .apiFor(_server!)
+                          .catalog('missions', widget.id);
+                    }),
+                    child: Text(t('common.actions.retry', 'Retry')),
+                  ),
+                )
+              : mission == null
+              ? const Center(child: CircularProgressIndicator())
+              : ListView(
+                  padding: pagePadding(context),
+                  children: [
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              t.text(mission['title']).isEmpty
-                                  ? '—'
-                                  : t.text(mission['title']),
-                              style: theme.textTheme.bodyLarge,
+                              _categoryLabel(t, missionCategory(mission)),
+                              style: theme.textTheme.labelLarge,
                             ),
+                            const SizedBox(height: 12),
+                            Text(
+                              title.isEmpty ? '—' : title,
+                              style: theme.textTheme.headlineSmall,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              _window(
+                                t,
+                                groupMissions(
+                                  [mission],
+                                  SiteText.tupleOrder.indexOf(t.locale),
+                                ).single,
+                              ),
+                            ),
+                            if (t.text(mission['description']).isNotEmpty) ...[
+                              const SizedBox(height: 16),
+                              Text(t.text(mission['description'])),
+                            ],
+                            const SizedBox(height: 16),
+                            _goal(t, mission),
+                            const SizedBox(height: 16),
                             Wrap(
                               spacing: 6,
                               runSpacing: 6,
@@ -535,12 +732,9 @@ class _GroupScreen extends StatelessWidget {
                       ),
                     ),
                   ],
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+                ),
+        );
+      },
     );
   }
 }

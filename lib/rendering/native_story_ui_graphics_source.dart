@@ -1,10 +1,9 @@
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
-    show haneokaProfileAssetRoot;
+    show haneokaProfileAssetRoot, loadHaneokaProfileAsset;
 
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter/services.dart';
 import 'package:vega_plugin_haneoka/render_profile.dart';
 
 /// Original Graphic components and their modifiers retain distinct identities.
@@ -18,7 +17,7 @@ final class NativeStoryUiGraphicsSource {
   static Future<NativeStoryUiGraphicsSource> load(
     StorySourceIdentity source,
   ) async {
-    final data = await rootBundle.load(assetPath);
+    final data = await loadHaneokaProfileAsset(assetPath);
     final bytes = data.buffer.asUint8List(
       data.offsetInBytes,
       data.lengthInBytes,

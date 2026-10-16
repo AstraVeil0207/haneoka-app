@@ -9,7 +9,7 @@ import '../core/voice.dart';
 import '../ui/adv_text.dart';
 import '../ui/app_image.dart';
 import '../ui/detail.dart';
-import '../ui/theme.dart';
+import '../ui/dialogue_row.dart';
 import 'transcript.dart';
 
 class StoryTranscript extends StatefulWidget {
@@ -222,7 +222,6 @@ class _StoryTranscriptState extends State<StoryTranscript> {
     final t = state.text;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final compact = MediaQuery.sizeOf(context).width < 600;
     final text = t.text(entry.command['text']);
     if (entry.kind == 'image' && entry.source != null) {
       return Padding(
@@ -296,130 +295,52 @@ class _StoryTranscriptState extends State<StoryTranscript> {
           '/assets/${widget.api.server}/Assets/AddressableResources/Adv/Chat/Icon/$chatIcon.png',
         );
     }
-    Widget heading() => Row(
-      children: [
-        Wrap(
-          spacing: 4,
-          children: [
-            if (faces.isEmpty)
-              CircleAvatar(
-                radius: 16,
-                backgroundColor: scheme.surfaceContainerHigh,
-                child: Icon(
-                  Symbols.person_rounded,
-                  size: 24,
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-            for (final face in faces)
-              ClipOval(
-                child: SizedBox.square(
-                  dimension: 32,
-                  child: ColoredBox(
-                    color: scheme.surfaceContainerHigh,
-                    child: AppImage(
-                      candidates: [widget.api.asset(face).toString()],
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-        if (name.isNotEmpty) ...[
-          const SizedBox(width: 8),
-          Expanded(child: AdvText(name, style: theme.textTheme.titleSmall)),
-        ],
-      ],
-    );
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: compact ? 8 : 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (name.isNotEmpty || faces.isNotEmpty) ...[
-            heading(),
-            const SizedBox(height: 8),
-          ],
-          ListenableBuilder(
-            listenable: widget.playback,
-            builder: (context, _) {
-              final playing = tracks.any(
-                (track) => widget.playback.isPlaying(track.id),
-              );
-              return Container(
-                padding: EdgeInsets.symmetric(
-                  vertical: compact ? 8 : 12,
-                  horizontal: compact ? 12 : 16,
+      padding: const EdgeInsets.symmetric(vertical: DialogueRow.spacing / 2),
+      child: ListenableBuilder(
+        listenable: widget.playback,
+        builder: (context, _) => DialogueRow(
+          name: name,
+          faces: [for (final face in faces) widget.api.asset(face).toString()],
+          playing: tracks.any((track) => widget.playback.isPlaying(track.id)),
+          content: entry.kind == 'stamp'
+              ? entry.source != null && entry.source!.isNotEmpty
+                    ? SizedBox(
+                        height: 160,
+                        child: AppImage(
+                          candidates: [
+                            widget.api.asset(entry.source!).toString(),
+                          ],
+                        ),
+                      )
+                    : Icon(
+                        Symbols.sentiment_satisfied_rounded,
+                        color: scheme.onSurfaceVariant,
+                      )
+              : AdvText(
+                  text.isEmpty && entry.kind == 'voice'
+                      ? t('navigation.voice', 'Voice')
+                      : text,
+                  nativeBase: entry.kind == 'message' ? 24 : 36,
                 ),
-                decoration: BoxDecoration(
-                  color: playing
-                      ? scheme.primaryContainer
-                      : scheme.surfaceContainerLow,
-                  border: Border.all(
-                    color: playing ? scheme.primary : Colors.transparent,
-                  ),
-                  borderRadius: BorderRadius.circular(Corner.medium),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
+          action: tracks.isEmpty
+              ? null
+              : Wrap(
                   children: [
-                    Expanded(
-                      child: entry.kind == 'stamp'
-                          ? entry.source != null && entry.source!.isNotEmpty
-                                ? SizedBox(
-                                    height: 160,
-                                    child: AppImage(
-                                      candidates: [
-                                        widget.api
-                                            .asset(entry.source!)
-                                            .toString(),
-                                      ],
-                                    ),
-                                  )
-                                : Icon(
-                                    Symbols.sentiment_satisfied_rounded,
-                                    color: scheme.onSurfaceVariant,
-                                  )
-                          : AdvText(
-                              text.isEmpty && entry.kind == 'voice'
-                                  ? t('navigation.voice', 'Voice')
-                                  : text,
-                              style:
-                                  (compact
-                                          ? theme.textTheme.bodyMedium
-                                          : theme.textTheme.bodyLarge)
-                                      ?.copyWith(
-                                        color: playing
-                                            ? scheme.onPrimaryContainer
-                                            : scheme.onSurface,
-                                      ),
-                              nativeBase: entry.kind == 'message' ? 24 : 36,
-                            ),
-                    ),
-                    if (tracks.isNotEmpty) ...[
-                      const SizedBox(width: 8),
-                      Wrap(
-                        children: [
-                          for (final (index, track) in tracks.indexed)
-                            IconButton(
-                              tooltip:
-                                  '${t('story.labels.playVoice', 'Play voice')}${tracks.length > 1 ? ' ${index + 1}' : ''}',
-                              onPressed: () => widget.playback.toggle(track),
-                              icon: Icon(
-                                widget.playback.isPlaying(track.id)
-                                    ? Symbols.pause_rounded
-                                    : Symbols.play_arrow_rounded,
-                              ),
-                            ),
-                        ],
+                    for (final (index, track) in tracks.indexed)
+                      IconButton(
+                        tooltip:
+                            '${t('story.labels.playVoice', 'Play voice')}${tracks.length > 1 ? ' ${index + 1}' : ''}',
+                        onPressed: () => widget.playback.toggle(track),
+                        icon: Icon(
+                          widget.playback.isPlaying(track.id)
+                              ? Symbols.pause_rounded
+                              : Symbols.play_arrow_rounded,
+                        ),
                       ),
-                    ],
                   ],
                 ),
-              );
-            },
-          ),
-        ],
+        ),
       ),
     );
   }

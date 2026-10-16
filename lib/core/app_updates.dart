@@ -1,7 +1,9 @@
 import 'dart:convert';
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -138,38 +140,7 @@ class AppUpdates extends ChangeNotifier {
             !newer) {
           available = null;
         } else {
-          final platform = Platform.version.toLowerCase();
-          final arch = platform.contains('arm64') ? 'arm64' : 'x64';
-          final androidAbi = platform.contains('arm64')
-              ? 'arm64-v8a'
-              : platform.contains('android_arm')
-              ? 'armeabi-v7a'
-              : 'x86_64';
-          final assetNames = switch (Platform.operatingSystem) {
-            'android' => [
-              'haneoka-android-$androidAbi.apk',
-              'haneoka-android.apk',
-            ],
-            'linux' => [
-              'haneoka-linux-$arch.AppImage',
-              'haneoka-linux-$arch.tar.gz',
-            ],
-            'windows' => [
-              'haneoka-windows-$arch-setup.exe',
-              'haneoka-windows-$arch.msi',
-              'haneoka-windows-$arch.zip',
-            ],
-            'macos' => [
-              'haneoka-macos-$arch.dmg',
-              'haneoka-macos-$arch.pkg',
-              'haneoka-macos-$arch.zip',
-              'haneoka-macos.dmg',
-              'haneoka-macos.pkg',
-              'haneoka-macos.zip',
-            ],
-            'ios' => ['haneoka-ios-unsigned.ipa'],
-            _ => <String>[],
-          };
+          final assetNames = await _assetNames();
           Uri? download;
           final assets = (data['assets'] as List? ?? const []).whereType<Map>();
           for (final name in assetNames) {
@@ -223,6 +194,62 @@ class AppUpdates extends ChangeNotifier {
         available!.identity,
       );
     }
+  }
+
+  static Future<List<String>> _assetNames() async {
+    final abi = Abi.current();
+    if (Platform.isAndroid) {
+      List<String>? supported;
+      try {
+        supported = await const MethodChannel('org.haneoka/app-platform')
+            .invokeListMethod<String>('supportedAbis');
+      } on MissingPluginException {
+        supported = null;
+      } on PlatformException {
+        supported = null;
+      }
+      final abis = supported?.isNotEmpty == true
+          ? supported!
+          : switch (abi) {
+              Abi.androidArm64 => ['arm64-v8a'],
+              Abi.androidArm => ['armeabi-v7a'],
+              Abi.androidX64 => ['x86_64'],
+              _ => <String>[],
+            };
+      const universalAbis = {'arm64-v8a', 'armeabi-v7a', 'x86_64'};
+      return [
+        for (final name in abis) 'haneoka-android-$name.apk',
+        if (abis.any(universalAbis.contains)) 'haneoka-android.apk',
+      ];
+    }
+    final arch = switch (abi) {
+      Abi.linuxArm64 || Abi.windowsArm64 || Abi.macosArm64 => 'arm64',
+      Abi.linuxX64 || Abi.windowsX64 || Abi.macosX64 => 'x64',
+      _ => null,
+    };
+    return switch (Platform.operatingSystem) {
+      'linux' when arch != null => [
+        'haneoka-linux-$arch.AppImage',
+        'haneoka-linux-$arch.tar.gz',
+      ],
+      'windows' when arch != null => [
+        'haneoka-windows-$arch-setup.exe',
+        'haneoka-windows-$arch.msi',
+        'haneoka-windows-$arch.zip',
+      ],
+      'macos' => [
+        if (arch != null) ...[
+          'haneoka-macos-$arch.dmg',
+          'haneoka-macos-$arch.pkg',
+          'haneoka-macos-$arch.zip',
+        ],
+        'haneoka-macos.dmg',
+        'haneoka-macos.pkg',
+        'haneoka-macos.zip',
+      ],
+      'ios' => ['haneoka-ios-unsigned.ipa'],
+      _ => <String>[],
+    };
   }
 
   static Uri? _releaseLink(Object? value) {

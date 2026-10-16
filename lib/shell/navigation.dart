@@ -1,4 +1,7 @@
 import 'package:flutter/widgets.dart';
+
+import 'route_paths.dart';
+
 import 'package:material_symbols_icons/symbols.dart';
 
 /// One page in the drawer: the website's route, label and icon
@@ -12,7 +15,7 @@ class NavItem {
 }
 
 int routeMatch(String current, String candidate) {
-  var path = Uri.parse(current).path;
+  var path = canonicalAppPath(Uri.parse(current).path);
   if (path.startsWith('/stories/')) {
     final mode = Uri.parse(current).queryParameters['mode'];
     path = mode == null ? '/catalog/stories' : '/catalog/stories/$mode';
@@ -329,13 +332,13 @@ final navSections = <NavSection>[
     collapsible: true,
     [
       const NavItem(
-        '/community/songs-bestdori',
+        '/community/gbp/songs',
         'community.page.songsBestDori',
         Symbols.library_music_rounded,
       ),
       for (final (key, icon) in _bestdoriStoryRoutes)
         NavItem(
-          '/community/stories-bestdori/$key',
+          '/community/gbp/stories/$key',
           'story.navigation.bestdori${_capital(key)}',
           icon,
         ),

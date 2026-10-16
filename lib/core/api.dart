@@ -103,9 +103,12 @@ class HaneokaApi {
 
   /// A catalogue resource (`songs`, `cards`, …) or one entity of it.
   Future<Object?> catalog(String resource, [String? id]) async {
+    final projection = id == null
+        ? const {'songs': 4, 'ui-marks': 2}[resource]
+        : null;
     final path =
         '/api/v1/servers/$server/$resource${id == null ? '' : '/${Uri.encodeComponent(id)}'}'
-        '${id == null && resource == 'songs' ? '?projection=4' : ''}';
+        '${projection == null ? '' : '?projection=$projection'}';
     return json(path);
   }
 

@@ -660,7 +660,7 @@ class _CardPickerState extends State<_CardPicker> {
           images: [catalog.cardImage(widget.members, id)],
           fit: BoxFit.cover,
           aspectRatio: widget.members ? 3 / 4 : 16 / 9,
-          marks: catalog.cardMarks(widget.members, id),
+          media: CardArt(catalog: catalog, members: widget.members, id: id),
           serverMark: catalog.mark(
             widget.members ? 'members' : 'snapshots',
             id,

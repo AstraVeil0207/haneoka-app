@@ -1402,7 +1402,7 @@ class _EpisodeTile extends StatelessWidget {
     final api =
         this.api ?? state.apiFor('${episode[serverKey] ?? state.server}');
     if (episode['cardId'] != null) {
-      _openCard(context, api);
+      openStoryCard(context, api, '${episode['cardId']}');
       return;
     }
     Navigator.of(context).push(
@@ -1415,45 +1415,49 @@ class _EpisodeTile extends StatelessWidget {
       ),
     );
   }
+}
 
-  /// A GBP card's episodes, each opening in the reader.
-  Future<void> _openCard(BuildContext context, HaneokaApi api) async {
-    final t = AppScope.of(context).text;
-    final card = await api
-        .catalog('cards', '${episode['cardId']}')
-        .then<Map?>((v) => v as Map?, onError: (_) => null);
-    if (card == null || !context.mounted) return;
-    final episodes = (card['episodes'] as List? ?? const []).whereType<Map>();
-    await showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (sheet) => ListView(
-        shrinkWrap: true,
-        children: [
-          for (final e in episodes)
-            ListTile(
-              leading: const Icon(Symbols.auto_stories_rounded),
-              title: Text(t.text(e['title'])),
-              onTap: () {
-                Navigator.pop(sheet);
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => StoryReaderScreen(
-                      api: api,
-                      episode: {
-                        'storyKey':
-                            'card.${e['resourceSetName'] ?? card['resourceSetName']}.${e['scenarioId']}',
-                        'title': e['title'],
-                      },
-                    ),
+/// A GBP card's episodes, each opening in the reader.
+Future<void> openStoryCard(
+  BuildContext context,
+  HaneokaApi api,
+  String cardId,
+) async {
+  final t = AppScope.of(context).text;
+  final card = await api
+      .catalog('cards', cardId)
+      .then<Map?>((v) => v as Map?, onError: (_) => null);
+  if (card == null || !context.mounted) return;
+  final episodes = (card['episodes'] as List? ?? const []).whereType<Map>();
+  await showModalBottomSheet<void>(
+    context: context,
+    showDragHandle: true,
+    builder: (sheet) => ListView(
+      shrinkWrap: true,
+      children: [
+        for (final e in episodes)
+          ListTile(
+            leading: const Icon(Symbols.auto_stories_rounded),
+            title: Text(t.text(e['title'])),
+            onTap: () {
+              Navigator.pop(sheet);
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => StoryReaderScreen(
+                    api: api,
+                    episode: {
+                      'storyKey':
+                          'card.${e['resourceSetName'] ?? card['resourceSetName']}.${e['scenarioId']}',
+                      'title': e['title'],
+                    },
                   ),
-                );
-              },
-            ),
-        ],
-      ),
-    );
-  }
+                ),
+              );
+            },
+          ),
+      ],
+    ),
+  );
 }
 
 /// One episode as text (`projectHaneokaTranscript`): places, speakers with

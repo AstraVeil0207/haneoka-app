@@ -12,16 +12,19 @@ import '../catalog/profiles.dart';
 import '../catalog/visuals.dart';
 import '../core/api.dart';
 import '../core/app_state.dart';
+import '../core/i18n.dart';
 import '../core/relative_time.dart';
 import '../l10n/app_localizations.dart';
 import '../save/account_store.dart';
 import '../save/export.dart';
 import '../save/game_save.dart';
 import '../save/save_view.dart';
+import '../records/records.dart';
 import '../shell/page.dart';
 import '../shell/routes.dart';
 import '../team_builder/team_builder_screen.dart';
 import 'app_image.dart';
+import 'card_artwork.dart';
 import 'detail.dart';
 import 'import_screen.dart';
 import 'json_view.dart';
@@ -40,9 +43,38 @@ class _Catalog {
     this.items,
     this.events,
     this.visuals,
+    this.progression,
   );
   final Map<String, Map> cards, supports, songs, items, events;
   final CatalogVisuals visuals;
+  final CardCatalog progression;
+
+  CardGrowthDisplay? growth(Map row, SiteText t, {required bool support}) {
+    final id = (row['_masterId'] as num?)?.toInt();
+    final art = (support ? progression.support : progression.member)[id];
+    if (art == null) return null;
+    final exp = row['_exp'] is num
+        ? row['_exp']
+        : num.tryParse('${row['_exp']}');
+    return progression.growth(
+      art,
+      t,
+      support: support,
+      level: progression.cardLevel({
+        'memberCardId': id,
+        'memberExp': exp,
+        'memberAwakeCount': row['_awakeCount'],
+        'supportCardId': id,
+        'supportExp': exp,
+        'supportRank': row['_rank'],
+      }, support: support),
+      training: (row['_awakeCount'] as num?)?.toInt(),
+      rank: (row['_rank'] as num?)?.toInt(),
+      showSkills: !support,
+      liveSkillLevel: (row['_liveSkillLevel'] as num?)?.toInt(),
+      gekisoSkillLevel: (row['_performanceSkillLevel'] as num?)?.toInt(),
+    );
+  }
 
   static Map<String, Map> _rows(Object? document, [String? path]) {
     Object? rows = document;
@@ -57,13 +89,22 @@ class _Catalog {
   static final _loaded = <HaneokaApi, Future<_Catalog>>{};
   static Future<_Catalog> of(HaneokaApi api) =>
       cachedResource(_loaded, api, () async {
-        final (cards, supports, songs, items, events, visuals) = await (
+        final (
+          cards,
+          supports,
+          songs,
+          items,
+          events,
+          visuals,
+          progression,
+        ) = await (
           api.catalog('cards'),
           api.catalog('support-cards'),
           api.catalog('songs'),
           api.catalog('items'),
           api.catalog('events'),
           CatalogVisuals.of(api),
+          CardCatalog.of(api),
         ).wait;
         return _Catalog(
           _rows(cards),
@@ -72,6 +113,7 @@ class _Catalog {
           _rows(items, 'items'),
           _rows(events, 'entries'),
           visuals,
+          progression,
         );
       });
 }
@@ -691,9 +733,6 @@ class _Profile extends StatelessWidget {
           itemBuilder: (context, index) {
             final entry = entries[index];
             final row = owned[kit.id(entry)];
-            final level = support
-                ? '${site.label('rank', 'Rank')} ${row?['_rank'] ?? 1}'
-                : '${site('catalog.cards.fields.awakening', 'Awakening')} ${row?['_awakeCount'] ?? 0}';
             return SizedBox(
               width: width,
               child: Tile(
@@ -701,11 +740,13 @@ class _Profile extends StatelessWidget {
                 subtitle: kit.subtitle(entry),
                 adornments: kit.adornments(entry),
                 images: kit.images(entry),
+                media: kit.cardArtwork(
+                  entry,
+                  growth: row == null
+                      ? null
+                      : catalog!.growth(row, site, support: support),
+                ),
                 aspectRatio: kit.profile.aspectRatio,
-                marks: [
-                  ...kit.marks(entry),
-                  TileMark.text(MarkAt.bottomEnd, level),
-                ],
                 onTap: () => openEntity(context, kit.profile, entry),
               ),
             );
@@ -722,10 +763,15 @@ class _Profile extends StatelessWidget {
             profile: profile,
             title: resource == 'cards' ? t.ownedMembers : t.ownedSnapshots,
             owned: {
+              for (final row in view.rows(section)) '${row['_masterId']}': '',
+            },
+            ownedGrowth: {
               for (final row in view.rows(section))
-                '${row['_masterId']}': resource == 'cards'
-                    ? '★${row['_awakeCount'] ?? 1}'
-                    : 'Rank ${row['_rank'] ?? 1}',
+                '${row['_masterId']}': ?catalog?.growth(
+                  row,
+                  site,
+                  support: resource == 'support-cards',
+                ),
             },
             onOpen: (context, item) => openEntity(context, profile, item),
           ),

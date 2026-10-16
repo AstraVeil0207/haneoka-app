@@ -7,9 +7,9 @@ import 'package:intl/intl.dart' hide TextDirection;
 import 'package:material_new_shapes/material_new_shapes.dart';
 
 import '../ui/app_image.dart';
+import '../ui/card_artwork.dart';
 import '../ui/shapes.dart';
 import '../ui/theme.dart';
-import '../ui/tile.dart';
 import 'catalog.dart';
 import 'engine/api.dart';
 
@@ -224,80 +224,56 @@ class CardArt extends StatelessWidget {
     required this.catalog,
     required this.members,
     required this.id,
-    this.extra = const [],
     this.emblems = true,
+    this.growth,
+    this.outline,
   });
   final TeamCatalog catalog;
   final bool members;
   final int id;
-  final List<TileMark> extra;
   final bool emblems;
+  final CardGrowthDisplay? growth;
+  final Color? outline;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return AspectRatio(
       aspectRatio: members ? 3 / 4 : 16 / 9,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(Corner.small),
-        child: ColoredBox(
-          color: scheme.surfaceContainerHighest,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              AppImage(
-                candidates: [catalog.cardImage(members, id)],
-                fit: BoxFit.cover,
+      child: Container(
+        foregroundDecoration: outline == null
+            ? null
+            : BoxDecoration(
+                borderRadius: BorderRadius.circular(Corner.small),
+                border: Border.all(color: outline!, width: 2),
               ),
-              if (emblems)
-                for (final mark in catalog.cardMarks(members, id))
-                  _SmallMark(mark),
-              for (final mark in extra) _SmallMark(mark),
-            ],
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(Corner.small),
+          child: ColoredBox(
+            color: scheme.surfaceContainerHighest,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                CardArtwork(
+                  kind: members ? GameCardKind.member : GameCardKind.support,
+                  image: catalog.cardImage(members, id),
+                  attribute: emblems
+                      ? catalog.attributeIcon(catalog.attribute(members, id))
+                      : null,
+                  attributeLabel: catalog.attributeName(
+                    catalog.attribute(members, id),
+                  ),
+                  rarity: emblems
+                      ? catalog.rarityIcon(catalog.rarity(members, id))
+                      : null,
+                  growth: growth,
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
-  }
-}
-
-class _SmallMark extends StatelessWidget {
-  const _SmallMark(this.mark);
-  final TileMark mark;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final Widget child = mark.image != null
-        ? SizedBox.square(
-            dimension: 16,
-            child: AppImage(candidates: [mark.image!]),
-          )
-        : DecoratedBox(
-            decoration: BoxDecoration(
-              color: (mark.accent ?? Colors.black).withValues(alpha: 0.72),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-              child: Text(
-                mark.text ?? '',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: Colors.white,
-                  fontSize: 10,
-                ),
-              ),
-            ),
-          );
-    final semantic = mark.label == null
-        ? child
-        : Tooltip(message: mark.label!, child: child);
-    return switch (mark.at) {
-      MarkAt.start => Positioned(left: 4, top: 4, child: semantic),
-      MarkAt.end => Positioned(right: 4, top: 4, child: semantic),
-      MarkAt.bottomStart => Positioned(left: 4, bottom: 4, child: semantic),
-      MarkAt.bottomEnd => Positioned(right: 4, bottom: 4, child: semantic),
-    };
   }
 }
 

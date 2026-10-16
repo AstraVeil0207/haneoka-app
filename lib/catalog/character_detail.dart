@@ -10,6 +10,7 @@ import '../shell/routes.dart';
 import '../stories/stories.dart';
 import '../ui/app_image.dart';
 import '../ui/detail.dart';
+import '../ui/dialogue_row.dart';
 import '../ui/theme.dart';
 import '../ui/tile.dart';
 import '../ui/upgrade.dart';
@@ -191,9 +192,14 @@ class _CharacterDetailState extends State<CharacterDetail> {
     _ => null,
   };
 
-  /// A list the payload deferred (`requestDeferred`): fetched when its tab
-  /// first opens.
+  /// Read the complete page payload, or the older deferred endpoint.
   Future<Object?>? _load(String key) {
+    final inline = aux[key];
+    if (inline != null) {
+      return _deferred[key] ??= Future<Object?>.value(
+        key == 'voices' ? (inline as Map)['entries'] : inline,
+      );
+    }
     final source = (widget.page?['deferred'] as Map?)?[key];
     if (source is! Map || source['url'] is! String) return null;
     return _deferred[key] ??= state.api.json(
@@ -201,8 +207,9 @@ class _CharacterDetailState extends State<CharacterDetail> {
     );
   }
 
-  int? _deferredCount(String key) =>
-      ((widget.page?['deferred'] as Map?)?[key] as Map?)?['count'] as int?;
+  int? _deferredCount(String key) => aux[key] != null
+      ? _values(aux[key], key == 'voices' ? 'entries' : 'missions').length
+      : ((widget.page?['deferred'] as Map?)?[key] as Map?)?['count'] as int?;
 
   @override
   Widget build(BuildContext context) {
@@ -554,9 +561,9 @@ class _CharacterDetailState extends State<CharacterDetail> {
               subtitle: kit.subtitle(entry),
               adornments: kit.adornments(entry),
               images: kit.images(entry),
+              media: kit.cardArtwork(entry),
               aspectRatio: kit.profile.aspectRatio,
               fit: kit.profile.fit,
-              marks: kit.marks(entry),
               onTap: () => openEntity(context, kit.profile, entry),
             ),
         ],
@@ -1038,12 +1045,14 @@ class _CharacterDetailState extends State<CharacterDetail> {
                 ]) {
                   if (compare != 0) return compare;
                 }
-                return 0;
+                return '${a['voiceKey']}'.compareTo('${b['voiceKey']}');
               });
         if (entries.isEmpty) return _empty();
         String v(String key, [Object? value]) =>
             t('media.voice.$key', key, {'0': value});
         String title(Map entry) {
+          final birthdayId = _num(entry['birthdayCharacterId']).toInt();
+          if (birthdayId > 0) return v('birthdayOf', _name(birthdayId));
           final rank = _num(entry['scoreRank']).toInt();
           final type = entry['masterType'];
           return [
@@ -1058,14 +1067,36 @@ class _CharacterDetailState extends State<CharacterDetail> {
                 v('call')
               else if (entry['dialogueCallType'] == 2)
                 v('response'),
+            if (type == 6) _ids(entry).map(_name).join(' → '),
           ].where((s) => s.isNotEmpty).join(' · ');
         }
 
-        String condition(Map entry) => _num(entry['unlockCharacterRank']) > 0
-            ? v('unlockRank', entry['unlockCharacterRank'])
-            : _num(entry['unlockFriendshipRank']) > 0
-            ? v('unlockBond', entry['unlockFriendshipRank'])
-            : '';
+        String condition(Map entry) {
+          final year = _num(entry['year']).toInt();
+          final start = _voiceDate(entry['seasonStartAt'], year);
+          final end = _voiceDate(entry['seasonEndAt'], year);
+          final season = start.isNotEmpty && end.isNotEmpty && start != end
+              ? '$start – $end'
+              : start.isNotEmpty
+              ? start
+              : end;
+          final birthday = _character(
+            _num(entry['birthdayCharacterId']).toInt(),
+          )?['birthday'];
+          final date = birthday is Map
+              ? _voiceDate('${birthday['month']}/${birthday['day']}', year)
+              : '';
+          final unlock = _num(entry['unlockCharacterRank']) > 1
+              ? v('unlockRank', entry['unlockCharacterRank'])
+              : _num(entry['unlockFriendshipRank']) > 0
+              ? v('unlockBond', entry['unlockFriendshipRank'])
+              : '';
+          return [
+            season.isNotEmpty ? season : date,
+            unlock,
+          ].where((value) => value.isNotEmpty).join(' · ');
+        }
+
         final audio = _voice;
         return ListenableBuilder(
           listenable: audio,
@@ -1083,53 +1114,31 @@ class _CharacterDetailState extends State<CharacterDetail> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         for (final (position, entry) in items.indexed) ...[
-                          if (position == 0 ||
+                          if (position > 0)
+                            const SizedBox(height: DialogueRow.spacing),
+                          if (entry['lines'] is List &&
+                                  (entry['lines'] as List).length > 1 ||
+                              position == 0 ||
                               title(entry) != title(items[position - 1]) ||
                               condition(entry) !=
                                   condition(items[position - 1]) ||
                               entry['cardId'] != items[position - 1]['cardId'])
-                            Padding(
-                              padding: const EdgeInsets.only(
-                                top: 12,
-                                bottom: 4,
-                              ),
-                              child: InkWell(
-                                onTap: entry['cardId'] == null
-                                    ? null
-                                    : () => openLink(
-                                        context,
-                                        '/${state.server}/${t.locale}/member-cards/${entry['cardId']}/',
-                                      ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      title(entry),
-                                      style: theme.textTheme.titleSmall
-                                          ?.copyWith(
-                                            color: entry['cardId'] == null
-                                                ? null
-                                                : scheme.primary,
-                                          ),
-                                    ),
-                                    if (condition(entry).isNotEmpty)
-                                      Text(
-                                        condition(entry),
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              color: scheme.onSurfaceVariant,
-                                            ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          for (final (lineIndex, line)
-                              in (entry['lines'] is List
-                                      ? _values(entry['lines'])
-                                      : [entry])
-                                  .indexed)
-                            _voiceLine(entry, lineIndex, line, audio, v),
+                            if (position > 0) const SizedBox(height: 16),
+                          _voiceEntry(
+                            entry,
+                            title(entry),
+                            condition(entry),
+                            entry['lines'] is List &&
+                                    (entry['lines'] as List).length > 1 ||
+                                position == 0 ||
+                                title(entry) != title(items[position - 1]) ||
+                                condition(entry) !=
+                                    condition(items[position - 1]) ||
+                                entry['cardId'] !=
+                                    items[position - 1]['cardId'],
+                            audio,
+                            v,
+                          ),
                         ],
                       ],
                     ),
@@ -1141,6 +1150,127 @@ class _CharacterDetailState extends State<CharacterDetail> {
     );
   }
 
+  String _voiceDate(Object? value, int year) {
+    if (value is! String) return '';
+    final match = RegExp(r'^(\d{1,2})/(\d{1,2})$').firstMatch(value);
+    if (match == null) return '';
+    final month = int.parse(match[1]!);
+    final day = int.parse(match[2]!);
+    final date = DateTime.utc(year > 0 ? year : 2000, month, day);
+    if (date.month != month || date.day != day) return '';
+    final locale = t.locale.replaceAll('-', '_');
+    return (year > 0 ? DateFormat.yMMMMd(locale) : DateFormat.MMMMd(locale))
+        .format(date);
+  }
+
+  String _voiceKey(Map entry, int index) =>
+      'voice:${entry['voiceKey'] ?? '${entry['masterType']}:${entry['masterId']}'}:$index';
+
+  VoiceClip? _voiceClip(Map entry, int index, Map line) {
+    final sound = (line['sound'] as Map?) ?? const {};
+    final url = sound['playableUrl'] ?? line['playableUrl'];
+    return url is String && url.isNotEmpty
+        ? VoiceClip(id: _voiceKey(entry, index), url: _asset(url))
+        : null;
+  }
+
+  Widget _voiceEntry(
+    Map entry,
+    String title,
+    String condition,
+    bool showHeading,
+    VoicePlayback audio,
+    String Function(String, [Object?]) v,
+  ) {
+    final lines = entry['lines'] is List ? _values(entry['lines']) : [entry];
+    final sequence = lines.length > 1;
+    final clips = [
+      for (final (index, line) in lines.indexed)
+        ?_voiceClip(entry, index, line),
+    ];
+    final groupActive = clips.any((clip) => audio.isPlaying(clip.id));
+    final heading = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: entry['cardId'] == null
+              ? null
+              : () => openLink(
+                  context,
+                  '/${state.server}/${t.locale}/member-cards/${entry['cardId']}/',
+                ),
+          child: Text(
+            title,
+            style: theme.textTheme.titleSmall?.copyWith(
+              color: entry['cardId'] == null
+                  ? scheme.onSurfaceVariant
+                  : scheme.primary,
+            ),
+          ),
+        ),
+        if (condition.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(
+            condition,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ],
+    );
+    return Container(
+      padding: sequence ? const EdgeInsets.all(8) : EdgeInsets.zero,
+      decoration: sequence
+          ? BoxDecoration(
+              color: scheme.surfaceContainerLow,
+              border: Border.all(color: scheme.outlineVariant),
+              borderRadius: BorderRadius.circular(Corner.medium),
+            )
+          : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (showHeading) ...[
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: MediaQuery.sizeOf(context).width < 600 ? 0 : 8,
+              ),
+              child: Wrap(
+                alignment: WrapAlignment.spaceBetween,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  heading,
+                  if (sequence)
+                    FilledButton.tonalIcon(
+                      onPressed: clips.isEmpty
+                          ? null
+                          : () => groupActive
+                                ? audio.stop()
+                                : audio.playAll(clips),
+                      icon: Icon(
+                        groupActive
+                            ? Symbols.stop_rounded
+                            : Symbols.play_arrow_rounded,
+                      ),
+                      label: Text(v(groupActive ? 'stop' : 'playGroup')),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+          for (final (index, line) in lines.indexed) ...[
+            if (index > 0) const SizedBox(height: DialogueRow.spacing),
+            _voiceLine(entry, index, line, audio, v),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _voiceLine(
     Map entry,
     int index,
@@ -1148,67 +1278,34 @@ class _CharacterDetailState extends State<CharacterDetail> {
     VoicePlayback audio,
     String Function(String, [Object?]) v,
   ) {
-    final sound = (line['sound'] as Map?) ?? const {};
-    final url = sound['playableUrl'] ?? line['playableUrl'];
+    final clip = _voiceClip(entry, index, line);
     final speaker = _num(line['characterId']) > 0
         ? _num(line['characterId']).toInt()
         : (_ids(entry).firstOrNull ?? id);
-    final key =
-        'voice:${entry['voiceKey'] ?? '${entry['masterType']}:${entry['masterId']}'}:$index';
-    final playing = audio.isPlaying(key);
+    final playing = audio.isPlaying(_voiceKey(entry, index));
     final text = t.text(line['text']);
     final face = _face(speaker);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
+    return DialogueRow(
+      name: _name(speaker),
+      faces: [?face],
+      playing: playing,
+      content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ClipOval(
-            child: SizedBox.square(
-              dimension: 40,
-              child: face == null
-                  ? ColoredBox(
-                      color: scheme.surfaceContainerHighest,
-                      child: const Icon(Symbols.person_rounded),
-                    )
-                  : AppImage(candidates: [face], fit: BoxFit.cover),
+          Text(text.isEmpty ? v('noText') : text.replaceAll('\r', '')),
+          if (clip == null)
+            Text(
+              v('unavailable'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _name(speaker),
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ),
-                Text(
-                  text.isEmpty ? v('noText') : text.replaceAll('\r', ''),
-                  style: theme.textTheme.bodyLarge,
-                ),
-                if (url is! String || url.isEmpty)
-                  Text(
-                    v('unavailable'),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          IconButton(
-            tooltip: '${v(playing ? 'stop' : 'playLine')} · ${_name(speaker)}',
-            onPressed: url is String && url.isNotEmpty
-                ? () => audio.toggle(VoiceClip(id: key, url: _asset(url)))
-                : null,
-            icon: Icon(
-              playing ? Symbols.stop_rounded : Symbols.play_arrow_rounded,
-            ),
-          ),
         ],
+      ),
+      action: IconButton(
+        tooltip: '${v(playing ? 'stop' : 'playLine')} · ${_name(speaker)}',
+        onPressed: clip == null ? null : () => audio.toggle(clip),
+        icon: Icon(playing ? Symbols.stop_rounded : Symbols.play_arrow_rounded),
       ),
     );
   }

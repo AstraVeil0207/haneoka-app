@@ -1,5 +1,8 @@
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
-    show haneokaProfileAssetRoot;
+    show
+        haneokaProfileAssetRoot,
+        loadHaneokaProfileAsset,
+        loadHaneokaProfileString;
 
 import 'dart:io';
 import 'dart:async';
@@ -86,7 +89,7 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
   Future<Uint8List> _fetch(Uri uri) => _bytes
       .putIfAbsent(uri.toString(), () async {
         if (uri.scheme == 'haneoka-asset') {
-          final value = await rootBundle.load(uri.path);
+          final value = await loadHaneokaProfileAsset(uri.path);
           return value.buffer.asUint8List(
             value.offsetInBytes,
             value.lengthInBytes,
@@ -262,7 +265,9 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
     var preferences = player.preferences;
     var revision = 0;
     final soundPacket = jsonDecode(
-      await rootBundle.loadString('${haneokaProfileAssetRoot}note-sounds.json'),
+      await loadHaneokaProfileString(
+        '${haneokaProfileAssetRoot}note-sounds.json',
+      ),
     ) as Map;
     final soundNames = soundPacket['names'] as Map;
     if (!mounted) return;

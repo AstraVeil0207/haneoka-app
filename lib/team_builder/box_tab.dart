@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../ui/tile.dart';
+import '../ui/card_artwork.dart';
 import 'box.dart';
 import 'catalog.dart';
 import 'controller.dart';
@@ -372,9 +373,7 @@ class _BoxTabState extends State<BoxTab> {
     final policy = c.settings.unknownPolicy == 'min'
         ? UnknownPolicy.min
         : UnknownPolicy.max;
-    final caption = owned == null
-        ? c.tb('notOwned', 'Not owned')
-        : catalog.growthCaption(_members, owned, policy);
+    final growth = catalog.ownedGrowth(_members, owned, policy);
     final p = _prefix(_members);
     final label = owned == null
         ? c.tb('markOwned', 'Mark as owned')
@@ -387,12 +386,20 @@ class _BoxTabState extends State<BoxTab> {
           catalog.characterFace(character),
       ],
       images: [catalog.cardImage(_members, id)],
+      media: CardArtwork(
+        kind: _members ? GameCardKind.member : GameCardKind.support,
+        image: catalog.cardImage(_members, id),
+        attribute: catalog.attributeIcon(catalog.attribute(_members, id)),
+        attributeLabel: catalog.attributeName(catalog.attribute(_members, id)),
+        rarity: catalog.rarityIcon(catalog.rarity(_members, id)),
+        growth: growth,
+      ),
       fit: BoxFit.cover,
       aspectRatio: _members ? 3 / 4 : 16 / 9,
       serverMark: catalog.mark(_members ? 'members' : 'snapshots', id),
       marks: [
-        ...catalog.cardMarks(_members, id),
-        TileMark.text(MarkAt.bottomStart, caption),
+        if (owned == null)
+          TileMark.text(MarkAt.bottomStart, c.tb('notOwned', 'Not owned')),
       ],
       onTap: () => showCardEditor(context, c, members: _members, id: id),
       action: Material(

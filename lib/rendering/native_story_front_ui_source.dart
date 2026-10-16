@@ -189,7 +189,7 @@ final class NativeStoryFrontUiSource {
     String hash,
   ) {
     if (hash !=
-            'edb018fa821123a7e3e369bd5916cfd0d8288bcc424aac2fed399c24546bf64d' ||
+            '6acd45b3e74dbe8b214c4eac6824d3c2e01b978840f90f52a6373f3267f3e8b7' ||
         packet['schema'] != 'haneoka-native-front-sprites-v1' ||
         packet['sourceId'] != 'v25-c0b6a1541e45-3a5d2eec9935-n653c6392' ||
         packet['sourceHash'] !=

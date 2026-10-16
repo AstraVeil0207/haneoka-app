@@ -72,7 +72,7 @@ final class NativeStoryFontMaterialBindings {
     required String assetBase,
   }) {
     if (packetSHA256 !=
-            '5770d6de2f1a8c9e1007aafc090ad7a0e8cb7a528a03c87e61ee2e7965e95d9e' ||
+            '84fe28d6a493ff18a675252865fdd4221f5608573cceb1f52b9aa94c1e68124c' ||
         packet['schema'] != 'haneoka-font-material-bindings-v1' ||
         source.server != 'intl' ||
         source.sourceId != 'v25-c0b6a1541e45-3a5d2eec9935-n653c6392' ||
@@ -188,7 +188,7 @@ final class NativeStoryFontMaterialBindings {
     required String hash,
   }) {
     if (hash !=
-            'be01d13b09505f44af225e6e9db9a3215eb7a86ebbdd2fec1cf4fb44c9d722b2' ||
+            '03a9e6c9db273549c3e6eddd11b7301a96621a65865a68056b44c1d12f90f668' ||
         packet['schema'] != 'haneoka-native-front-font-materials-v1' ||
         packet['sourceId'] != raw['sourceId'] ||
         packet['existingFontBindingsSHA256'] != packetSHA256 ||

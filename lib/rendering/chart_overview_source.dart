@@ -1,5 +1,8 @@
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
-    show haneokaProfileAssetRoot;
+    show
+        haneokaProfileAssetRoot,
+        loadHaneokaProfileAsset,
+        loadHaneokaProfileString;
 
 import 'dart:convert';
 import 'dart:typed_data';
@@ -7,7 +10,6 @@ import 'dart:ui' as ui;
 
 import 'package:cassiopeia_plugin_our_notes/render_profile.dart';
 import 'package:cassiopeia_renderer_flutter/overview.dart';
-import 'package:flutter/services.dart';
 
 import '../chart/runtime_chart.dart';
 import 'native_chart_document.dart';
@@ -37,14 +39,17 @@ Future<ChartOverviewSource> loadChartOverviewSource(
         );
   final prefix = haneokaProfileAssetRoot;
   final archive = Map<String, Object?>.from(
-    jsonDecode(await rootBundle.loadString('$prefix${document.noteSkin}.json'))
-        as Map,
+    jsonDecode(
+      await loadHaneokaProfileString('$prefix${document.noteSkin}.json'),
+    ) as Map,
   );
   final styleRoot = jsonDecode(
-    await rootBundle.loadString('${prefix}hold-styles.json'),
+    await loadHaneokaProfileString('${prefix}hold-styles.json'),
   ) as Map;
   final style = styleRoot[document.noteSkin] as Map;
-  final imageBytes = await rootBundle.load('$prefix${document.noteSkin}.png');
+  final imageBytes = await loadHaneokaProfileAsset(
+    '$prefix${document.noteSkin}.png',
+  );
   final codec = await ui.instantiateImageCodec(
     imageBytes.buffer.asUint8List(
       imageBytes.offsetInBytes,

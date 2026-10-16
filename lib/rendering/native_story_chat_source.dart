@@ -29,7 +29,7 @@ final class NativeStoryChatSource {
     if (path.contains('..')) {
       throw const FormatException('story_chat_packet_path');
     }
-    final data = await rootBundle.load('$base$path');
+    final data = await loadHaneokaProfileAsset('$base$path');
     final bytes = data.buffer.asUint8List(
       data.offsetInBytes,
       data.lengthInBytes,
@@ -43,15 +43,21 @@ final class NativeStoryChatSource {
   }
 
   static Future<NativeStoryChatSource> load(
-    NativeStoryDocument document,
-  ) async {
+    NativeStoryDocument document, {
+    StoryRenderProfileBinding? renderProfile,
+  }) async {
     final index = await _read(
       'chat-source-index.json',
       'ccfd65c0e1a76db5baebabb1f93acbee0093ec9316b9cd9deb835ec4fdb79b58',
     );
-    if (index['sourceId'] != document.chapter.sourceIdentity.sourceId ||
-        index['server'] != document.chapter.sourceIdentity.server ||
-        index['runtimeSHA256'] != document.runtimeHash) {
+    final authoredSource =
+        renderProfile?.packetSource ?? document.chapter.sourceIdentity;
+    if ((renderProfile != null &&
+            renderProfile.chapterIdentity != document.chapter.sourceIdentity) ||
+        index['sourceId'] != authoredSource.sourceId ||
+        index['server'] != authoredSource.server ||
+        (renderProfile == null &&
+            index['runtimeSHA256'] != document.runtimeHash)) {
       throw const FormatException('story_chat_source_identity');
     }
     final resource = index['sharedResources'] as Map;
@@ -74,7 +80,7 @@ final class NativeStoryChatSource {
         return StoryChatWindowSource(
           packet: {
             ...shared,
-            'chatAssets': index['chatAssets'],
+            'chatAssets': document.runtime['chatAssets'],
             'windows': {selection.windowAssetName: domain},
           },
           selection: selection,

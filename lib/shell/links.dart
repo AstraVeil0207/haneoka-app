@@ -3,10 +3,12 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../catalog/cross_server.dart';
 import '../catalog/profiles.dart';
+import '../catalog/missions.dart';
 import '../core/app_state.dart';
 import '../stories/stories.dart';
 import 'page.dart';
 import 'routes.dart';
+import 'route_paths.dart';
 
 /// The website's entity kinds (`RESOURCE_KINDS`) and the API resource each
 /// browses, for addresses like `/intl/ja/events/1/`.
@@ -63,6 +65,12 @@ Future<bool> openLink(
       ? parts.removeAt(0)
       : null;
   if (parts.isNotEmpty && _locales.contains(parts.first)) parts.removeAt(0);
+  final canonical = canonicalAppPath(
+    '/${parts.map(Uri.encodeComponent).join('/')}',
+  );
+  parts
+    ..clear()
+    ..addAll(Uri.parse(canonical).pathSegments);
   if (parts.isEmpty) {
     navigate?.call('/');
     return navigate != null;
@@ -118,6 +126,34 @@ Future<bool> openLink(
         ..add(id);
     }
   }
+  if (parts.length == 4 &&
+      parts.first == 'community' &&
+      const {'gbp', 'sekai'}.contains(parts[1]) &&
+      parts[2] == 'stories') {
+    final api = AppScope.of(context)
+        .providerApi(parts[1] == 'gbp' ? 'bestdori' : 'sekai');
+    final story = uri.queryParameters['story'];
+    if (story != null && story.isNotEmpty) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          settings: RouteSettings(
+            name: '/${parts.map(Uri.encodeComponent).join('/')}?${uri.query}',
+          ),
+          builder: (_) =>
+              StoryReaderScreen(episode: {'storyKey': story}, api: api),
+        ),
+      );
+      return true;
+    }
+    final card = uri.queryParameters['card'];
+    if (parts[1] == 'gbp' &&
+        parts[3] == 'card' &&
+        card != null &&
+        card.isNotEmpty) {
+      await openStoryCard(context, api, card);
+      return true;
+    }
+  }
   final story = parts.first == 'stories' && parts.length > 1
       ? parts[1]
       : parts.first == 'catalog' && parts.elementAtOrNull(1) == 'stories'
@@ -141,6 +177,20 @@ Future<bool> openLink(
         .where((p) => p.resource == resource)
         .firstOrNull;
     if (profile == null) return false;
+    if (resource == 'missions' && parts.length >= 2) {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          settings: RouteSettings(
+            name: Uri(
+              path: '/catalog/missions/${parts[1]}',
+              queryParameters: {'server': ?server},
+            ).toString(),
+          ),
+          builder: (_) => MissionDetailScreen(id: parts[1], server: server),
+        ),
+      );
+      return true;
+    }
     if (parts.length >= 2) {
       final selected = AppScope.maybeOf(context)?.server;
       openEntity(context, profile, {
@@ -161,7 +211,7 @@ Future<bool> openLink(
   // A GBP or Project Sekai song: `/community/songs-bestdori/detail/?song=1`.
   final song = uri.queryParameters['song'];
   if (const {
-        'community/songs-bestdori/detail',
+        'community/gbp/songs/detail',
         'community/sekai/songs/detail',
       }.contains(parts.join('/')) &&
       song != null) {
@@ -169,7 +219,12 @@ Future<bool> openLink(
       ..removeLast()
       ..add(song);
   }
-  final route = '/${parts.join('/')}';
+  final route = Uri.parse('/${parts.map(Uri.encodeComponent).join('/')}')
+      .replace(
+        query: uri.hasQuery ? uri.query : null,
+        fragment: uri.hasFragment ? uri.fragment : null,
+      )
+      .toString();
   if (navigate != null) {
     navigate(route);
     return true;

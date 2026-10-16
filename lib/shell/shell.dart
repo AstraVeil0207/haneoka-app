@@ -166,16 +166,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   StreamSubscription<Uri>? _links;
-  String? _notifiedVersion;
+  String? _notifiedRelease;
 
   Future<void> _checkUpdates() async {
     final updates = AppUpdates.instance;
     await updates.check();
     final notify = await updates.shouldNotify();
-    if (!mounted || !notify || _notifiedVersion == updates.available?.version) {
+    if (!mounted ||
+        !notify ||
+        _notifiedRelease == updates.available?.identity) {
       return;
     }
-    _notifiedVersion = updates.available!.version;
+    _notifiedRelease = updates.available!.identity;
     await showAppUpdate(context, updates.available!);
   }
 

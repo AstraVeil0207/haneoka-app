@@ -1,5 +1,5 @@
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
-    show haneokaProfileAssetRoot;
+    show HaneokaProfileAssets, haneokaProfileAssetRoot, loadHaneokaProfileAsset;
 
 import 'dart:convert';
 
@@ -73,9 +73,11 @@ final class NativeStoryUiSource {
         'native_story_ui_source:${source.server}:${source.sourceId}',
       );
     }
-    final hashes = <String, String>{};
+    final hashes = <String, String>{
+      'profile-manifest': (await HaneokaProfileAssets.open()).manifestSHA256,
+    };
     Future<Map<String, Object?>> read(String path) async {
-      final ByteData data = await rootBundle.load('$base$path');
+      final ByteData data = await loadHaneokaProfileAsset('$base$path');
       final bytes = data.buffer.asUint8List(
         data.offsetInBytes,
         data.lengthInBytes,

@@ -1,5 +1,9 @@
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
-    show haneokaProfileAssetRoot, haneokaShaderBundle;
+    show
+        haneokaProfileAssetRoot,
+        haneokaShaderBundle,
+        loadHaneokaProfileAsset,
+        loadHaneokaProfileString;
 
 import 'dart:async';
 import 'dart:convert';
@@ -13,6 +17,8 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_gpu/gpu.dart' as gpu;
 import 'package:vega_plugin_haneoka/render_profile.dart';
+import 'package:vega_plugin_cubism/vega_plugin_cubism.dart'
+    show CubismCoreUnavailable;
 import 'package:vega_protocol/seek.dart';
 import 'package:vega_protocol/save.dart';
 import 'package:vega_renderer_flutter/vega_renderer_flutter.dart';
@@ -53,6 +59,7 @@ import 'native_story_transition_source.dart';
 import 'native_story_preferences.dart';
 import 'story_seek_host.dart';
 import 'story_save_store.dart';
+import 'story_render_profile.dart';
 
 /// The ordinary selected-episode host. Media, source command history and the
 /// measured game UI run together; model availability is reported independently.
@@ -63,11 +70,13 @@ class NativeStoryPlayerScreen extends StatefulWidget {
     this.server,
     this.api,
     this.title,
+    this.textModeBuilder,
   });
   final String storyId;
   final String? server;
   final HaneokaApi? api;
   final Object? title;
+  final WidgetBuilder? textModeBuilder;
   @override
   State<NativeStoryPlayerScreen> createState() =>
       _NativeStoryPlayerScreenState();
@@ -164,7 +173,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
   Future<Uint8List> _fetch(Uri uri) => _bytes
       .putIfAbsent(uri.toString(), () async {
         if (uri.scheme == 'haneoka-asset') {
-          final data = await rootBundle.load(uri.path);
+          final data = await loadHaneokaProfileAsset(uri.path);
           return data.buffer.asUint8List(
             data.offsetInBytes,
             data.lengthInBytes,
@@ -320,7 +329,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
       final preferences = _preferences ??= await NativeStoryPreferences.load();
       _controls ??= StoryPlayerControls.fromJson(
         jsonDecode(
-          await rootBundle.loadString(
+          await loadHaneokaProfileString(
             '${haneokaProfileAssetRoot}player-controls.json',
           ),
         ) as Map,
@@ -328,12 +337,15 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
       if (!mounted || epoch != _epoch) return;
       final api = widget.api ?? state.apiFor(widget.server ?? state.server);
       final document = await NativeStoryDocument.load(api, widget.storyId);
-      final sourceUi = await NativeStoryUiSource.load(
+      final renderProfile = await bindStoryRenderProfile(
         document.chapter.sourceIdentity,
+      );
+      final sourceUi = await NativeStoryUiSource.load(
+        renderProfile.packetSource,
       );
       if (!mounted || epoch != _epoch) return;
       final stillSource = await NativeStoryStillSource.load(
-        document.chapter.sourceIdentity,
+        renderProfile.packetSource,
       );
       if (!mounted || epoch != _epoch) return;
       final stillHost = NativeStoryStillHost(
@@ -360,7 +372,10 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
       if (document.chapter.commands.any(
         (c) => const {36, 37, 38, 39, 65}.contains(c.opcode),
       )) {
-        final chatSource = await NativeStoryChatSource.load(document);
+        final chatSource = await NativeStoryChatSource.load(
+          document,
+          renderProfile: renderProfile,
+        );
         await chatSource.prepare(_fetch);
         if (!mounted || epoch != _epoch) return;
         _chatSource = chatSource;
@@ -447,6 +462,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
       )..addListener(_changed);
       _talkUi = NativeStoryTalkUiRuntime(
         ui: sourceUi,
+        renderProfile: renderProfile,
         sourceIdentity: document.chapter.sourceIdentity,
         initialStamp: _player!.actualUpdateStamp,
       );
@@ -463,13 +479,14 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
         enabled: preferences.bgmEnabled,
       );
       if (!mounted || epoch != _epoch) return;
-      _videoUi = await NativeStoryVideoUi.load(document.chapter.sourceIdentity);
+      _videoUi = await NativeStoryVideoUi.load(renderProfile.packetSource);
       final frameData = await NativeStoryFrameData.load(
-        document.chapter.sourceIdentity,
+        renderProfile.packetSource,
       );
       if (!mounted || epoch != _epoch) return;
       final frameHost = NativeStoryFrameHost(
         document: document,
+        renderProfile: renderProfile,
         data: frameData,
         epoch: epoch,
         fetch: _fetch,
@@ -723,7 +740,9 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
         fetch: _fetch,
       );
       await session.open(
-        handwrittenShaderBundle: await rootBundle.load(haneokaShaderBundle),
+        handwrittenShaderBundle: await loadHaneokaProfileAsset(
+          haneokaShaderBundle,
+        ),
         scene: toRenderScene(frame.scene),
         textures: frame.textures,
         initialFrame: frame.frame,
@@ -3418,6 +3437,26 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
     );
   }
 
+  Future<void> _openText() async {
+    final navigator = Navigator.of(context);
+    if (await navigator.maybePop() || !mounted) return;
+    final builder = widget.textModeBuilder;
+    if (builder == null) return;
+    await navigator.pushReplacement<void, void>(
+      MaterialPageRoute<void>(
+        settings: RouteSettings(
+          name: Uri(
+            pathSegments: ['', 'stories', widget.storyId],
+            queryParameters: widget.server == null
+                ? null
+                : {'server': widget.server!},
+          ).toString(),
+        ),
+        builder: builder,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) =>
       PlayerOrientationScope(landscape: true, child: _buildPlayer(context));
@@ -3436,7 +3475,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
               icon: Symbols.article_rounded,
               label: t('navigation.storyText', 'Text'),
               selected: false,
-              onSelected: () => unawaited(Navigator.of(context).maybePop()),
+              onSelected: () => unawaited(_openText()),
             ),
             BarChoice(
               icon: Symbols.play_circle_rounded,
@@ -3449,9 +3488,42 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
       ],
       body: _error != null
           ? Center(
-              child: FilledButton.tonal(
-                onPressed: _load,
-                child: Text(t('common.actions.retry', 'Retry')),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _error is CubismCoreUnavailable
+                          ? t(
+                              'story.playback.live2dUnavailable',
+                              'Live2D playback is unavailable on this device.',
+                            )
+                          : t(
+                              'story.playback.loadFailed',
+                              'Story playback could not be loaded.',
+                            ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 12,
+                      runSpacing: 8,
+                      children: [
+                        FilledButton.tonal(
+                          onPressed: _load,
+                          child: Text(t('common.actions.retry', 'Retry')),
+                        ),
+                        TextButton.icon(
+                          onPressed: _openText,
+                          icon: const Icon(Symbols.article_rounded),
+                          label: Text(t('navigation.storyText', 'Text')),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             )
           : player == null || _ui == null

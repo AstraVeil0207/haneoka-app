@@ -1,5 +1,5 @@
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
-    show haneokaProfileAssetRoot;
+    show haneokaProfileAssetRoot, loadHaneokaProfileString;
 
 import 'dart:convert';
 
@@ -20,7 +20,9 @@ final class NativeChartSounds {
     Future<Uint8List> Function(Uri) fetch,
   ) async {
     final packet = jsonDecode(
-      await rootBundle.loadString('${haneokaProfileAssetRoot}note-sounds.json'),
+      await loadHaneokaProfileString(
+        '${haneokaProfileAssetRoot}note-sounds.json',
+      ),
     ) as Map;
     final manifest = (packet['groups'] as Map)['$group'] as Map;
     final assets = <String, List<EffectSoundLayer>>{};

@@ -24,7 +24,9 @@ final class NativeChartIntroResources {
   bool _disposed = false;
 
   Future<Map<String, Object?>> _loadPacket() async => (jsonDecode(
-    await rootBundle.loadString('${haneokaProfileAssetRoot}intro-source.json'),
+    await loadHaneokaProfileString(
+      '${haneokaProfileAssetRoot}intro-source.json',
+    ),
   ) as Map).cast<String, Object?>();
 
   Future<SourceSdfFontBank> _loadFonts(Map<String, Object?> packet) async {
@@ -32,7 +34,7 @@ final class NativeChartIntroResources {
     for (final entry in (packet['fontMetadata'] as Map).entries) {
       final descriptor = entry.value as Map,
           path = descriptor['path'] as String,
-          buffer = await rootBundle.load(path);
+          buffer = await loadHaneokaProfileAsset(path);
       final bytes = buffer.buffer.asUint8List(
         buffer.offsetInBytes,
         buffer.lengthInBytes,
@@ -65,11 +67,12 @@ final class NativeChartIntroResources {
     bool Function() current,
   ) async {
     final packet = await (_packet ??= _loadPacket());
-    if (_disposed ||
-        !current() ||
-        packet['server'] != selected.source.server ||
-        packet['sourceId'] != selected.sourceId) {
-      return null;
+    if (_disposed || !current()) return null;
+    final profile = await HaneokaProfileAssets.open();
+    profile.requireCapability('our-notes-chart-v1');
+    if (packet['server'] != profile.packetSource['server'] ||
+        packet['sourceId'] != profile.packetSource['sourceId']) {
+      throw const FormatException('chart_intro_profile_provenance');
     }
     final fonts = await (_fonts ??= _loadFonts(packet));
     if (_disposed || !current()) return null;

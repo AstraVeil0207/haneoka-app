@@ -73,7 +73,7 @@ class PtController {
   EngineRequest? request() {
     final view = host.view, master = host.catalog?.master;
     if (view == null || master == null) return null;
-    final s = host.settings;
+    final s = host.searchSettings;
     final cards = host.engineCards();
     int bySong(SongRef a, SongRef b) => a.songId != b.songId
         ? a.songId - b.songId
@@ -125,16 +125,19 @@ class PtController {
     );
   }
 
-  PtCycle? cycle() => host.settings.ptCycle
-      ? PtCycle(
-          [...host.settings.planChallengeSongs]..sort(
-            (a, b) => a.songId != b.songId
-                ? a.songId - b.songId
-                : a.difficulty - b.difficulty,
-          ),
-          host.settings.challengePoints,
-        )
-      : null;
+  PtCycle? cycle() {
+    final s = host.searchSettings;
+    return s.ptCycle
+        ? PtCycle(
+            [...s.planChallengeSongs]..sort(
+              (a, b) => a.songId != b.songId
+                  ? a.songId - b.songId
+                  : a.difficulty - b.difficulty,
+            ),
+            s.challengePoints,
+          )
+        : null;
+  }
 
   String _inputSignature() =>
       canonical([request()?.toJson(), cycle()?.toJson()]);

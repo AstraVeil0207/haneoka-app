@@ -1,12 +1,11 @@
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
-    show haneokaShaderBundle;
+    show haneokaShaderBundle, loadHaneokaProfileAsset;
 
 import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_gpu/gpu.dart' as gpu;
 import 'package:vega_plugin_haneoka/render_profile.dart';
 import 'package:vega_renderer_flutter/vega_renderer_flutter.dart';
@@ -23,6 +22,7 @@ import 'native_story_playback.dart';
 final class NativeStoryFrameHost {
   NativeStoryFrameHost({
     required this.document,
+    StoryRenderProfileBinding? renderProfile,
     required this.data,
     required this.epoch,
     required this.fetch,
@@ -38,6 +38,7 @@ final class NativeStoryFrameHost {
       sourceEpoch: epoch,
       actualFrames: data.frames,
       actualSnapshotCatalog: data.snapshotCatalog,
+      renderProfile: renderProfile,
       actualFadeEase: actualFadeEase,
       actualStoryUs: initialStamp.storyUs,
       actualUpdateIndex: initialStamp.updateIndex,
@@ -303,7 +304,7 @@ final class NativeStoryFrameHost {
         release: document.chapter.sourceIdentity.release,
         document: document.chapter.sourceIdentity.document,
       ),
-      sourceId: document.chapter.sourceIdentity.sourceId,
+      sourceId: data.snapshotCatalog.sourceId,
       sharedColour: sharedColour,
       particleProjector: _particles,
       resolveTexture: document.assets.pinned,
@@ -345,7 +346,9 @@ final class NativeStoryFrameHost {
     );
     try {
       await session.open(
-        handwrittenShaderBundle: await rootBundle.load(haneokaShaderBundle),
+        handwrittenShaderBundle: await loadHaneokaProfileAsset(
+          haneokaShaderBundle,
+        ),
         scene: toRenderScene(frame.scene),
         textures: frame.textures,
         dataTextures: _dataTextures,

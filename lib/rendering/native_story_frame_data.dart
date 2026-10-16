@@ -1,10 +1,9 @@
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
-    show haneokaProfileAssetRoot;
+    show haneokaProfileAssetRoot, loadHaneokaProfileAsset;
 
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter/services.dart';
 import 'package:vega_plugin_haneoka/render_profile.dart';
 
 /// Exact source Frame prefab/controller/clip/image and host-canvas packets.
@@ -33,7 +32,7 @@ final class NativeStoryFrameData {
     }
     final hashes = <String, String>{};
     Future<Map<String, Object?>> read(String name, String expected) async {
-      final data = await rootBundle.load('$_base$name');
+      final data = await loadHaneokaProfileAsset('$_base$name');
       final bytes = data.buffer.asUint8List(
         data.offsetInBytes,
         data.lengthInBytes,

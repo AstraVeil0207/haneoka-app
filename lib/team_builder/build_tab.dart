@@ -106,6 +106,16 @@ class BuildTab extends StatefulWidget {
 }
 
 class _BuildTabState extends State<BuildTab> {
+  final _songsScroll = ScrollController();
+  final _challengeSongsScroll = ScrollController();
+
+  @override
+  void dispose() {
+    _songsScroll.dispose();
+    _challengeSongsScroll.dispose();
+    super.dispose();
+  }
+
   TeamBuilderController get controller => widget.controller;
   Object? _settingsStamp;
   List<Widget> _settingsCache = const [];
@@ -119,6 +129,7 @@ class _BuildTabState extends State<BuildTab> {
       Theme.of(context),
       c.state.text,
       MediaQuery.textScalerOf(context),
+      MediaQuery.sizeOf(context),
     );
     if (stamp != _settingsStamp) {
       _settingsStamp = stamp;
@@ -446,6 +457,11 @@ class _BuildTabState extends State<BuildTab> {
                     for (final song in songs) song.toJson(),
                   ],
                 }),
+                challenge: true,
+                allowed: [
+                  for (final row in c.catalog!.challengeSongs(s.eventId))
+                    row.liveMusicId,
+                ],
               ),
             ),
           ],
@@ -467,6 +483,7 @@ class _BuildTabState extends State<BuildTab> {
                 'songs': [for (final song in songs) song.toJson()],
               }),
               single: s.goal == GoalKind.power,
+              allowed: c.allowedSongIds,
             ),
           ],
         ),
@@ -524,8 +541,10 @@ class _BuildTabState extends State<BuildTab> {
         (_) => c.updateSettings({'eventId': eventId}),
       );
     }
-    final event = events.where((row) => row.id == eventId).firstOrNull?.event;
     final challengeSongs = catalog.challengeSongs(eventId);
+    final challenge =
+        s.goal == GoalKind.plan ||
+        (s.goal == GoalKind.event ? s.route == 'challenge' : s.challengeRules);
     return [
       DropdownMenu<int>(
         key: ValueKey('event-$eventId'),
@@ -555,35 +574,32 @@ class _BuildTabState extends State<BuildTab> {
             ),
         ],
       ),
-      if ((event?.musicId ?? 0) != 0 || challengeSongs.isNotEmpty)
+      if (challenge && challengeSongs.isNotEmpty)
         Wrap(
           spacing: 8,
           children: [
-            if ((event?.musicId ?? 0) != 0)
-              TextButton.icon(
-                onPressed: () => c.updateSettings({
-                  'songs': [SongRef(event!.musicId, 3).toJson()],
-                }),
-                icon: const Icon(Symbols.music_note_rounded),
-                label: Text(c.tb('useEventSong', 'Use the event song')),
-              ),
-            if (challengeSongs.isNotEmpty &&
-                (s.goal == GoalKind.plan || s.route == 'challenge'))
-              TextButton.icon(
-                onPressed: () {
-                  final songs = [
-                    for (final row in challengeSongs)
+            TextButton.icon(
+              onPressed: () {
+                final songs = [
+                  for (final row in challengeSongs)
+                    if (catalog
+                        .difficultyRows(row.liveMusicId)
+                        .any((d) => d['difficulty'] == 3))
                       SongRef(row.liveMusicId, 3).toJson(),
-                  ];
-                  c.updateSettings(
-                    s.goal == GoalKind.plan
-                        ? {'planChallengeSongs': songs}
-                        : {'songs': songs},
-                  );
-                },
-                icon: const Icon(Symbols.swords_rounded),
-                label: Text(c.tb('useChallengeSongs', 'Use challenge songs')),
-              ),
+                ];
+                c.updateSettings(
+                  s.goal == GoalKind.plan
+                      ? {'planChallengeSongs': songs}
+                      : {
+                          'songs': s.goal == GoalKind.power
+                              ? songs.take(1).toList()
+                              : songs,
+                        },
+                );
+              },
+              icon: const Icon(Symbols.swords_rounded),
+              label: Text(c.tb('useChallengeSongs', 'Use challenge songs')),
+            ),
           ],
         ),
     ];
@@ -594,23 +610,43 @@ class _BuildTabState extends State<BuildTab> {
     List<SongRef> songs,
     ValueChanged<List<SongRef>> onChanged, {
     bool single = false,
+    bool challenge = false,
+    List<int>? allowed,
   }) {
     final c = controller;
     final catalog = c.catalog!;
+    final scroll = challenge ? _challengeSongsScroll : _songsScroll;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final (index, song) in songs.indexed)
-          SongRow(
-            catalog: catalog,
-            song: song,
-            trailing: IconButton(
-              tooltip: catalog.t('common.actions.remove', 'Remove'),
-              onPressed: () => onChanged([
-                for (final (i, other) in songs.indexed)
-                  if (i != index) other,
-              ]),
-              icon: const Icon(Symbols.close_rounded),
+        if (songs.isNotEmpty)
+          ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: (MediaQuery.sizeOf(context).height * 0.4).clamp(
+                160,
+                360,
+              ),
+            ),
+            child: Scrollbar(
+              controller: scroll,
+              child: ListView.builder(
+                controller: scroll,
+                primary: false,
+                shrinkWrap: true,
+                itemCount: songs.length,
+                itemBuilder: (context, index) => SongRow(
+                  catalog: catalog,
+                  song: songs[index],
+                  trailing: IconButton(
+                    tooltip: catalog.t('common.actions.remove', 'Remove'),
+                    onPressed: () => onChanged([
+                      for (final (i, other) in songs.indexed)
+                        if (i != index) other,
+                    ]),
+                    icon: const Icon(Symbols.close_rounded),
+                  ),
+                ),
+              ),
             ),
           ),
         const SizedBox(height: 4),
@@ -623,6 +659,7 @@ class _BuildTabState extends State<BuildTab> {
                 catalog,
                 songs,
                 single: single,
+                allowed: allowed,
               );
               if (picked != null) onChanged(picked);
             },

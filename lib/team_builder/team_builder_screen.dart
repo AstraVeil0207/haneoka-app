@@ -5,6 +5,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
+import '../account/account_widgets.dart';
+import '../account/haneoka_account.dart';
 import '../core/app_state.dart';
 import '../l10n/app_localizations.dart';
 import '../save/game_save.dart';
@@ -219,7 +221,22 @@ class _TeamBuilderScreenState extends State<TeamBuilderScreen> {
           : null,
       actions: [
         if (store != null)
-          BarAction(icon: sync.$1, label: sync.$2, onPressed: store.refresh),
+          HaneokaAccount.instance.signedIn &&
+                  store.status != BoxSyncStatus.signedOut
+              ? BarAction(
+                  icon: sync.$1,
+                  label: sync.$2,
+                  onPressed: store.refresh,
+                )
+              : BarAction(
+                  icon: Symbols.cloud_sync_rounded,
+                  label: c.tb('syncSignIn', 'Sign in to sync'),
+                  showLabel: true,
+                  onPressed: () async {
+                    await signInToHaneoka(context);
+                    if (mounted) await store.refresh();
+                  },
+                ),
       ],
       body: body,
     );

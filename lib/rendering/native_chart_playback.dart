@@ -1,5 +1,10 @@
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
-    show haneokaProfileAssetRoot, haneokaShaderBundle;
+    show
+        HaneokaProfileAssets,
+        haneokaProfileAssetRoot,
+        haneokaShaderBundle,
+        loadHaneokaProfileAsset,
+        loadHaneokaProfileString;
 
 import 'dart:convert';
 import 'dart:async';
@@ -10,7 +15,6 @@ import 'dart:developer' as developer;
 
 import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_gpu/gpu.dart' as gpu;
 import 'package:cassiopeia_plugin_our_notes/render_profile.dart';
@@ -534,7 +538,7 @@ final class NativeChartPlayback extends ChangeNotifier {
       final bytes = await fetch(selected.scoreUri);
       final archive = Map<String, Object?>.from(
         jsonDecode(
-          await rootBundle.loadString(
+          await loadHaneokaProfileString(
             '$haneokaProfileAssetRoot${selected.noteSkin}.json',
           ),
         ) as Map,
@@ -549,7 +553,7 @@ final class NativeChartPlayback extends ChangeNotifier {
         );
       }
       final styles = jsonDecode(
-        await rootBundle.loadString(
+        await loadHaneokaProfileString(
           '${haneokaProfileAssetRoot}hold-styles.json',
         ),
       ) as Map;
@@ -558,14 +562,14 @@ final class NativeChartPlayback extends ChangeNotifier {
       );
       final hud = NativeChartHud(
         jsonDecode(
-          await rootBundle.loadString(
+          await loadHaneokaProfileString(
             '${haneokaProfileAssetRoot}hud-combo.json',
           ),
         ) as Map,
       );
       final header = NativeChartHeader(
         jsonDecode(
-          await rootBundle.loadString(
+          await loadHaneokaProfileString(
             '${haneokaProfileAssetRoot}hud-header.json',
           ),
         ) as Map,
@@ -595,12 +599,12 @@ final class NativeChartPlayback extends ChangeNotifier {
       if (_disposed || generation != _generation) return;
       final gekisouOverlay = OurNotesGekisouOverlayProjector(
         (jsonDecode(
-          await rootBundle.loadString(
+          await loadHaneokaProfileString(
             '${haneokaProfileAssetRoot}gekisou-lane-hud-profile.json',
           ),
         ) as Map).cast<String, Object?>(),
       );
-      final stageJson = await rootBundle.loadString(
+      final stageJson = await loadHaneokaProfileString(
         '${haneokaProfileAssetRoot}gekisou-effect-profile.json',
       );
       final stagePacket = (jsonDecode(stageJson) as Map)
@@ -651,7 +655,7 @@ final class NativeChartPlayback extends ChangeNotifier {
         } else {
           final compositor = NativeChartBackground(
             jsonDecode(
-              await rootBundle.loadString(
+              await loadHaneokaProfileString(
                 '${haneokaProfileAssetRoot}chart-background.json',
               ),
             ) as Map,
@@ -685,7 +689,7 @@ final class NativeChartPlayback extends ChangeNotifier {
       if (_disposed || generation != _generation) return;
       await _deviceHaptics.initialize(
         (jsonDecode(
-          await rootBundle.loadString(
+          await loadHaneokaProfileString(
             '${haneokaProfileAssetRoot}haptic-recipes.json',
           ),
         ) as Map)['_allData'].cast<Map>().map<Map<String, Object?>>(
@@ -728,11 +732,12 @@ final class NativeChartPlayback extends ChangeNotifier {
         mediaUs = 0;
       }
       _effects = null;
-      if (selected.source.server == NativeChartEffectSource.supportedServer &&
-          selected.sourceId == NativeChartEffectSource.supportedSourceId) {
+      final visualProfile = await HaneokaProfileAssets.open();
+      visualProfile.requireCapability('our-notes-chart-v1');
+      {
         final effects = await NativeChartEffectSource.load(
-          server: selected.source.server,
-          sourceId: selected.sourceId,
+          server: visualProfile.packetSource['server'] as String,
+          sourceId: visualProfile.packetSource['sourceId'] as String,
         );
         if (_disposed || generation != _generation) return;
         _effects = NativeChartEffects(
@@ -767,7 +772,9 @@ final class NativeChartPlayback extends ChangeNotifier {
       );
       pendingSession = current;
       await current.open(
-        handwrittenShaderBundle: await rootBundle.load(haneokaShaderBundle),
+        handwrittenShaderBundle: await loadHaneokaProfileAsset(
+          haneokaShaderBundle,
+        ),
         scene: toRenderScene(snapshot.scene),
         textures: {
           for (final entry in snapshot.texturePaths.entries)

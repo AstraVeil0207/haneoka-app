@@ -62,13 +62,54 @@ class TeamBuilderController extends ChangeNotifier {
 
   EngineResponse? results;
   BuildSettings? resultSettings;
+  EngineRequest? resultInputs;
   bool activity = false;
-  BuildSettings get searchSettings =>
+  BuildSettings get _contextSettings =>
       activity && settings.rewardMode != 'recommendation'
       ? settings.forGoal(
           settings.rewardMode == 'plan' ? GoalKind.plan : GoalKind.event,
         )
       : settings;
+
+  List<int>? get allowedSongIds {
+    final s = _contextSettings, catalog = this.catalog;
+    if (catalog == null || s.eventId == null) return null;
+    final goal = activity ? settings.rewardMode : s.goal.name;
+    final challenge = goal == 'event'
+        ? s.route == 'challenge'
+        : (goal == 'score' || goal == 'power') && s.challengeRules;
+    if (challenge) {
+      return [
+        for (final row in catalog.challengeSongs(s.eventId)) row.liveMusicId,
+      ];
+    }
+    final normalEvent = const {
+      'event',
+      'plan',
+      'recommendation',
+    }.contains(goal);
+    return normalEvent ? catalog.normalEventSongIds(s.eventId) : null;
+  }
+
+  BuildSettings get searchSettings {
+    final s = _contextSettings, catalog = this.catalog;
+    if (catalog == null || s.eventId == null) return s;
+    final allowed = allowedSongIds?.toSet();
+    final challenges = {
+      for (final row in catalog.challengeSongs(s.eventId)) row.liveMusicId,
+    };
+    return s.copyWith({
+      'songs': [
+        for (final song in s.songs)
+          if (allowed == null || allowed.contains(song.songId)) song.toJson(),
+      ],
+      'planChallengeSongs': [
+        for (final song in s.planChallengeSongs)
+          if (challenges.contains(song.songId)) song.toJson(),
+      ],
+    });
+  }
+
   String resultsFor = '';
   bool running = false;
   int runGeneration = 0;
@@ -392,6 +433,7 @@ class TeamBuilderController extends ChangeNotifier {
           results = snapshot.response;
           resultsFor = fingerprint;
           resultSettings = settings;
+          resultInputs = request;
           notifyListeners();
         },
       );
@@ -404,6 +446,7 @@ class TeamBuilderController extends ChangeNotifier {
         results = response;
         resultsFor = fingerprint;
         resultSettings = settings;
+        resultInputs = request;
       }
     } on EngineCancelled {
       // Cancelled by the reader.

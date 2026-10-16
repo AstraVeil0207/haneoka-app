@@ -1,10 +1,9 @@
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
-    show haneokaProfileAssetRoot;
+    show haneokaProfileAssetRoot, loadHaneokaProfileAsset;
 
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter/services.dart';
 import 'package:vega_plugin_haneoka/render_profile.dart';
 
 /// The selected source's original serialized DOTween settings and StillView
@@ -74,7 +73,7 @@ final class NativeStoryStillSource {
         source.sourceId != 'v25-c0b6a1541e45-3a5d2eec9935-n653c6392') {
       throw UnsupportedError('native_story_still_source:${source.sourceId}');
     }
-    final data = await rootBundle.load(
+    final data = await loadHaneokaProfileAsset(
       '${haneokaProfileAssetRoot}story-ui/source-bindings/still-constructor.json',
     );
     final bytes = data.buffer.asUint8List(

@@ -44,6 +44,7 @@ import '../records/tracker.dart';
 import '../home/join.dart';
 import '../ui/import_screen.dart';
 import 'page.dart';
+import 'route_paths.dart';
 import 'settings_screen.dart';
 
 /// The website's catalogue routes and the API resource each one browses.
@@ -82,7 +83,7 @@ void openEntity(
   final path = api is ProviderApi
       ? api.provider == 'sekai'
             ? '/community/sekai/songs'
-            : '/community/songs-bestdori'
+            : '/community/gbp/songs'
       : '/catalog/$kind';
   Navigator.of(context).push(
     MaterialPageRoute<void>(
@@ -118,7 +119,7 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
       difficulty: int.tryParse(uri.queryParameters['difficulty'] ?? '') ?? 2,
     );
   }
-  route = uri.path;
+  route = canonicalAppPath(uri.path);
   if (route == '/') return HomeScreen(onBrowse: navigate);
   if (route == '/settings') return const SettingsScreen();
   if (route == '/catalog') return CatalogHubScreen(navigate: navigate);
@@ -159,26 +160,41 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/community/posts/new') return const PostEditorScreen();
   if (route == '/community/tags') return const CommunityTagsScreen();
   if (route == '/community/playlists') return const PlaylistsScreen();
-  if (RegExp(r'^/community/(stories-bestdori|sekai/stories)/([a-z]+)$')
-          .firstMatch(route)
+  if (RegExp(r'^/community/(gbp|sekai)/stories/([a-z]+)$').firstMatch(route)
       case final m?) {
+    if (uri.queryParameters['story'] case final story? when story.isNotEmpty) {
+      return Builder(
+        builder: (context) => StoryReaderScreen(
+          episode: {'storyKey': story},
+          api: AppScope.of(context)
+              .providerApi(m[1] == 'sekai' ? 'sekai' : 'bestdori'),
+        ),
+      );
+    }
     return _ProviderStories(
       key: ValueKey(route),
-      provider: m[1] == 'sekai/stories' ? 'sekai' : 'bestdori',
+      provider: m[1] == 'sekai' ? 'sekai' : 'bestdori',
       section: m[2]!,
     );
   }
-  if (RegExp(r'^/community/(songs-bestdori|sekai/songs)/(\d+)$')
-          .firstMatch(route)
+  if (RegExp(r'^/community/(gbp|sekai)/songs/detail$').firstMatch(route)
+      case final m?) {
+    if (uri.queryParameters['song'] case final id? when id.isNotEmpty) {
+      return _ProviderSong(
+        provider: m[1] == 'sekai' ? 'sekai' : 'bestdori',
+        id: id,
+      );
+    }
+  }
+  if (RegExp(r'^/community/(gbp|sekai)/songs/(\d+)$').firstMatch(route)
       case final m?) {
     return _ProviderSong(
       key: ValueKey(route),
-      provider: m[1] == 'sekai/songs' ? 'sekai' : 'bestdori',
+      provider: m[1] == 'sekai' ? 'sekai' : 'bestdori',
       id: m[2]!,
     );
   }
-  if (route == '/community/songs-bestdori' ||
-      route == '/community/sekai/songs') {
+  if (route == '/community/gbp/songs' || route == '/community/sekai/songs') {
     return _ProviderSongs(
       key: ValueKey(route),
       provider: route.contains('sekai') ? 'sekai' : 'bestdori',
@@ -216,6 +232,12 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
         key: ValueKey(uri.toString()),
         storyId: id,
         server: uri.queryParameters['server'],
+        textModeBuilder: (context) => StoryReaderScreen(
+          episode: {'storyKey': id},
+          api: AppScope.of(context).apiFor(
+            uri.queryParameters['server'] ?? AppScope.of(context).server,
+          ),
+        ),
       );
     }
     return StoryReaderScreen(episode: {'storyKey': id});
@@ -230,9 +252,21 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
         key: ValueKey(uri.toString()),
         storyId: Uri.decodeComponent(mode),
         server: uri.queryParameters['server'],
+        textModeBuilder: (context) => StoryReaderScreen(
+          episode: {'storyKey': Uri.decodeComponent(mode)},
+          api: AppScope.of(context).apiFor(
+            uri.queryParameters['server'] ?? AppScope.of(context).server,
+          ),
+        ),
       );
     }
     return StoryReaderScreen(episode: {'storyKey': Uri.decodeComponent(mode)});
+  }
+  if (route.startsWith('/catalog/missions/')) {
+    return MissionDetailScreen(
+      id: Uri.decodeComponent(route.substring('/catalog/missions/'.length)),
+      server: uri.queryParameters['server'],
+    );
   }
   final slash = route.lastIndexOf('/');
   final parent = slash > '/catalog'.length

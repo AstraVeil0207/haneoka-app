@@ -9,6 +9,7 @@ import '../core/app_state.dart';
 import '../core/i18n.dart';
 import '../shell/page.dart';
 import '../ui/app_image.dart';
+import '../ui/card_artwork.dart';
 import '../ui/theme.dart';
 import 'player.dart';
 
@@ -60,6 +61,8 @@ class CardArt {
     this.rarityMark,
     this.rankGroup,
     this.levelGroup,
+    this.liveSkillIcon,
+    this.gekisoSkillIcon,
   );
   final Object? name;
   final String? image;
@@ -68,6 +71,7 @@ class CardArt {
   final String? rarityMark;
   final int rankGroup;
   final int levelGroup;
+  final String? liveSkillIcon, gekisoSkillIcon;
 }
 
 typedef LevelTable = List<(int level, num exp)>;
@@ -83,11 +87,13 @@ class CardCatalog {
     this.playerLevels,
     this.memberLimits,
     this.supportLimits,
+    this.visuals,
   );
   final Map<int, CardArt> member, support;
   final Map<int, LevelTable> memberLevels, supportLevels;
   final LevelTable playerLevels;
   final Map<String, int> memberLimits, supportLimits;
+  final CatalogVisuals visuals;
 
   static final _loaded = <HaneokaApi, Future<CardCatalog>>{};
   static Future<CardCatalog> of(HaneokaApi api) =>
@@ -133,6 +139,8 @@ class CardCatalog {
                         as num?)
                     ?.toInt() ??
                 0,
+            _skillIcon(value, 'live', api),
+            _skillIcon(value, 'gekisou', api),
           ),
     };
     Map<int, LevelTable> levels(Object? rows) {
@@ -172,8 +180,70 @@ class CardCatalog {
           '${raw(row)['_group']}:${raw(row)['_rank']}':
               (raw(row)['_limitLevel'] as num?)?.toInt() ?? 0,
       },
+      visuals,
     );
   }
+
+  static String? _skillIcon(Map card, String family, HaneokaApi api) {
+    final icon = ((card['resolvedSkills'] as Map?)?[family] as Map?)?['icon'];
+    return icon is String && icon.isNotEmpty
+        ? api.asset(icon).toString()
+        : null;
+  }
+
+  CardGrowthDisplay? cardGrowth(Map card, SiteText t, {required bool support}) {
+    final art = (support
+        ? this.support
+        : member)[card[support ? 'supportCardId' : 'memberCardId']];
+    return art == null
+        ? null
+        : growth(
+            art,
+            t,
+            support: support,
+            level: cardLevel(card, support: support),
+            training: (card['memberAwakeCount'] as num?)?.toInt(),
+            rank: (card[support ? 'supportRank' : 'memberRank'] as num?)
+                ?.toInt(),
+          );
+  }
+
+  /// Native awakeCount is training; card rank selects the awakening emblem.
+  CardGrowthDisplay growth(
+    CardArt art,
+    SiteText t, {
+    required bool support,
+    int? level,
+    int? training,
+    int? rank,
+    bool showSkills = false,
+    int? liveSkillLevel,
+    int? gekisoSkillLevel,
+  }) => CardGrowthDisplay(
+    level: level,
+    training: support ? null : training,
+    trainingIcon: visuals.mark('SpecialTraining.png'),
+    trainingLabel: t('catalog.cards.fields.training', 'Training'),
+    rank: rank,
+    rankIcon: visuals.mark(
+      support ? 'snaplimit_${rank ?? 0}.png' : 'CardRank${rank ?? 0}.png',
+    ),
+    rankLabel: t('catalog.cards.fields.awakening', 'Awakening'),
+    liveSkill: !support && showSkills && art.liveSkillIcon != null
+        ? CardSkillMark(
+            art.liveSkillIcon!,
+            liveSkillLevel,
+            t('catalog.cards.fields.liveSkill', 'LIVE Skill'),
+          )
+        : null,
+    gekisoSkill: !support && showSkills && art.gekisoSkillIcon != null
+        ? CardSkillMark(
+            art.gekisoSkillIcon!,
+            gekisoSkillLevel,
+            t('catalog.cards.fields.gekisouSkill', 'GEKISO Skill'),
+          )
+        : null,
+  );
 
   /// The highest level whose experience is reached (`levelFromExp`).
   static int? levelFromExp(LevelTable? rows, Object? exp) {
@@ -485,14 +555,14 @@ class _Row extends StatelessWidget {
                           children: [
                             _Card(
                               art: cards.member[card['memberCardId']],
-                              level: cards.cardLevel(card, support: false),
-                              ratio: 1,
+                              growth: cards.cardGrowth(card, t, support: false),
+                              support: false,
                             ),
                             const SizedBox(height: 4),
                             _Card(
                               art: cards.support[card['supportCardId']],
-                              level: cards.cardLevel(card, support: true),
-                              ratio: 16 / 9,
+                              growth: cards.cardGrowth(card, t, support: true),
+                              support: true,
                             ),
                           ],
                         ),
@@ -508,75 +578,30 @@ class _Row extends StatelessWidget {
 }
 
 class _Card extends StatelessWidget {
-  const _Card({required this.art, required this.level, required this.ratio});
+  const _Card({required this.art, required this.growth, required this.support});
   final CardArt? art;
-  final int? level;
-  final double ratio;
+  final CardGrowthDisplay? growth;
+  final bool support;
 
   @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final t = AppScope.of(context).text;
-    final art = this.art;
-    return AspectRatio(
-      aspectRatio: ratio,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(Corner.small),
-        child: ColoredBox(
-          color: scheme.surfaceContainerHighest,
-          child: art == null
-              ? null
-              : Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    if (art.image != null)
-                      AppImage(candidates: [art.image!], fit: BoxFit.cover),
-                    if (art.attribute != null)
-                      Positioned(
-                        left: 2,
-                        top: 2,
-                        width: 14,
-                        height: 14,
-                        child: AppImage(candidates: [art.attribute!]),
-                      ),
-                    if (art.rarityMark != null)
-                      Positioned(
-                        right: 2,
-                        top: 2,
-                        width: 14,
-                        height: 14,
-                        child: AppImage(candidates: [art.rarityMark!]),
-                      ),
-                    if (level != null)
-                      Positioned(
-                        right: 2,
-                        bottom: 2,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 3),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.55),
-                            borderRadius: BorderRadius.circular(3),
-                          ),
-                          child: Text(
-                            rankingLabel(
-                              t,
-                              'cardLevel',
-                              'Lv. {level}',
-                            ).replaceAll('{level}', '$level'),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-        ),
+  Widget build(BuildContext context) => AspectRatio(
+    aspectRatio: support ? 16 / 9 : 1,
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(Corner.small),
+      child: ColoredBox(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        child: art == null
+            ? null
+            : CardArtwork(
+                kind: support ? GameCardKind.support : GameCardKind.member,
+                image: art!.image ?? '',
+                attribute: art!.attribute,
+                rarity: art!.rarityMark,
+                growth: growth,
+              ),
       ),
-    );
-  }
+    ),
+  );
 }
 
 /// One song's score ranking (`song-ranking`): the region in the bar, the

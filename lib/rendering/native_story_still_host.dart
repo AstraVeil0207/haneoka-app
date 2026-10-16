@@ -1,12 +1,11 @@
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
-    show haneokaShaderBundle;
+    show haneokaShaderBundle, loadHaneokaProfileAsset;
 
 import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_gpu/gpu.dart' as gpu;
 import 'package:vega_plugin_haneoka/render_profile.dart';
 import 'package:vega_renderer_flutter/vega_renderer_flutter.dart';
@@ -394,7 +393,9 @@ final class NativeStoryStillHost {
     );
     try {
       await session.open(
-        handwrittenShaderBundle: await rootBundle.load(haneokaShaderBundle),
+        handwrittenShaderBundle: await loadHaneokaProfileAsset(
+          haneokaShaderBundle,
+        ),
         scene: toRenderScene(frame.scene),
         textures: frame.textures,
         initialFrame: frame.frame,

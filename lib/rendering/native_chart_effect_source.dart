@@ -1,10 +1,9 @@
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
-    show haneokaProfileAssetRoot;
+    show haneokaProfileAssetRoot, loadHaneokaProfileAsset;
 
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter/services.dart';
 import 'package:cassiopeia_plugin_our_notes/render_profile.dart';
 
 import 'native_numeric_texture.dart';
@@ -74,7 +73,7 @@ final class NativeChartEffectSource implements AuthoredParticleSource {
     const base = '${haneokaProfileAssetRoot}effects/';
     final hashes = <String, String>{};
     Future<Map> read(String name) async {
-      final bytes = await rootBundle.load('$base$name');
+      final bytes = await loadHaneokaProfileAsset('$base$name');
       final body = bytes.buffer.asUint8List(
         bytes.offsetInBytes,
         bytes.lengthInBytes,
@@ -186,7 +185,9 @@ final class NativeChartEffectSource implements AuthoredParticleSource {
       }
       identities[identity] = 'fx:$key';
       if (textures.containsKey('fx:$key')) continue;
-      final data = await rootBundle.load('$haneokaProfileAssetRoot$path');
+      final data = await loadHaneokaProfileAsset(
+        '$haneokaProfileAssetRoot$path',
+      );
       final bytes = data.buffer.asUint8List(
         data.offsetInBytes,
         data.lengthInBytes,
@@ -241,7 +242,9 @@ final class NativeChartEffectSource implements AuthoredParticleSource {
       throw const FormatException('chart_lane_feedback_material');
     }
     final laneTexture = laneData['texture'] as Map;
-    final laneBytes = await rootBundle.load('$base${laneTexture['filename']}');
+    final laneBytes = await loadHaneokaProfileAsset(
+      '$base${laneTexture['filename']}',
+    );
     final lanePixels = laneBytes.buffer.asUint8List(
       laneBytes.offsetInBytes,
       laneBytes.lengthInBytes,

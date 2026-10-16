@@ -1037,7 +1037,26 @@
       "missionCount": "{count} 件",
       "missionNoEnd": "期限なし",
       "missionDailyReset": "毎日更新",
-      "missionRewardTotal": "報酬合計"
+      "missionRewardTotal": "報酬合計",
+      "permanent": "常設ミッション",
+      "releaseDay": "{day}日目",
+      "categoryOther": "その他のミッション",
+      "categoryDaily": "デイリー",
+      "categoryPeriod": "期間限定",
+      "categoryEvent": "イベント",
+      "categoryNormal": "ノーマル",
+      "categoryBeginner": "初心者",
+      "categoryComeback": "カムバック",
+      "categoryCharacter": "キャラクター",
+      "categoryInvitation": "友達招待",
+      "categorySecret": "隠しミッション",
+      "categoryEventDaily": "イベントデイリー",
+      "categoryCircle": "グループ",
+      "categoryCircleDaily": "グループデイリー",
+      "categoryEventCircle": "グループイベント",
+      "categoryEventCircleDaily": "グループイベントデイリー",
+      "categoryUnlockMusic": "楽曲解放",
+      "categoryUnlockHome": "ホーム解放"
     },
     "resources": {
       "types": {
@@ -1145,7 +1164,9 @@
       "resources": "ストーリー素材",
       "preparing": "再生を準備中",
       "sceneIndex": "シーン索引",
-      "preparationTasks": "件の準備"
+      "preparationTasks": "件の準備",
+      "live2dUnavailable": "この端末ではLive2Dを再生できません。",
+      "loadFailed": "ストーリープレイヤーを読み込めませんでした。"
     },
     "reading": {
       "speakers": "話者",
@@ -1307,7 +1328,9 @@
       "gekisouLuck": "激奏・LUCK",
       "gekisouTop": "激奏・最高ランク",
       "gacha": "メンバー獲得",
-      "title": "ボイス"
+      "title": "ボイス",
+      "playGroup": "まとめて再生",
+      "birthdayOf": "{0}の誕生日"
     },
     "chartPlayer": {
       "play": "再生",
@@ -2266,7 +2289,8 @@
       "continueOptimal": "最適性の検証を続ける",
       "noCandidate": "候補はまだありません",
       "cpCycle": "CP の長期換算",
-      "fullRanking": "報酬の詳細順位"
+      "fullRanking": "報酬の詳細順位",
+      "syncSignIn": "ログインして同期"
     },
     "calendar": {
       "title": "カレンダー",

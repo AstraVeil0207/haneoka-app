@@ -58,12 +58,14 @@ class AppImage extends StatefulWidget {
     this.placeholder,
     this.alignment = Alignment.center,
     this.localized = true,
+    this.naturalHeight = false,
   });
   final List<String> candidates;
 
   /// Whether each candidate is first tried in the reading locale's own
   /// artwork (`banner(zh-Hans).png` beside `banner.png`).
   final bool localized;
+  final bool naturalHeight;
   final BoxFit fit;
   final Alignment alignment;
 
@@ -77,6 +79,10 @@ class AppImage extends StatefulWidget {
 class _AppImageState extends State<AppImage> {
   int _index = 0;
   Timer? _retry;
+
+  Widget _empty() => widget.naturalHeight
+      ? const AspectRatio(aspectRatio: 1)
+      : const SizedBox.expand();
 
   @override
   void dispose() {
@@ -106,12 +112,17 @@ class _AppImageState extends State<AppImage> {
             url,
     ];
     if (_index >= candidates.length) {
-      return widget.placeholder ?? const SizedBox.expand();
+      return widget.placeholder ?? _empty();
     }
     final url = candidates[_index];
     return LayoutBuilder(
       builder: (context, constraints) {
         final ratio = MediaQuery.devicePixelRatioOf(context);
+        // Collapsing layouts can otherwise request a 1-pixel-wide decode,
+        // whose aspect-ratio-derived height can round down to zero.
+        if (constraints.hasBoundedWidth && constraints.maxWidth * ratio < 2) {
+          return _empty();
+        }
         final width = constraints.hasBoundedWidth
             ? (constraints.maxWidth * ratio).round().clamp(1, 8192)
             : null;
@@ -125,18 +136,18 @@ class _AppImageState extends State<AppImage> {
               fit: widget.fit,
               alignment: widget.alignment,
               width: double.infinity,
-              height: double.infinity,
+              height: widget.naturalHeight ? null : double.infinity,
             );
           },
           cacheManager: artworkCache,
           fit: widget.fit,
           alignment: widget.alignment,
           width: double.infinity,
-          height: double.infinity,
+          height: widget.naturalHeight ? null : double.infinity,
           memCacheWidth: width,
           fadeInDuration: const Duration(milliseconds: 120),
           fadeOutDuration: Duration.zero,
-          placeholder: (_, _) => const SizedBox.expand(),
+          placeholder: (_, _) => _empty(),
           errorWidget: (_, _, error) {
             final failed = url;
             WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -157,7 +168,7 @@ class _AppImageState extends State<AppImage> {
               }
               if (mounted) setState(() {});
             });
-            return const SizedBox.expand();
+            return _empty();
           },
         );
       },

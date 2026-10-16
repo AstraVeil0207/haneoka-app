@@ -11,8 +11,8 @@ import 'package:material_symbols_icons/symbols.dart';
 import '../catalog/catalog_screen.dart' show cardRarityName;
 
 import '../ui/app_image.dart';
+import '../ui/card_artwork.dart';
 import '../ui/theme.dart';
-import '../ui/tile.dart';
 import 'box.dart';
 import 'build_tab.dart';
 import 'controller.dart';
@@ -28,6 +28,23 @@ const rankNames = {1: 'E', 2: 'D', 3: 'C', 4: 'B', 5: 'A', 6: 'S', 7: 'SS'};
 
 String hitKey(EngineHit hit) =>
     '${hit.song?.key ?? '-'}|${hit.members.join(',')}|${hit.snaps.join(',')}';
+
+CardGrowthDisplay? _resultGrowth(
+  TeamBuilderController c,
+  String key,
+  bool member,
+) {
+  final inputs = c.activity && c.settings.rewardMode == 'recommendation'
+      ? c.pt.job?.request
+      : c.resultInputs;
+  if (inputs == null) return null;
+  final input = member
+      ? inputs.members.where((row) => row.key == key).firstOrNull
+      : inputs.snaps.where((row) => row.key == key).firstOrNull;
+  return input == null
+      ? null
+      : c.catalog!.resolvedGrowth(input, inputs.unknownPolicy);
+}
 
 class ResultsView extends StatefulWidget {
   const ResultsView({super.key, required this.controller});
@@ -679,6 +696,7 @@ class Formation extends StatelessWidget {
     final catalog = c.catalog!;
     final theme = Theme.of(context);
     final order = [1, 2, 0, 3, 4].where((i) => i < hit.members.length);
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -700,14 +718,8 @@ class Formation extends StatelessWidget {
                         catalog: catalog,
                         members: true,
                         id: member,
-                        extra: [
-                          if (index == 0)
-                            TileMark.text(
-                              MarkAt.bottomStart,
-                              c.tb('leader', 'Leader'),
-                              accent: theme.colorScheme.primary,
-                            ),
-                        ],
+                        growth: _resultGrowth(c, hit.members[index], true),
+                        outline: index == 0 ? theme.colorScheme.primary : null,
                       ),
                       const SizedBox(height: 4),
                       if (snapKey != null)
@@ -715,6 +727,7 @@ class Formation extends StatelessWidget {
                           catalog: catalog,
                           members: false,
                           id: cardIdOf(snapKey),
+                          growth: _resultGrowth(c, snapKey, false),
                         )
                       else
                         AspectRatio(
@@ -934,7 +947,7 @@ class _SkillOrdersState extends State<_SkillOrders> {
     return (
       character: character,
       name: catalog.characterName(character),
-      face: catalog.characterFace(character),
+      face: catalog.cardImage(true, card),
       card: catalog.cardImage(true, card),
       color: catalog.characterColor(
         character,
@@ -946,15 +959,20 @@ class _SkillOrdersState extends State<_SkillOrders> {
   Widget _faces(int index, List<int> firing) => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
-      for (final event in firing)
-        Padding(
-          padding: const EdgeInsets.only(right: 2),
+      for (final (position, event) in firing.indexed)
+        Align(
+          widthFactor: position + 1 < firing.length ? 19 / 24 : 1,
+          alignment: Alignment.centerLeft,
           child: Tooltip(
             message: _face(orders[index][event]).name,
             child: ClipOval(
               child: SizedBox.square(
-                dimension: 28,
-                child: AppImage(candidates: [_face(orders[index][event]).face]),
+                dimension: 24,
+                child: AppImage(
+                  candidates: [_face(orders[index][event]).face],
+                  fit: BoxFit.cover,
+                  alignment: const Alignment(0, -0.5),
+                ),
               ),
             ),
           ),
@@ -1236,6 +1254,8 @@ class _TimelinePlot extends StatelessWidget {
                             dimension: 22,
                             child: AppImage(
                               candidates: [faceOf(window.member)],
+                              fit: BoxFit.cover,
+                              alignment: const Alignment(0, -0.5),
                             ),
                           ),
                         ),
@@ -1296,7 +1316,8 @@ Future<List<int>> renderHitImage(
 ) {
   final catalog = c.catalog!;
   final locale = c.state.text.locale;
-  ResultImageCard card(bool members, int id, bool leader) {
+  ResultImageCard card(bool members, String key, bool leader) {
+    final id = cardIdOf(key);
     final characters = catalog.characterIds(members, id);
     return ResultImageCard(
       title: catalog.cardName(members, id),
@@ -1305,15 +1326,19 @@ Future<List<int>> renderHitImage(
       ].join(' · '),
       image: catalog.cardImage(members, id),
       avatars: [
-        for (final character in characters)
-          if (catalog.characterFace(character).isNotEmpty)
-            catalog.characterFace(character),
+        if (members)
+          catalog.cardImage(true, id)
+        else
+          for (final character in characters)
+            if (catalog.characterFace(character).isNotEmpty)
+              catalog.characterFace(character),
       ],
       attribute: catalog.attributeIcon(catalog.attribute(members, id)),
       rarity: catalog.rarityIcon(catalog.rarity(members, id)),
       attributeLabel: catalog.attributeName(catalog.attribute(members, id)),
       rarityLabel: cardRarityName(catalog.rarity(members, id)),
       leader: leader,
+      growth: _resultGrowth(c, key, members),
     );
   }
 
@@ -1330,11 +1355,11 @@ Future<List<int>> renderHitImage(
       imageUnavailableLabel: c.tb('imageUnavailable', 'Image unavailable'),
       members: [
         for (final (index, key) in hit.members.indexed)
-          card(true, cardIdOf(key), index == 0),
+          card(true, key, index == 0),
       ],
       snapshots: [
         for (final key in hit.snaps)
-          key == null ? null : card(false, cardIdOf(key), false),
+          key == null ? null : card(false, key, false),
       ],
       metrics: [
         (main.label, main.value),

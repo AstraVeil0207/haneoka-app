@@ -11,6 +11,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/painting.dart';
 
 import '../core/net.dart';
+import '../ui/card_artwork.dart';
 
 class ResultImageCard {
   ResultImageCard({
@@ -23,6 +24,7 @@ class ResultImageCard {
     required this.attributeLabel,
     required this.rarityLabel,
     required this.leader,
+    this.growth,
   });
   final String title;
   final String character;
@@ -33,6 +35,7 @@ class ResultImageCard {
   final String attributeLabel;
   final String rarityLabel;
   final bool leader;
+  final CardGrowthDisplay? growth;
 }
 
 class ResultImageTheme {
@@ -101,6 +104,12 @@ Future<List<int>> renderTeamResultImage(TeamResultImage model) async {
       ?card.attribute,
       ?card.rarity,
       ...card.avatars,
+      if (card.growth case final growth?) ...[
+        ?growth.rankIcon,
+        ?growth.trainingIcon,
+        ?growth.liveSkill?.icon,
+        ?growth.gekisoSkill?.icon,
+      ],
     ],
   }..remove('');
   final images = <String, ui.Image?>{};
@@ -260,7 +269,19 @@ Future<List<int>> renderTeamResultImage(TeamResultImage model) async {
         color: t.muted,
       );
     }
-    if (!image(card.attribute, x + 8, y + 8, 32, 32)) {
+    final markWidth = width * (member ? 50 / 224 : 50 / 326);
+    double imageHeight(String? source, double width) {
+      final loaded = images[source];
+      return loaded == null ? width : width * loaded.height / loaded.width;
+    }
+
+    if (!image(
+      card.attribute,
+      x,
+      y,
+      markWidth,
+      imageHeight(card.attribute, markWidth),
+    )) {
       lines(
         card.attributeLabel,
         x + 8,
@@ -271,7 +292,13 @@ Future<List<int>> renderTeamResultImage(TeamResultImage model) async {
         weight: FontWeight.w600,
       );
     }
-    if (!image(card.rarity, x + width - 40, y + 8, 32, 32)) {
+    if (!image(
+      card.rarity,
+      x + width - markWidth,
+      y,
+      markWidth,
+      imageHeight(card.rarity, markWidth),
+    )) {
       lines(
         card.rarityLabel,
         x + width - 48,
@@ -281,6 +308,82 @@ Future<List<int>> renderTeamResultImage(TeamResultImage model) async {
         color: t.primary,
         weight: FontWeight.w600,
       );
+    }
+    if (card.growth case final growth?) {
+      String value(int? number) => number?.toString() ?? growth.unknown;
+      void overlay(String text, double left, double top, double size) {
+        final stroke = TextPainter(
+          text: TextSpan(
+            text: text,
+            style: TextStyle(
+              fontSize: size,
+              fontWeight: FontWeight.w600,
+              height: 1,
+              foreground: Paint()
+                ..style = PaintingStyle.stroke
+                ..strokeWidth = 1.2
+                ..color = const Color(0xFF000000),
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        final fill = TextPainter(
+          text: TextSpan(
+            text: text,
+            style: TextStyle(
+              fontSize: size,
+              fontWeight: FontWeight.w600,
+              height: 1,
+              color: const Color(0xFFFFFFFF),
+            ),
+          ),
+          textDirection: TextDirection.ltr,
+        )..layout();
+        stroke.paint(c, Offset(left, top));
+        fill.paint(c, Offset(left, top));
+        stroke.dispose();
+        fill.dispose();
+      }
+
+      overlay(
+        'Lv.${value(growth.level)}',
+        x + width * .03,
+        y + h * .97 - 28,
+        28,
+      );
+      if (member) {
+        image(growth.trainingIcon, x + width * .03, y + h * .85 - 24, 22, 22);
+        overlay(
+          value(growth.training),
+          x + width * .03 + 26,
+          y + h * .85 - 24,
+          24,
+        );
+      }
+      var left = x + width * .03;
+      for (final skill in [growth.liveSkill, growth.gekisoSkill]) {
+        if (skill == null || skill.icon.isEmpty) continue;
+        image(skill.icon, left, y + h * .71 - 24, 24, 24);
+        overlay(value(skill.level), left + 27, y + h * .71 - 24, 24);
+        left += 58;
+      }
+      final rankWidth = width * (member ? 64 / 224 : 64 / 326);
+      final rankHeight = imageHeight(growth.rankIcon, rankWidth);
+      image(
+        growth.rankIcon,
+        x + width - rankWidth,
+        y + h - rankHeight,
+        rankWidth,
+        rankHeight,
+      );
+      if (growth.rank == null) {
+        overlay(
+          growth.unknown,
+          x + width - rankWidth * .65,
+          y + h - rankHeight * .65,
+          22,
+        );
+      }
     }
     if (card.leader) {
       final painter = TextPainter(
@@ -293,15 +396,15 @@ Future<List<int>> renderTeamResultImage(TeamResultImage model) async {
       final w = math.min(width - 16, painter.width + 24);
       c.drawRRect(
         RRect.fromRectAndRadius(
-          Rect.fromLTWH(x + width - w - 8, y + h - 36, w, 28),
+          Rect.fromLTWH(x + 8, y + h * .56 - 28, w, 28),
           const Radius.circular(14),
         ),
         Paint()..color = t.surface,
       );
       lines(
         model.leaderLabel,
-        x + width - w + 4,
-        y + h - 31,
+        x + 20,
+        y + h * .56 - 23,
         w - 24,
         15,
         color: t.primary,
@@ -319,7 +422,22 @@ Future<List<int>> renderTeamResultImage(TeamResultImage model) async {
     );
     var avatarX = x;
     for (final avatar in card.avatars.take(5)) {
-      if (image(avatar, avatarX, y + h + 71, 24, 24)) avatarX += 20;
+      final loaded = images[avatar];
+      if (loaded != null) {
+        final edge = math.min(loaded.width, loaded.height).toDouble();
+        c.drawImageRect(
+          loaded,
+          Rect.fromLTWH(
+            (loaded.width - edge) / 2,
+            (loaded.height - edge) / 4,
+            edge,
+            edge,
+          ),
+          Rect.fromLTWH(avatarX, y + h + 71, 24, 24),
+          Paint()..filterQuality = FilterQuality.high,
+        );
+        avatarX += 20;
+      }
     }
     lines(
       card.character,

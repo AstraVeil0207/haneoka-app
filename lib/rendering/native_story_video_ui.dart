@@ -1,12 +1,11 @@
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
-    show haneokaProfileAssetRoot;
+    show haneokaProfileAssetRoot, loadHaneokaProfileAsset;
 
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter/services.dart';
 import 'package:vega_plugin_haneoka/render_profile.dart';
 
 import 'native_story_colour_scene.dart';
@@ -20,7 +19,7 @@ final class NativeStoryVideoUi {
   static Future<NativeStoryVideoUi> load(StorySourceIdentity source) async {
     const path =
         '${haneokaProfileAssetRoot}story-ui/source-bindings/video-ui-bindings.json';
-    final data = await rootBundle.load(path);
+    final data = await loadHaneokaProfileAsset(path);
     final bytes = data.buffer.asUint8List(
       data.offsetInBytes,
       data.lengthInBytes,

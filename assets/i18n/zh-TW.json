@@ -1037,7 +1037,26 @@
       "missionCount": "{count} 項任務",
       "missionNoEnd": "無固定時限",
       "missionDailyReset": "每日重置",
-      "missionRewardTotal": "獎勵合計"
+      "missionRewardTotal": "獎勵合計",
+      "permanent": "常駐任務",
+      "releaseDay": "第 {day} 天",
+      "categoryOther": "其他任務",
+      "categoryDaily": "每日",
+      "categoryPeriod": "期間限定",
+      "categoryEvent": "活動",
+      "categoryNormal": "通常",
+      "categoryBeginner": "新手",
+      "categoryComeback": "回歸",
+      "categoryCharacter": "角色",
+      "categoryInvitation": "好友邀請",
+      "categorySecret": "隱藏任務",
+      "categoryEventDaily": "活動每日",
+      "categoryCircle": "社群",
+      "categoryCircleDaily": "社群每日任務",
+      "categoryEventCircle": "社群活動",
+      "categoryEventCircleDaily": "社群活動每日",
+      "categoryUnlockMusic": "樂曲開放",
+      "categoryUnlockHome": "開放主頁面"
     },
     "resources": {
       "types": {
@@ -1145,7 +1164,9 @@
       "resources": "故事資源",
       "preparing": "準備播放",
       "sceneIndex": "場景索引",
-      "preparationTasks": "項準備工作"
+      "preparationTasks": "項準備工作",
+      "live2dUnavailable": "目前版本無法在此裝置上播放 Live2D。",
+      "loadFailed": "故事播放器載入失敗。"
     },
     "reading": {
       "speakers": "說話人",
@@ -1307,7 +1328,9 @@
       "gekisouLuck": "激奏・LUCK",
       "gekisouTop": "激奏・最高排名",
       "gacha": "成員招募",
-      "title": "語音"
+      "title": "語音",
+      "playGroup": "播放整組",
+      "birthdayOf": "{0}的生日"
     },
     "chartPlayer": {
       "play": "播放",
@@ -2266,7 +2289,8 @@
       "continueOptimal": "繼續驗證最優",
       "noCandidate": "尚無推薦結果",
       "cpCycle": "長期 CP 換算",
-      "fullRanking": "完整獎勵排序"
+      "fullRanking": "完整獎勵排序",
+      "syncSignIn": "登入後雲端同步"
     },
     "calendar": {
       "title": "日曆",

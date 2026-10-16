@@ -69,7 +69,9 @@ class BuildSettings {
   };
 
   Doc toJson() => {..._json};
-  BuildSettings copyWith(Doc patch) => BuildSettings({..._json, ...patch});
+  BuildSettings copyWith(Doc patch) => _searchGoal == null
+      ? BuildSettings({..._json, ...patch})
+      : BuildSettings._search({..._json, ...patch}, _searchGoal);
 
   int _int(String key) => intOf(_json[key], intOf(_defaults[key]));
   int? _nullableInt(String key) =>

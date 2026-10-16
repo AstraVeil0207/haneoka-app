@@ -113,12 +113,16 @@ final class NativeStoryTalkUiSnapshot {
 final class NativeStoryTalkUiRuntime {
   NativeStoryTalkUiRuntime({
     required NativeStoryUiSource ui,
+    StoryRenderProfileBinding? renderProfile,
     required this.sourceIdentity,
     required NativeStoryUpdateStamp initialStamp,
   }) : controls = ui.controls,
        sourceEpoch = initialStamp.sourceEpoch {
-    if (controls.sourceId != sourceIdentity.sourceId ||
-        sourceIdentity.server != 'intl' ||
+    final authoredSource = renderProfile?.packetSource ?? sourceIdentity;
+    if ((renderProfile != null &&
+            renderProfile.chapterIdentity != sourceIdentity) ||
+        controls.sourceId != authoredSource.sourceId ||
+        authoredSource.server != 'intl' ||
         initialStamp.sourceEpoch < 0 ||
         initialStamp.storyUs < 0 ||
         initialStamp.updateIndex < 0) {

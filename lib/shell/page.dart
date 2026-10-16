@@ -42,6 +42,7 @@ class BarAction {
     this.tonal = false,
     this.overflowFirst = false,
     this.image,
+    this.showLabel = false,
   }) : options = const [];
 
   /// A segmented choice (view switch): one checkable menu entry per option.
@@ -52,7 +53,9 @@ class BarAction {
       badge = 0,
       tonal = false,
       overflowFirst = false,
-      image = null;
+      image = null,
+      showLabel = false;
+  final bool showLabel;
   final Widget? image;
   final IconData icon;
   final String label;
@@ -223,6 +226,8 @@ class _ShellPageState extends State<ShellPage> {
           'users',
           'playlists',
           'songs-bestdori',
+          'gbp',
+          'sekai',
         }.contains(parts[1])) {
       return true;
     }
@@ -293,7 +298,10 @@ class _ShellPageState extends State<ShellPage> {
           final budget =
               (constraints.maxWidth -
                       lead -
-                      title.clamp(0, 160) -
+                      title.clamp(
+                        0,
+                        widget.actions.any((a) => a.showLabel) ? 80 : 160,
+                      ) -
                       (widget.marks == null ? 0 : widget.marksExtent + 8))
                   .clamp(48.0, constraints.maxWidth);
           return Row(
@@ -381,10 +389,26 @@ class _ShellPageState extends State<ShellPage> {
           )
         : null;
     final hidden = <BarAction>{};
+    double extent(BarAction action) {
+      if (!action.showLabel) return action.slots * slot;
+      final painter = TextPainter(
+        text: TextSpan(
+          text: action.label,
+          style: Theme.of(context).textTheme.labelLarge,
+        ),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+        maxLines: 1,
+      )..layout();
+      final width = painter.width + 62;
+      painter.dispose();
+      return width;
+    }
+
     double used() =>
         actions
             .where((a) => !hidden.contains(a))
-            .fold<double>(0, (sum, a) => sum + a.slots * slot) +
+            .fold<double>(0, (sum, a) => sum + extent(a)) +
         (hidden.isNotEmpty || menu != null ? slot : 0);
     final order = [
       ...actions.where((a) => a.overflowFirst),
@@ -442,7 +466,14 @@ class _ShellPageState extends State<ShellPage> {
       icon = Badge.count(count: action.badge, child: icon);
     }
     return [
-      if (action.tonal)
+      if (action.showLabel)
+        FilledButton.tonalIcon(
+          onPressed: action.onPressed,
+          icon: icon,
+          label: Text(action.label),
+          style: FilledButton.styleFrom(minimumSize: const Size(48, 48)),
+        )
+      else if (action.tonal)
         IconButton.filledTonal(
           tooltip: action.label,
           onPressed: action.onPressed,

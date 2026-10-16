@@ -1,12 +1,10 @@
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
-    show haneokaProfileAssetRoot;
+    show haneokaProfileAssetRoot, loadHaneokaProfileString;
 
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
-
-import 'package:flutter/services.dart' show rootBundle;
 
 import 'package:vega_plugin_haneoka/render_profile.dart';
 import 'package:vega_plugin_haneoka/native_cubism.dart';
@@ -599,7 +597,7 @@ final class NativeStoryWorld {
     );
     _focusSettings = focus.requireScript('AdvFocusDataSettings')['data'] as Map;
     final defaults = jsonDecode(
-      await rootBundle.loadString(
+      await loadHaneokaProfileString(
         '${haneokaProfileAssetRoot}story-default-volume-profile.json',
       ),
     ) as Map;

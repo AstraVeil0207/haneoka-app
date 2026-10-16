@@ -6,6 +6,7 @@ import '../core/app_state.dart';
 import '../core/i18n.dart';
 import '../core/relative_time.dart';
 import '../ui/app_image.dart';
+import '../ui/card_artwork.dart';
 import '../ui/tile.dart';
 import 'browse.dart';
 import 'cross_server.dart';
@@ -25,6 +26,7 @@ class CatalogScreen extends StatefulWidget {
     required this.profile,
     this.onOpen,
     this.owned,
+    this.ownedGrowth,
     this.title,
   });
   final CatalogProfile profile;
@@ -32,6 +34,7 @@ class CatalogScreen extends StatefulWidget {
   /// Only these entries (by id), each with a mark of the player's progress:
   /// a save's own cards, items or band items.
   final Map<String, String>? owned;
+  final Map<String, CardGrowthDisplay>? ownedGrowth;
   final String? title;
   final void Function(BuildContext context, Entry item)? onOpen;
 
@@ -200,10 +203,15 @@ class _CatalogScreenState extends State<CatalogScreen> {
                         .toString(),
                     logo: kit.api.asset('${item['logo']}').toString(),
                   )
-                : null,
+                : kit.cardArtwork(
+                    item,
+                    growth: widget.ownedGrowth?[kit.id(item)],
+                  ),
             serverMark: serverMark(item, kit.t.call),
             marks: [
-              ...kit.marks(item),
+              if (profile.presentation != Presentation.member &&
+                  profile.presentation != Presentation.support)
+                ...kit.marks(item),
               if (widget.owned?[kit.id(item)] case final progress?
                   when progress.isNotEmpty)
                 TileMark.text(MarkAt.bottomEnd, progress),
@@ -214,6 +222,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
           listRow: (context, item) => _Row(
             kit: kit,
             item: item,
+            growth: widget.ownedGrowth?[kit.id(item)],
             onOpen: () => widget.onOpen?.call(context, item),
           ),
           columns: kit.columns,
@@ -389,6 +398,25 @@ class CatalogKit {
   }
 
   String rarityName(Object? value) => cardRarityName(value);
+
+  Widget? cardArtwork(Entry item, {CardGrowthDisplay? growth}) {
+    if (kind != Presentation.member && kind != Presentation.support) {
+      return null;
+    }
+    return CardArtwork(
+      kind: kind == Presentation.member
+          ? GameCardKind.member
+          : GameCardKind.support,
+      image: images(item).firstOrNull ?? '',
+      attribute: visuals?.cardTypeMark(item['cardType']),
+      attributeLabel: attributeName(item['cardType']),
+      rarity: visuals?.mark(
+        'RarityIconCenter_${rarityName(item['rarity'])}.png',
+      ),
+      rarityLabel: rarityName(item['rarity']),
+      growth: growth,
+    );
+  }
 
   String attributeName(Object? value) {
     final id = (value as num?)?.toInt() ?? 0;
@@ -816,15 +844,60 @@ class _BandHeading extends StatelessWidget {
 }
 
 class _Row extends StatelessWidget {
-  const _Row({required this.kit, required this.item, this.onOpen});
+  const _Row({required this.kit, required this.item, this.onOpen, this.growth});
   final CatalogKit kit;
   final Entry item;
   final VoidCallback? onOpen;
+  final CardGrowthDisplay? growth;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final subtitle = kit.subtitle(item);
+    if (growth != null) {
+      return InkWell(
+        onTap: onOpen,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: SizedBox(
+                  width: 80 * kit.profile.aspectRatio,
+                  height: 80,
+                  child: ColoredBox(
+                    color: scheme.surfaceContainerHighest,
+                    child: kit.cardArtwork(item, growth: growth),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      kit.title(item),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    if (subtitle.isNotEmpty)
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return ListTile(
       onTap: onOpen,
       leading: ClipRRect(
@@ -834,7 +907,9 @@ class _Row extends StatelessWidget {
           height: 48,
           child: ColoredBox(
             color: scheme.surfaceContainerHighest,
-            child: AppImage(candidates: kit.images(item), fit: kit.profile.fit),
+            child:
+                kit.cardArtwork(item, growth: growth) ??
+                AppImage(candidates: kit.images(item), fit: kit.profile.fit),
           ),
         ),
       ),
