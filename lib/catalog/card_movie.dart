@@ -1,3 +1,5 @@
+import '../core/managed_media_player.dart';
+
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:media_kit/media_kit.dart';
@@ -36,7 +38,7 @@ class _CardMovieState extends State<CardMovie> {
   }
 
   Future<void> _start() async {
-    final player = Player();
+    final player = ManagedMediaPlayer();
     setState(() {
       _player = player;
       _controller = VideoController(player);

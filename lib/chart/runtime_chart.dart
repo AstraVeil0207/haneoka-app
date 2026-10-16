@@ -116,6 +116,7 @@ class _SsNote {
   int easeL = 0;
   int easeR = 0;
   bool visible = true;
+  bool? visualVisible = true;
   List<_SsNote>? node;
 }
 
@@ -159,6 +160,13 @@ _SsNote _readNote(Map raw) {
     }
   }
   if (raw['visible'] != null) note.visible = _truthy(raw['visible']);
+  // Matching web source uses visible !== false; non-boolean explicit input is
+  // unavailable as a visual contract rather than recasting the score flag.
+  note.visualVisible = !raw.containsKey('visible') || raw['visible'] == null
+      ? true
+      : raw['visible'] is bool
+      ? raw['visible'] as bool
+      : null;
   if (raw['node'] case final List nodes) {
     note.node = [for (final child in nodes) _readNote(child as Map)];
   }
@@ -309,6 +317,8 @@ String _overlapKey(int t, double pos, double size) =>
 
 class _NoteInfo {
   _NoteInfo({
+    required this.visualLane,
+    required this.visualWidth,
     required this.position,
     required this.lane,
     required this.width,
@@ -319,10 +329,14 @@ class _NoteInfo {
     required this.ease,
     required this.easeR,
     required this.lines,
+    this.visualVisible,
+    this.visibilitySource,
+    this.sourceTick,
   });
   final _BarPos position;
   final int lane;
   final int width;
+  final double visualLane, visualWidth;
   final int op;
   final bool slideAlong;
   final bool crit;
@@ -330,6 +344,9 @@ class _NoteInfo {
   final int ease;
   final int easeR;
   final List<int> lines;
+  final bool? visualVisible;
+  final String? visibilitySource;
+  final int? sourceTick;
 }
 
 int _flickDirection(_SsNote note) => note.dir == 1
@@ -339,6 +356,8 @@ int _flickDirection(_SsNote note) => note.dir == 1
     : 0;
 
 _NoteInfo _singleInfo(_SsNote note, _TickConverter tc) => _NoteInfo(
+  visualLane: f(note.pos),
+  visualWidth: f(note.size),
   position: tc.barPosition(note.t),
   lane: _netRoundInt(f(note.pos)),
   width: math.max(1, _netRoundInt(note.size)),
@@ -353,6 +372,9 @@ _NoteInfo _singleInfo(_SsNote note, _TickConverter tc) => _NoteInfo(
   ease: 0,
   easeR: 0,
   lines: [],
+  sourceTick: note.t,
+  visualVisible: note.visualVisible,
+  visibilitySource: 'single.raw.visible',
 );
 
 int _longNodeOp(List<_SsNote> nodes, int i) {
@@ -472,7 +494,10 @@ void _lineInfos(
       }
       out.add(
         _NoteInfo(
+          visualLane: f(pos),
+          visualWidth: f(size),
           position: tc.barPosition(node.t),
+          sourceTick: node.t,
           lane: _netRoundInt(f(pos)),
           width: math.max(1, _netRoundInt(size)),
           op: op,
@@ -484,6 +509,10 @@ void _lineInfos(
           ease: _convertEase(node.easeL),
           easeR: _convertEase(node.easeR),
           lines: [lineIndex],
+          visualVisible: directionSource.visualVisible,
+          visibilitySource: identical(directionSource, node)
+              ? 'chain.node.raw.visible'
+              : 'chain.coincident.raw.visible',
         ),
       );
     }
@@ -569,7 +598,15 @@ int _priority(int op) => const {20, 41, 61, 80, 100, 101, 102, 104}.contains(op)
     : 10;
 
 class _RuntimeNote {
-  _RuntimeNote(this.id, this.pos, this.op, this.crit, this.lineIds);
+  _RuntimeNote(
+    this.id,
+    this.pos,
+    this.op,
+    this.crit,
+    this.lineIds, {
+    this.visualSource,
+  });
+  final _NoteInfo? visualSource;
   final int id;
   final _BarPos pos;
   final int op;
@@ -621,8 +658,102 @@ class ChartNote {
   final bool judged;
 }
 
-/// A converted chart (`ChartSource`): notes by time, skill events and fevers,
-/// and the notes in the client's own enumeration order.
+/// Actual visual fields retained from the same native converter's note infos.
+/// Scoring-only auxiliary combo records have no visualSource and are not drawn.
+class RuntimeVisualNote {
+  const RuntimeVisualNote({
+    required this.visualLane,
+    required this.visualWidth,
+    required this.id,
+    required this.timeMicroseconds,
+    required this.lane,
+    required this.width,
+    required this.operateType,
+    required this.direction,
+    required this.critical,
+    required this.slideAlong,
+    required this.sourceOrdinal,
+    required this.bar,
+    required this.rhythm,
+    required this.unit,
+    required this.progress,
+    required this.ease,
+    required this.easeR,
+    required this.nativeLineIds,
+    required this.sourceLineIndices,
+    required this.visible,
+    required this.visibilitySource,
+    required this.sourceTick,
+  });
+  final int sourceOrdinal, bar, rhythm, unit, ease, easeR;
+  final double progress;
+  final List<int> nativeLineIds, sourceLineIndices;
+  final int id, timeMicroseconds, lane, width, operateType, direction;
+  final double visualLane, visualWidth;
+  final bool critical, slideAlong;
+  final bool? visible;
+  final String? visibilitySource;
+  final int? sourceTick;
+}
+
+enum RuntimeVisualLineFamily { line, guide }
+
+/// Actual auxiliary events have timing/membership, without invented geometry.
+class RuntimeVisualAuxEvent {
+  const RuntimeVisualAuxEvent({
+    required this.id,
+    required this.timeMicroseconds,
+    required this.operateType,
+    required this.nativeLineIds,
+    required this.isJudgement,
+    required this.sourceOrdinal,
+  });
+  final int id, timeMicroseconds, operateType;
+  final List<int> nativeLineIds;
+  final bool isJudgement;
+  final int? sourceOrdinal;
+}
+
+class RuntimeVisualLine {
+  const RuntimeVisualLine({
+    required this.nativeLineId,
+    required this.family,
+    required this.beginNativeId,
+    required this.endNativeId,
+    required this.pointNativeIds,
+    required this.points,
+    required this.unresolvedPointIds,
+    required this.comboEvents,
+    required this.endComboEvents,
+    required this.closedOrdinal,
+  });
+  final int nativeLineId, beginNativeId, endNativeId, closedOrdinal;
+  final RuntimeVisualLineFamily family;
+
+  /// Actual converter path order: begin, stable bar/progress mids, actual end.
+  final List<int> pointNativeIds, unresolvedPointIds;
+  final List<RuntimeVisualNote> points;
+  final List<RuntimeVisualAuxEvent> comboEvents, endComboEvents;
+  bool get completeGeometry => unresolvedPointIds.isEmpty;
+}
+
+class RuntimeVisualUnresolvedLine {
+  const RuntimeVisualUnresolvedLine({
+    required this.nativeLineId,
+    required this.endNativeId,
+  });
+  final int nativeLineId, endNativeId;
+}
+
+/// Tempo metadata timed by the existing source TickConverter.
+class RuntimeBpmChange {
+  const RuntimeBpmChange(this.tick, this.timeMs, this.bpm);
+  final int tick, timeMs;
+  final double bpm;
+}
+
+/// A converted chart: score fields keep their existing behavior. Native renderer
+/// source fields are opt-in, so normal team-builder loads retain no visual arrays.
 class RuntimeChart {
   const RuntimeChart({
     required this.durationMs,
@@ -630,22 +761,47 @@ class RuntimeChart {
     required this.skillTimesMs,
     required this.feverMs,
     required this.enumeration,
+    this.visualNotes = const [],
+    this.visualTimeSortedIndices = const [],
+    this.visualLines = const [],
+    this.visualUnresolvedLines = const [],
+    this.bpmChanges = const [],
+    this.sourceDurationMs,
   });
   final int durationMs;
   final List<ChartNote> notes;
   final List<int> skillTimesMs;
   final List<(int, int)> feverMs;
   final List<ChartNote> enumeration;
+  final List<RuntimeVisualNote> visualNotes;
+
+  /// Separate playback-time index; native creator/dictionary enumeration is retained.
+  final List<int> visualTimeSortedIndices;
+  final List<RuntimeVisualLine> visualLines;
+  final List<RuntimeVisualUnresolvedLine> visualUnresolvedLines;
+  final List<RuntimeBpmChange> bpmChanges;
+
+  /// Authored notes/events extent, separate from the scoring ledger's tail.
+  final int? sourceDurationMs;
 
   /// Raw `.bytes` chart (gzip or plain JSON) → runtime chart.
-  factory RuntimeChart.fromBytes(List<int> bytes) {
+  factory RuntimeChart.fromBytes(
+    List<int> bytes, {
+    bool includeVisualSource = false,
+  }) {
     final data = bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b
         ? gzip.decode(bytes)
         : bytes;
-    return RuntimeChart.fromJson(jsonDecode(utf8.decode(data)));
+    return RuntimeChart.fromJson(
+      jsonDecode(utf8.decode(data)),
+      includeVisualSource: includeVisualSource,
+    );
   }
 
-  factory RuntimeChart.fromJson(Object? root) {
+  factory RuntimeChart.fromJson(
+    Object? root, {
+    bool includeVisualSource = false,
+  }) {
     final score = root is Map ? root['score'] : null;
     if (score is! Map) throw const FormatException('ss score');
     final events = score['events'] is Map ? score['events'] as Map : const {};
@@ -693,10 +849,34 @@ class RuntimeChart {
     // MusicScoreNoteCreator.
     var currentId = 0, currentLine = 0, currentGuideLine = 0;
     final beginByLine = <int, _RuntimeNote>{};
+    final visualFamilies = includeVisualSource
+        ? <int, RuntimeVisualLineFamily>{}
+        : null;
+    final visualClosed = includeVisualSource
+        ? <
+            (
+              int,
+              RuntimeVisualLineFamily,
+              _RuntimeNote,
+              _RuntimeNote,
+              List<_RuntimeNote>,
+            )
+          >[]
+        : null;
+    final visualUnresolved = includeVisualSource
+        ? <RuntimeVisualUnresolvedLine>[]
+        : null;
     final lineArr = List<int>.filled(_maxLines, -1);
     final guideArr = List<int>.filled(_maxLines, -1);
     _RuntimeNote make(_NoteInfo info, _BarPos pos, int op, List<int> lineIds) =>
-        _RuntimeNote(currentId, pos, op, info.crit, lineIds);
+        _RuntimeNote(
+          currentId,
+          pos,
+          op,
+          info.crit,
+          lineIds,
+          visualSource: includeVisualSource ? info : null,
+        );
 
     void endLine(_RuntimeNote end) {
       final begins = <_RuntimeNote>[];
@@ -704,6 +884,12 @@ class RuntimeChart {
       for (final lineId in end.lineIds) {
         final begin = beginByLine[lineId];
         if (begin == null) {
+          visualUnresolved?.add(
+            RuntimeVisualUnresolvedLine(
+              nativeLineId: lineId,
+              endNativeId: end.id,
+            ),
+          );
           ok = false;
           break;
         }
@@ -749,6 +935,19 @@ class RuntimeChart {
           );
           if (_slideBegin.contains(begin.op)) begin.comboNotes.add(combo);
         }
+        if (visualClosed != null) {
+          final family = visualFamilies![lineId];
+          if (family == null) {
+            throw StateError('visual_line_allocation_family_missing');
+          }
+          visualClosed.add((
+            lineId,
+            family,
+            begin,
+            end,
+            List.unmodifiable([begin, ...lineNotes]),
+          ));
+        }
         beginByLine.remove(lineId);
       }
       if (ok) {
@@ -787,6 +986,7 @@ class RuntimeChart {
         note = make(info, pos, op, ids);
         for (final id in ids) {
           beginByLine[id] = note;
+          visualFamilies?[id] = RuntimeVisualLineFamily.line;
         }
       } else if (op == 21 || op == 63) {
         final index = info.lines.firstOrNull;
@@ -812,6 +1012,7 @@ class RuntimeChart {
         note = make(info, pos, op, ids);
         for (final id in ids) {
           beginByLine[id] = note;
+          visualFamilies?[id] = RuntimeVisualLineFamily.guide;
         }
       } else if (op == 103 || op == 105) {
         final ids = [
@@ -880,12 +1081,130 @@ class RuntimeChart {
     );
     final ordered = [...positional];
     _stableSort(ordered, (a, b) => a.timeMs - b.timeMs);
+    final visualRecords = includeVisualSource
+        ? [for (final list in byKey.values) ...list]
+        : const <_RuntimeNote>[];
+    final visualOrdinals = <_RuntimeNote, int>{
+      for (final (index, note) in visualRecords.indexed) note: index,
+    };
+    RuntimeVisualNote? visualNote(_RuntimeNote note) {
+      final info = note.visualSource;
+      if (info == null) return null;
+      final ordinal = visualOrdinals[note];
+      if (ordinal == null) {
+        throw StateError('visual_record_not_in_native_enumeration');
+      }
+      return RuntimeVisualNote(
+        visualLane: info.visualLane,
+        visualWidth: info.visualWidth,
+        id: note.id,
+        timeMicroseconds: note.pos.ms * 1000,
+        sourceTick: info.sourceTick,
+        lane: info.lane,
+        width: info.width,
+        operateType: note.op,
+        direction: info.direction,
+        critical: note.crit,
+        slideAlong: info.slideAlong,
+        sourceOrdinal: ordinal,
+        bar: note.pos.bar,
+        rhythm: note.pos.rhythm,
+        unit: note.pos.unit,
+        progress: note.pos.progress,
+        ease: info.ease,
+        easeR: info.easeR,
+        nativeLineIds: List.unmodifiable(note.lineIds),
+        sourceLineIndices: List.unmodifiable(info.lines),
+        visible: info.visualVisible,
+        visibilitySource: info.visibilitySource,
+      );
+    }
+
+    final visualList = <RuntimeVisualNote>[
+      for (final note in visualRecords)
+        if (visualNote(note) case final RuntimeVisualNote point) point,
+    ];
+    final visualTimeIndices = List<int>.generate(visualList.length, (i) => i);
+    _stableSort(
+      visualTimeIndices,
+      (a, b) => visualList[a].timeMicroseconds.compareTo(
+        visualList[b].timeMicroseconds,
+      ),
+    );
+    RuntimeVisualAuxEvent aux(_RuntimeNote note) => RuntimeVisualAuxEvent(
+      id: note.id,
+      timeMicroseconds: note.pos.ms * 1000,
+      operateType: note.op,
+      nativeLineIds: List.unmodifiable(note.lineIds),
+      isJudgement: isJudgementNote(note.op),
+      sourceOrdinal: visualOrdinals[note],
+    );
+    final visualLineList = <RuntimeVisualLine>[];
+    if (visualClosed != null) {
+      for (final (ordinal, draft) in visualClosed.indexed) {
+        final points = <RuntimeVisualNote>[], unresolved = <int>[];
+        for (final note in draft.$5) {
+          final point = visualNote(note);
+          if (point == null) {
+            unresolved.add(note.id);
+          } else {
+            points.add(point);
+          }
+        }
+        visualLineList.add(
+          RuntimeVisualLine(
+            nativeLineId: draft.$1,
+            family: draft.$2,
+            beginNativeId: draft.$3.id,
+            endNativeId: draft.$4.id,
+            closedOrdinal: ordinal,
+            pointNativeIds: List.unmodifiable(draft.$5.map((n) => n.id)),
+            points: List.unmodifiable(points),
+            unresolvedPointIds: List.unmodifiable(unresolved),
+            comboEvents: List.unmodifiable(
+              draft.$3.comboNotes
+                  .where((n) => n.lineIds.contains(draft.$1))
+                  .map(aux),
+            ),
+            endComboEvents: List.unmodifiable(
+              draft.$4.endCombo
+                  .where((n) => n.lineIds.contains(draft.$1))
+                  .map(aux),
+            ),
+          ),
+        );
+      }
+    }
+    var sourceDurationMs = lastMs;
+    for (final tick in skill) {
+      sourceDurationMs = math.max(sourceDurationMs, tc.timeMs(tick));
+    }
+    for (final section in fevers) {
+      sourceDurationMs = math.max(sourceDurationMs, section.$2);
+    }
+    for (final event in list(events['call']).whereType<Map>()) {
+      if (event['t'] != null) {
+        sourceDurationMs = math.max(
+          sourceDurationMs,
+          tc.timeMs(_toInt(event['t'])),
+        );
+      }
+    }
     return RuntimeChart(
       durationMs: lastMs + 1000,
+      sourceDurationMs: sourceDurationMs,
       notes: ordered,
       skillTimesMs: [for (final tick in skill) tc.timeMs(tick)],
       feverMs: fevers,
       enumeration: enumeration,
+      bpmChanges: List.unmodifiable([
+        for (final (tick, value) in sortedBpm)
+          RuntimeBpmChange(tick, tc.timeMs(tick), value),
+      ]),
+      visualNotes: List.unmodifiable(visualList),
+      visualTimeSortedIndices: List.unmodifiable(visualTimeIndices),
+      visualLines: List.unmodifiable(visualLineList),
+      visualUnresolvedLines: List.unmodifiable(visualUnresolved ?? const []),
     );
   }
 }

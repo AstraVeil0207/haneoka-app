@@ -5,6 +5,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'core/app_state.dart';
+import 'core/app_media_lifetime.dart';
+import 'core/music_background.dart';
 import 'l10n/app_localizations.dart';
 import 'shell/shell.dart';
 import 'ui/theme.dart';
@@ -31,6 +33,7 @@ Future<void> main(List<String> arguments) async {
   final state = await AppState.load(
     WidgetsBinding.instance.platformDispatcher.locale,
   );
+  await MusicBackground.initialize(state.audio);
   Uri? initialAddress;
   for (final argument in arguments) {
     if (argument.startsWith('-')) continue;
@@ -46,9 +49,11 @@ Future<void> main(List<String> arguments) async {
     }
   }
   runApp(
-    AppScope(
-      state: state,
-      child: HaneokaApp(initialAddress: initialAddress),
+    AppMediaLifetime(
+      child: AppScope(
+        state: state,
+        child: HaneokaApp(initialAddress: initialAddress),
+      ),
     ),
   );
 }

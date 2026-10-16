@@ -4,6 +4,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/widgets.dart';
 
 import 'audio_output.dart';
+import 'playback_focus.dart';
 
 class VoiceClip {
   const VoiceClip({required this.id, required this.url});
@@ -14,6 +15,7 @@ class VoiceClip {
 /// Page-owned speech playback. It never enters the music dock or song queue.
 class VoicePlayback extends ChangeNotifier {
   final _player = AudioOutput();
+  late final _focus = PlaybackFocus(stop);
   final _subscriptions = <StreamSubscription<dynamic>>[];
   List<VoiceClip> _clips = const [];
   int _index = -1;
@@ -23,14 +25,10 @@ class VoicePlayback extends ChangeNotifier {
   late final Future<void> _ready;
   Object? error;
   static final _instances = <VoicePlayback>{};
-  static void stopAll() {
-    for (final voice in _instances) {
-      unawaited(voice.stop());
-    }
-  }
+  static Future<void> stopAll() =>
+      Future.wait([for (final voice in _instances) voice.stop()]);
 
-  final Future<void> Function()? beforePlay;
-  VoicePlayback({this.beforePlay}) {
+  VoicePlayback() {
     _instances.add(this);
     _subscriptions.add(
       _player.errors.listen((exception) {
@@ -82,11 +80,12 @@ class VoicePlayback extends ChangeNotifier {
   Future<void> playAll(List<VoiceClip> clips) async {
     if (clips.isEmpty || _disposed) return;
     final generation = ++_generation;
-    await beforePlay?.call();
-    if (_disposed || generation != _generation) return;
-    _clips = List.unmodifiable(clips);
-    _index = 0;
-    await _play();
+    await _focus.activate(() async {
+      if (_disposed || generation != _generation) return;
+      _clips = List.unmodifiable(clips);
+      _index = 0;
+      await _play();
+    });
   }
 
   Future<void> _play() async {
@@ -122,6 +121,7 @@ class VoicePlayback extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _focus.close();
     _generation++;
     _instances.remove(this);
     for (final subscription in _subscriptions) {

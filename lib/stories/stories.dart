@@ -15,6 +15,7 @@ import '../core/provider_api.dart';
 import '../core/page_data.dart';
 import '../core/relative_time.dart';
 import '../shell/page.dart';
+import '../rendering/native_story_player_screen.dart';
 import '../ui/app_image.dart';
 import '../ui/detail.dart';
 import '../ui/tile.dart';
@@ -1467,9 +1468,7 @@ class StoryReaderScreen extends StatefulWidget {
 }
 
 class _StoryReaderScreenState extends State<StoryReaderScreen> {
-  late final _voice = VoicePlayback(
-    beforePlay: () => AppScope.of(context).audio.pause(),
-  );
+  late final _voice = VoicePlayback();
   @override
   void dispose() {
     _voice.dispose();
@@ -1577,6 +1576,47 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
         return ShellPage(
           title: title.isEmpty ? '#${detail['episodeNumber'] ?? ''}' : title,
           actions: [
+            if (api is! ProviderApi && data != null)
+              BarAction.choice(
+                label: t('media.audio.playback', 'Playback'),
+                options: [
+                  BarChoice(
+                    icon: Symbols.article_rounded,
+                    label: t('navigation.storyText', 'Text'),
+                    selected: true,
+                    onSelected: () {},
+                  ),
+                  BarChoice(
+                    icon: Symbols.play_circle_rounded,
+                    label: t('navigation.player', 'Player'),
+                    selected: false,
+                    onSelected: () async {
+                      final id = '${detail['storyKey'] ?? detail['_key']}';
+                      await _voice.stop();
+                      if (!context.mounted) return;
+                      await Navigator.of(context).push<void>(
+                        MaterialPageRoute<void>(
+                          settings: RouteSettings(
+                            name: Uri(
+                              pathSegments: ['', 'stories', id],
+                              queryParameters: {
+                                'view': 'play',
+                                'server': api.server,
+                              },
+                            ).toString(),
+                          ),
+                          builder: (_) => NativeStoryPlayerScreen(
+                            storyId: id,
+                            server: api.server,
+                            api: api,
+                            title: detail['title'],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
             if (voices.isNotEmpty)
               BarAction(
                 icon: Symbols.playlist_play_rounded,

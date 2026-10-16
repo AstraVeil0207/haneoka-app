@@ -108,7 +108,7 @@ def main():
                 'Maintainer: Haneoka contributors <noreply@haneoka.org>\n'
                 'Section: games\nPriority: optional\n'
                 'Depends: libgtk-3-0, libsecret-1-0, libstdc++6, libgstreamer1.0-0, '
-                'libgstreamer-plugins-base1.0-0, libmpv2 | libmpv1\n'
+                'libgstreamer-plugins-base1.0-0, libmpv2 | libmpv1, libjavascriptcoregtk-4.1-0\n'
                 'Homepage: https://haneoka.org\nDescription: Our Notes catalogue and save reader\n')
             hashes = []
             for path in sorted(stage.rglob('*')):
@@ -127,7 +127,7 @@ def main():
                             f'builddate = {int(time.time())}\npackager = Haneoka contributors\n'
                             'url = https://haneoka.org\nlicense = MPL-2.0\n'
                             'depend = gtk3\ndepend = libsecret\ndepend = gstreamer\n'
-                            'depend = gst-plugins-base-libs\ndepend = mpv\n')
+                            'depend = gst-plugins-base-libs\ndepend = mpv\ndepend = webkit2gtk-4.1\n')
             run('tar', '--owner=0', '--group=0', '--zstd', '-cf', output / f'{name}.pkg.tar.zst', '-C', stage, '.PKGINFO', 'usr')
             info.unlink()
         if 'rpm' in formats:
@@ -139,7 +139,7 @@ def main():
                             'Summary: Our Notes catalogue and save reader\nLicense: MPL-2.0\n'
                             f'URL: https://haneoka.org\nBuildArch: {architecture}\n'
                             '%global debug_package %{nil}\n%global __strip /bin/true\n'
-                            'Requires: gtk3, libsecret, gstreamer1, gstreamer1-plugins-base, mpv-libs\n'
+                            'Requires: gtk3, libsecret, gstreamer1, gstreamer1-plugins-base, mpv-libs, javascriptcoregtk4.1\n'
                             '%description\nOur Notes catalogue and local save reader.\n'
                             f'%install\nmkdir -p %{{buildroot}}\ncp -a "{stage}/usr" %{{buildroot}}/\n'
                             '%files\n/usr/bin/haneoka\n/usr/share/haneoka\n'
@@ -170,11 +170,13 @@ def main():
                 raise SystemExit('Install libmpv before creating AppImage')
             env = {**os.environ, 'APPIMAGE_EXTRACT_AND_RUN': '1', 'ARCH': architecture,
                    'OUTPUT': str(output / f'{name}.AppImage')}
+            motion_sync = appdir / 'usr/share/haneoka/lib/libcubism_motion_sync.so'
+            runtime_libraries = ['--library', motion_sync] if motion_sync.is_file() else []
             run(args.linuxdeploy.resolve(), '--appdir', appdir,
                 '--executable', appdir / 'usr/share/haneoka/haneoka',
                 '--desktop-file', appdir / desktop.relative_to(stage),
                 '--icon-file', appdir / icon.relative_to(stage), '--library', candidates[0],
-                '--plugin', 'gtk', '--output', 'appimage', env=env)
+                *runtime_libraries, '--plugin', 'gtk', '--output', 'appimage', env=env)
         if 'snap' in formats:
             image = output / f'{name}.AppImage'
             if not image.exists():

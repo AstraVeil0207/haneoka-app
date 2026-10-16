@@ -37,6 +37,8 @@ import '../home/calendar.dart';
 import '../home/home_screen.dart';
 import '../records/player.dart';
 import '../stories/stories.dart';
+import '../rendering/native_story_player_screen.dart';
+import '../rendering/native_chart_player_screen.dart';
 import '../team_builder/team_builder_screen.dart';
 import '../records/tracker.dart';
 import '../home/join.dart';
@@ -108,7 +110,15 @@ const _communityFeeds = {
 
 /// The native screen for a website route, or null while it is being built.
 Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
-  route = Uri.parse(route).path;
+  final uri = Uri.parse(route);
+  if (uri.path == '/chart-simulator' && uri.queryParameters['id'] != null) {
+    return NativeChartPlayerScreen(
+      songId: uri.queryParameters['id'],
+      server: uri.queryParameters['server'],
+      difficulty: int.tryParse(uri.queryParameters['difficulty'] ?? '') ?? 2,
+    );
+  }
+  route = uri.path;
   if (route == '/') return HomeScreen(onBrowse: navigate);
   if (route == '/settings') return const SettingsScreen();
   if (route == '/catalog') return CatalogHubScreen(navigate: navigate);
@@ -200,16 +210,27 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
     return CommunityUserScreen(uid: m[1]!);
   }
   if (route.startsWith('/stories/')) {
-    return StoryReaderScreen(
-      episode: {
-        'storyKey': Uri.decodeComponent(route.substring('/stories/'.length)),
-      },
-    );
+    final id = Uri.decodeComponent(route.substring('/stories/'.length));
+    if (uri.queryParameters['view'] == 'play') {
+      return NativeStoryPlayerScreen(
+        key: ValueKey(uri.toString()),
+        storyId: id,
+        server: uri.queryParameters['server'],
+      );
+    }
+    return StoryReaderScreen(episode: {'storyKey': id});
   }
   if (route.startsWith('/catalog/stories/')) {
     final mode = route.substring('/catalog/stories/'.length);
     if (storyModes.contains(mode)) {
       return StoriesScreen(key: ValueKey(mode), mode: mode);
+    }
+    if (uri.queryParameters['view'] == 'play') {
+      return NativeStoryPlayerScreen(
+        key: ValueKey(uri.toString()),
+        storyId: Uri.decodeComponent(mode),
+        server: uri.queryParameters['server'],
+      );
     }
     return StoryReaderScreen(episode: {'storyKey': Uri.decodeComponent(mode)});
   }

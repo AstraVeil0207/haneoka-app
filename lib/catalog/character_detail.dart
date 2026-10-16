@@ -141,7 +141,7 @@ class CharacterDetail extends StatefulWidget {
 }
 
 class _CharacterDetailState extends State<CharacterDetail> {
-  late final _voice = VoicePlayback(beforePlay: () => state.audio.pause());
+  late final _voice = VoicePlayback();
 
   @override
   void dispose() {

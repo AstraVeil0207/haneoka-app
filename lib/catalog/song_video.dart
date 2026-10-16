@@ -1,3 +1,5 @@
+import '../core/managed_media_player.dart';
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -68,7 +70,7 @@ class _SongVideosState extends State<SongVideos> {
     await state.audio.pause();
     if (!mounted) return;
     _stop();
-    final player = Player();
+    final player = ManagedMediaPlayer();
     setState(() {
       _player = player;
       _controller = VideoController(player);

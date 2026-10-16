@@ -7,6 +7,66 @@ environment:
   sdk: ^3.13.5
 
 dependencies:
+  vega_runtime_ffi:
+    git:
+      url: https://github.com/haneoka-gakuen/vega.git
+      ref: 9959c66b0d2036c4a4cb2c9dd37dc698da9748fe
+      path: packages/runtime-ffi/dart
+  vega_plugin_cubism:
+    git:
+      url: https://github.com/haneoka-gakuen/vega-plugin-cubism.git
+      ref: b8affe6af9ae19791b930556da5e01bde5d1a06a
+      path: dart
+  render_contracts:
+    git:
+      url: https://github.com/haneoka-gakuen/render-kernel-flutter.git
+      ref: d810428b8719d083ab97dda77dc3ce7de0ace444
+      path: packages/render_contracts
+  render_kernel_flutter:
+    git:
+      url: https://github.com/haneoka-gakuen/render-kernel-flutter.git
+      ref: d810428b8719d083ab97dda77dc3ce7de0ace444
+  vega_renderer_flutter:
+    git:
+      url: https://github.com/haneoka-gakuen/vega-renderer-flutter.git
+      ref: d8af06608a5c82c4465ab7ba9d11d1a0f7d32604
+  cassiopeia_renderer_flutter:
+    git:
+      url: https://github.com/haneoka-gakuen/cassiopeia-renderer-flutter.git
+      ref: 20d788de39ece115356073e0e15578ddd55d95b1
+  cassiopeia_runtime:
+    git:
+      url: https://github.com/haneoka-gakuen/cassiopeia.git
+      ref: f51457fdee6cc0eeee9ebab486b0558c32c3b8bf
+      path: dart
+  vega_protocol:
+    git:
+      url: https://github.com/haneoka-gakuen/vega.git
+      ref: 9959c66b0d2036c4a4cb2c9dd37dc698da9748fe
+      path: packages/protocol/dart
+  vega_plugin_haneoka:
+    git:
+      url: https://github.com/haneoka-gakuen/vega-plugin-haneoka.git
+      ref: 67a9b7aaf7050f3aff06d6e087e6629c060cd723
+      path: dart
+  cassiopeia_plugin_our_notes:
+    git:
+      url: https://github.com/haneoka-gakuen/cassiopeia-plugin-our-notes.git
+      ref: dacde1eefbe1e2279c734fec3e326d9fe743c5eb
+      path: dart
+  flutter_gpu:
+    sdk: flutter
+  haneoka_render_profile:
+    git:
+      url: https://github.com/haneoka-gakuen/haneoka-render-profile.git
+      ref: 63bf1dfb76e0cd609cc076560b0c6c47d0305a4a
+  haneoka_render_profile_flutter:
+    git:
+      url: https://github.com/haneoka-gakuen/haneoka-render-profile.git
+      ref: 63bf1dfb76e0cd609cc076560b0c6c47d0305a4a
+      path: flutter
+  image: ^4.12.0
+  ffi: ^2.2.0
   app_links: ^7.2.2
   archive: ^4.5.0
   audioplayers: ^6.8.1
@@ -39,6 +99,10 @@ dependencies:
   sqlite3: ^3.7.0
   two_dimensional_scrollables: ^0.5.5
   url_launcher: ^6.3.3
+  audio_service: ^0.18.19
+  audio_session: ^0.2.4
+  flutter_soloud: ^4.1.7
+  window_manager: ^0.5.2
 dependency_overrides:
   media_kit_libs_windows_video:
     path: third_party/media_kit_libs_windows_video

@@ -1,3 +1,5 @@
+import '../core/managed_media_player.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -375,9 +377,7 @@ class _Preview extends StatefulWidget {
 }
 
 class _PreviewState extends State<_Preview> {
-  late final _voice = VoicePlayback(
-    beforePlay: () => AppScope.of(context).audio.pause(),
-  );
+  late final _voice = VoicePlayback();
   Future<String>? _text;
   Player? _player;
   StreamSubscription<String>? _videoErrors;
@@ -408,7 +408,7 @@ class _PreviewState extends State<_Preview> {
     final audio = AppScope.of(context).audio;
     await audio.pause();
     if (!mounted) return;
-    final player = Player();
+    final player = ManagedMediaPlayer();
     _videoErrors = player.stream.error.listen((error) {
       if (!mounted || !identical(_player, player)) return;
       setState(() {

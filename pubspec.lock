@@ -73,6 +73,38 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.13.1"
+  audio_service:
+    dependency: "direct main"
+    description:
+      name: audio_service
+      sha256: "95f3267f3449eb5cf71c8fcf1d556f57af1e898e2dc5815fb168d1843653edb7"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.18.19"
+  audio_service_platform_interface:
+    dependency: transitive
+    description:
+      name: audio_service_platform_interface
+      sha256: "6283782851f6c8b501b60904a32fc7199dc631172da0629d7301e66f672ab777"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.3"
+  audio_service_web:
+    dependency: transitive
+    description:
+      name: audio_service_web
+      sha256: b8ea9243201ee53383157fbccf13d5d2a866b5dda922ec19d866d1d5d70424df
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.4"
+  audio_session:
+    dependency: "direct main"
+    description:
+      name: audio_session
+      sha256: f9e7711a0e24ca8b40f5d7ac374c3c6e55016f3157912badd18199cdbbca5c4d
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.4"
   audioplayers:
     dependency: "direct main"
     description:
@@ -153,6 +185,33 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.3"
+  cassiopeia_plugin_our_notes:
+    dependency: "direct main"
+    description:
+      path: dart
+      ref: dacde1eefbe1e2279c734fec3e326d9fe743c5eb
+      resolved-ref: dacde1eefbe1e2279c734fec3e326d9fe743c5eb
+      url: "https://github.com/haneoka-gakuen/cassiopeia-plugin-our-notes.git"
+    source: git
+    version: "0.1.0"
+  cassiopeia_renderer_flutter:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: "20d788de39ece115356073e0e15578ddd55d95b1"
+      resolved-ref: "20d788de39ece115356073e0e15578ddd55d95b1"
+      url: "https://github.com/haneoka-gakuen/cassiopeia-renderer-flutter.git"
+    source: git
+    version: "0.1.0"
+  cassiopeia_runtime:
+    dependency: "direct main"
+    description:
+      path: dart
+      ref: f51457fdee6cc0eeee9ebab486b0558c32c3b8bf
+      resolved-ref: f51457fdee6cc0eeee9ebab486b0558c32c3b8bf
+      url: "https://github.com/haneoka-gakuen/cassiopeia.git"
+    source: git
+    version: "0.1.0"
   characters:
     dependency: transitive
     description:
@@ -250,7 +309,7 @@ packages:
     source: hosted
     version: "0.8.0"
   ffi:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: ffi
       sha256: "6d7fd89431262d8f3125e81b50d3847a091d846eafcd4fdb88dd06f36d705a45"
@@ -334,6 +393,11 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "3.4.5"
+  flutter_gpu:
+    dependency: "direct main"
+    description: flutter
+    source: sdk
+    version: "0.0.0"
   flutter_lints:
     dependency: "direct dev"
     description:
@@ -403,6 +467,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.2.2"
+  flutter_soloud:
+    dependency: "direct main"
+    description:
+      name: flutter_soloud
+      sha256: "9e753b54f858f988558614db82ae692dd1043fe2a446dd6187076e7d34c000b4"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.1.7"
   flutter_svg:
     dependency: "direct main"
     description:
@@ -432,6 +504,24 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.2.0"
+  haneoka_render_profile:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: "63bf1dfb76e0cd609cc076560b0c6c47d0305a4a"
+      resolved-ref: "63bf1dfb76e0cd609cc076560b0c6c47d0305a4a"
+      url: "https://github.com/haneoka-gakuen/haneoka-render-profile.git"
+    source: git
+    version: "0.1.0"
+  haneoka_render_profile_flutter:
+    dependency: "direct main"
+    description:
+      path: flutter
+      ref: "63bf1dfb76e0cd609cc076560b0c6c47d0305a4a"
+      resolved-ref: "63bf1dfb76e0cd609cc076560b0c6c47d0305a4a"
+      url: "https://github.com/haneoka-gakuen/haneoka-render-profile.git"
+    source: git
+    version: "0.1.0"
   hooks:
     dependency: transitive
     description:
@@ -473,7 +563,7 @@ packages:
     source: hosted
     version: "0.1.0"
   image:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: image
       sha256: "89ed75b2f8231fe676808c5564f9590d728024ded7ac782a7ed8474f1c95b72a"
@@ -512,6 +602,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.0.0"
+  js:
+    dependency: transitive
+    description:
+      name: js
+      sha256: "53385261521cc4a0c4658fd0ad07a7d14591cf8fc33abbceae306ddb974888dc"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.7.2"
+  json_annotation:
+    dependency: transitive
+    description:
+      name: json_annotation
+      sha256: "2a743920d81b7910627f68ee2c9ac1fc0bfee32b9fc3403587d7c6791ca12f80"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.12.0"
   lints:
     dependency: transitive
     description:
@@ -807,6 +913,24 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.1"
+  render_contracts:
+    dependency: "direct main"
+    description:
+      path: "packages/render_contracts"
+      ref: d810428b8719d083ab97dda77dc3ce7de0ace444
+      resolved-ref: d810428b8719d083ab97dda77dc3ce7de0ace444
+      url: "https://github.com/haneoka-gakuen/render-kernel-flutter.git"
+    source: git
+    version: "0.1.0"
+  render_kernel_flutter:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: d810428b8719d083ab97dda77dc3ce7de0ace444
+      resolved-ref: d810428b8719d083ab97dda77dc3ce7de0ace444
+      url: "https://github.com/haneoka-gakuen/render-kernel-flutter.git"
+    source: git
+    version: "0.1.0"
   rxdart:
     dependency: transitive
     description:
@@ -823,6 +947,46 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.0.6"
+  screen_retriever:
+    dependency: transitive
+    description:
+      name: screen_retriever
+      sha256: ace919117a7520c13a50a6259e60c4a0d4cbe98809468792a91b5c5adada2aa6
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.2"
+  screen_retriever_linux:
+    dependency: transitive
+    description:
+      name: screen_retriever_linux
+      sha256: "7b52006a5ceae1f3d5af7f77188c3290d6e7d8ded16d99809bea84967c65c257"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.2"
+  screen_retriever_macos:
+    dependency: transitive
+    description:
+      name: screen_retriever_macos
+      sha256: a1489b99cce597c45a54b9aae1cd94c8d4705353b7e0bb2457a6e4de44e0ad8a
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.2"
+  screen_retriever_platform_interface:
+    dependency: transitive
+    description:
+      name: screen_retriever_platform_interface
+      sha256: "94a5535277510a63184ca178ce12a1449bc0b38618879aa1c18bf57369c5064a"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.2"
+  screen_retriever_windows:
+    dependency: transitive
+    description:
+      name: screen_retriever_windows
+      sha256: dafc6922b0bfbf1d48cf3ccbf519b4fff47bdcb820da1728ea6db675fecc9324
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.2"
   shared_preferences:
     dependency: "direct main"
     description:
@@ -1108,6 +1272,51 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.4.3"
+  vega_plugin_cubism:
+    dependency: "direct main"
+    description:
+      path: dart
+      ref: b8affe6af9ae19791b930556da5e01bde5d1a06a
+      resolved-ref: b8affe6af9ae19791b930556da5e01bde5d1a06a
+      url: "https://github.com/haneoka-gakuen/vega-plugin-cubism.git"
+    source: git
+    version: "0.1.0"
+  vega_plugin_haneoka:
+    dependency: "direct main"
+    description:
+      path: dart
+      ref: "67a9b7aaf7050f3aff06d6e087e6629c060cd723"
+      resolved-ref: "67a9b7aaf7050f3aff06d6e087e6629c060cd723"
+      url: "https://github.com/haneoka-gakuen/vega-plugin-haneoka.git"
+    source: git
+    version: "0.1.0"
+  vega_protocol:
+    dependency: "direct main"
+    description:
+      path: "packages/protocol/dart"
+      ref: "9959c66b0d2036c4a4cb2c9dd37dc698da9748fe"
+      resolved-ref: "9959c66b0d2036c4a4cb2c9dd37dc698da9748fe"
+      url: "https://github.com/haneoka-gakuen/vega.git"
+    source: git
+    version: "0.1.0"
+  vega_renderer_flutter:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: d8af06608a5c82c4465ab7ba9d11d1a0f7d32604
+      resolved-ref: d8af06608a5c82c4465ab7ba9d11d1a0f7d32604
+      url: "https://github.com/haneoka-gakuen/vega-renderer-flutter.git"
+    source: git
+    version: "0.1.0"
+  vega_runtime_ffi:
+    dependency: "direct main"
+    description:
+      path: "packages/runtime-ffi/dart"
+      ref: "9959c66b0d2036c4a4cb2c9dd37dc698da9748fe"
+      resolved-ref: "9959c66b0d2036c4a4cb2c9dd37dc698da9748fe"
+      url: "https://github.com/haneoka-gakuen/vega.git"
+    source: git
+    version: "0.1.0"
   wakelock_plus:
     dependency: transitive
     description:
@@ -1148,6 +1357,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.4.0"
+  window_manager:
+    dependency: "direct main"
+    description:
+      name: window_manager
+      sha256: "05c231fd7b23d2380f14c5cc10b7b93d60d4fa4a2fb4e0f032de27e44b5560e9"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.5.2"
   windows_file_picker:
     dependency: transitive
     description:

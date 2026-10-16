@@ -59,3 +59,6 @@ build/
 *.key
 
 /native/team_engine/target/
+
+# Local uncommitted package locations.
+pubspec_overrides.yaml

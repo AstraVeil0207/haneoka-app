@@ -46,7 +46,8 @@
       "rename": "重新命名",
       "confirm": "確認",
       "moreActions": "更多選項",
-      "reload": "重新整理"
+      "reload": "重新整理",
+      "fullscreenExit": "退出全螢幕"
     },
     "fields": {
       "duration": "時長",
@@ -1119,7 +1120,8 @@
       "playVoice": "播放語音",
       "fullscreenExit": "退出全螢幕",
       "firstCharacter": "角色",
-      "secondCharacter": "羈絆對象"
+      "secondCharacter": "羈絆對象",
+      "autoDelay": "自動推進間隔"
     },
     "navigation": {
       "event": "活動故事",
@@ -1308,7 +1310,7 @@
       "title": "語音"
     },
     "chartPlayer": {
-      "play": "遊玩",
+      "play": "播放",
       "pause": "暫停",
       "loop": "循環",
       "fullscreen": "全螢幕",
@@ -1345,7 +1347,12 @@
       "noteFlick": "上滑",
       "noteSlide": "滑鍵",
       "loading": "載入中…",
-      "runtimeError": "無法載入 Our Notes 譜面執行環境。"
+      "runtimeError": "無法載入 Our Notes 譜面執行環境。",
+      "liveMode": "Live模式",
+      "normalLive": "普通Live",
+      "gekisouLive": "擊奏Live",
+      "vibration": "震動",
+      "vibrationUnavailable": "此裝置不支援震動"
     }
   },
   "tools": {

@@ -46,6 +46,24 @@ final CacheManager artworkCache = CacheManager(
     // count/age cleanup from imposing a hidden limit on unlimited mode.
     stalePeriod: const Duration(days: 3650),
     maxNrOfCacheObjects: 1 << 30,
-    fileService: HttpFileService(httpClient: netClient),
+    fileService: _ArtworkFileService(httpClient: netClient),
   ),
 );
+
+final class _ArtworkFileService extends HttpFileService {
+  _ArtworkFileService({required super.httpClient});
+
+  @override
+  Future<FileServiceResponse> get(
+    String url, {
+    Map<String, String>? headers,
+  }) async {
+    final response = await super.get(url, headers: headers);
+    // CacheManager skips the body on errors and 304. Drain it so shared
+    // connections remain available for catalogue and playback requests.
+    if (response.statusCode != 200 && response.statusCode != 202) {
+      await response.content.drain<void>();
+    }
+    return response;
+  }
+}

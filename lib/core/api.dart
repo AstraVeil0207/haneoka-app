@@ -16,7 +16,13 @@ Future<Object?> _decodeResponse(List<int> bytes) =>
 /// on disk per release, so a release's data is downloaded once and the app
 /// works offline with what it has seen.
 class HaneokaApi {
-  HaneokaApi({this.origin = 'https://haneoka.org', required this.server}) {
+  HaneokaApi({
+    this.origin = const String.fromEnvironment(
+      'HANEOKA_API_ORIGIN',
+      defaultValue: 'https://haneoka.org',
+    ),
+    required this.server,
+  }) {
     _instances.add(WeakReference(this));
     // The release pin is the first thing every page needs; ask at once.
     release();
@@ -26,7 +32,8 @@ class HaneokaApi {
   /// `jp` or `intl`.
   final String server;
   http.Client get _client => netClient;
-  String? _releaseId;
+  String? _releaseId, _sourceId;
+  String? get sourceId => _sourceId;
   final Map<String, Future<Object?>> _inFlight = {};
 
   static final _instances = <WeakReference<HaneokaApi>>[];
@@ -41,6 +48,7 @@ class HaneokaApi {
       if (api == null) continue;
       api._releaseFuture = null;
       api._releaseId = null;
+      api._sourceId = null;
       api._releaseRetryAt = null;
     }
   }
@@ -84,6 +92,7 @@ class HaneokaApi {
         '/api/v1/servers/$server/release?projection=identity',
       ) as Map<String, Object?>;
       _releaseId = body['releaseId'] as String;
+      _sourceId = body['sourceId'] as String?;
       _releasePins['$origin:$server'] = _releaseId!;
       return _releaseId!;
     } on Exception {

@@ -46,7 +46,8 @@
       "rename": "重命名",
       "confirm": "确认",
       "moreActions": "更多选项",
-      "reload": "刷新"
+      "reload": "刷新",
+      "fullscreenExit": "退出全屏"
     },
     "fields": {
       "duration": "时长",
@@ -1119,7 +1120,8 @@
       "playVoice": "播放语音",
       "fullscreenExit": "退出全屏",
       "firstCharacter": "角色",
-      "secondCharacter": "羁绊对象"
+      "secondCharacter": "羁绊对象",
+      "autoDelay": "自动推进间隔"
     },
     "navigation": {
       "event": "活动故事",
@@ -1308,7 +1310,7 @@
       "title": "语音"
     },
     "chartPlayer": {
-      "play": "游玩",
+      "play": "播放",
       "pause": "暂停",
       "loop": "循环",
       "fullscreen": "全屏",
@@ -1345,7 +1347,12 @@
       "noteFlick": "上滑",
       "noteSlide": "滑键",
       "loading": "加载中…",
-      "runtimeError": "无法加载 Our Notes 谱面运行环境。"
+      "runtimeError": "无法加载 Our Notes 谱面运行环境。",
+      "liveMode": "Live模式",
+      "normalLive": "普通Live",
+      "gekisouLive": "激奏Live",
+      "vibration": "震动",
+      "vibrationUnavailable": "此设备不支持震动"
     }
   },
   "tools": {

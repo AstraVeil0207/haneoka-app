@@ -7,30 +7,16 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'audio_output.dart';
-
-/// A track the dock can show: what is playing and where it came from.
-class Track {
-  const Track({
-    required this.id,
-    required this.url,
-    required this.title,
-    this.subtitle = '',
-    this.songKey,
-    this.artwork,
-  });
-  final String id;
-  final String url;
-  final String title;
-  final String subtitle;
-  final String? songKey;
-  final String? artwork;
-}
+import 'audio_track.dart';
+import 'playback_focus.dart';
+export 'audio_track.dart';
 
 /// Mirrors src/lit/runtime/audio-dock.ts: enqueueTrack, playTrack and transport.
 enum PlaybackMode { sequential, repeatAll, repeatOne, shuffle }
 
 class AudioService extends ChangeNotifier {
   final AudioOutput _player = AudioOutput();
+  late final _focus = PlaybackFocus(pause);
   List<Track> _queue = const [];
   int _index = -1;
   bool _playing = false;
@@ -118,6 +104,7 @@ class AudioService extends ChangeNotifier {
     Future<void> Function() operation, {
     bool replace = false,
   }) {
+    if (replace) _player.cancelPendingLoad();
     final generation = replace ? ++_generation : _generation;
     return _requests = _requests.then((_) async {
       if (_disposed || generation != _generation) return;
@@ -142,12 +129,13 @@ class AudioService extends ChangeNotifier {
     duration.value = Duration.zero;
     _completed = false;
     _loadedUrl = null;
-    return _perform(() async {
+    Future<void> start() => _perform(() async {
       await _player.play(UrlSource(track.url), shouldPlay: shouldPlay);
       await _player.setVolume(volume);
       _loadedUrl = track.url;
       if (_restoredPosition == Duration.zero) _persist();
     }, replace: true);
+    return shouldPlay ? _focus.activate(start) : start();
   }
 
   Track? get current =>
@@ -261,8 +249,12 @@ class AudioService extends ChangeNotifier {
     );
   }
 
-  void cycleMode() {
-    mode = PlaybackMode.values[(mode.index + 1) % PlaybackMode.values.length];
+  void cycleMode() => setMode(
+    PlaybackMode.values[(mode.index + 1) % PlaybackMode.values.length],
+  );
+
+  void setMode(PlaybackMode selected) {
+    mode = selected;
     _persist();
     notifyListeners();
   }
@@ -395,7 +387,7 @@ class AudioService extends ChangeNotifier {
     if (track == null) return Future.value();
     return _completed || error != null || _loadedUrl != track.url
         ? _play(track)
-        : _perform(_player.resume);
+        : _focus.activate(() => _perform(_player.resume));
   }
 
   Future<void> seek(Duration value) => _perform(() async {
@@ -430,6 +422,7 @@ class AudioService extends ChangeNotifier {
   void dispose() {
     _persist();
     _disposed = true;
+    _focus.close();
     _generation++;
     for (final subscription in _subscriptions) {
       subscription.cancel();

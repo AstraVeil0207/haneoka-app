@@ -12,6 +12,7 @@ import '../core/page_data.dart';
 import '../core/relative_time.dart';
 import '../shell/page.dart';
 import '../shell/links.dart';
+import '../rendering/native_chart_player_screen.dart';
 import '../records/records.dart';
 import '../ui/app_image.dart';
 import '../ui/detail.dart';
@@ -59,7 +60,7 @@ class DetailScreen extends StatefulWidget {
 }
 
 class _DetailScreenState extends State<DetailScreen> {
-  Future<(Entry, CatalogVisuals, Entry?)>? _data;
+  Future<(Entry, CatalogVisuals, Entry?, Entry)>? _data;
   int? _difficulty;
 
   void refresh(VoidCallback change) {
@@ -72,7 +73,7 @@ class _DetailScreenState extends State<DetailScreen> {
     _data ??= _load();
   }
 
-  Future<(Entry, CatalogVisuals, Entry?)> _load() async {
+  Future<(Entry, CatalogVisuals, Entry?, Entry)> _load() async {
     final state = AppScope.of(context);
     // An entity only the other release has opens there (`displayServer`).
     final server = '${widget.summary[serverKey] ?? state.server}';
@@ -82,7 +83,7 @@ class _DetailScreenState extends State<DetailScreen> {
       api
           .catalog(resource, widget.id)
           .then<Entry>(
-            (value) => {...widget.summary, if (value is Entry) ...value},
+            (value) => value is Entry ? value : widget.summary,
             onError: (_) => widget.summary,
           ),
       CatalogVisuals.of(api),
@@ -98,13 +99,16 @@ class _DetailScreenState extends State<DetailScreen> {
                 : Future<Map<String, Object?>?>.value())
           : entityPage(api.server, state.text.locale, resource, widget.id),
     ).wait;
+    final canonicalRecord = _providerRecord(record);
+    final displayRecord = {...widget.summary, ...record};
     final item = page?['item'];
     return (
       item is Map
-          ? {...record, ...item.cast<String, Object?>()}
-          : _providerRecord(record),
+          ? {...displayRecord, ...item.cast<String, Object?>()}
+          : _providerRecord(displayRecord),
       visuals,
       page,
+      canonicalRecord,
     );
   }
 
@@ -184,6 +188,7 @@ class _DetailScreenState extends State<DetailScreen> {
         final record = snapshot.data?.$1 ?? widget.summary;
         final visuals = snapshot.data?.$2;
         final page = snapshot.data?.$3;
+        final canonicalRecord = snapshot.data?.$4 ?? widget.summary;
         final kit = CatalogKit(
           widget.profile,
           t,
@@ -192,7 +197,14 @@ class _DetailScreenState extends State<DetailScreen> {
           visuals,
           songTitles: state.songTitle,
         );
-        final view = _Page(kit, record, this, page, ready: snapshot.hasData);
+        final view = _Page(
+          kit,
+          record,
+          this,
+          page,
+          canonicalRecord: canonicalRecord,
+          ready: snapshot.hasData,
+        );
         return ShellPage(
           title: kit.title(record),
           marks: view.marks(),
@@ -209,10 +221,18 @@ class _DetailScreenState extends State<DetailScreen> {
 
 /// The sections of one entity, by presentation.
 class _Page {
-  _Page(this.kit, this.record, this.host, this.page, {this.ready = true});
+  _Page(
+    this.kit,
+    this.record,
+    this.host,
+    this.page, {
+    required this.canonicalRecord,
+    this.ready = true,
+  });
   final bool ready;
   final CatalogKit kit;
   final Entry record;
+  final Entry canonicalRecord;
   final _DetailScreenState host;
 
   /// The website's payload for this page, when it was published.
@@ -289,7 +309,7 @@ class _Page {
   /// The song's own actions (`renderDetailActions`): ranking, play,
   /// Sonolus.
   List<BarAction> actions() {
-    if (kind != Presentation.song) return const [];
+    if (kind != Presentation.song || !ready) return const [];
     // Rankings and Sonolus are this game's; another game's song only plays.
     final native = kit.api is! ProviderApi;
     final actions = <BarAction>[
@@ -300,7 +320,8 @@ class _Page {
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute<void>(
               builder: (_) => SongRankingScreen(
-                songId: '${record['musicId'] ?? kit.id(record)}',
+                songId:
+                    '${canonicalRecord['musicId'] ?? kit.id(canonicalRecord)}',
                 title: kit.title(record),
                 server: kit.api.server,
               ),
@@ -308,14 +329,14 @@ class _Page {
           ),
         ),
     ];
-    if (record['musicUrl'] is String) {
+    if (canonicalRecord['musicUrl'] is String) {
       final track = Track(
-        id: kit.id(record),
+        id: kit.id(canonicalRecord),
         songKey:
-            '${kit.api is ProviderApi ? "gbp" : "our-notes"}:${record[serverKey] ?? kit.api.server}:${record["musicId"] ?? kit.id(record)}',
-        url: kit.api.asset(record['musicUrl'] as String).toString(),
+            '${kit.api is ProviderApi ? "gbp" : "our-notes"}:${canonicalRecord[serverKey] ?? kit.api.server}:${canonicalRecord["musicId"] ?? kit.id(canonicalRecord)}',
+        url: kit.api.asset(canonicalRecord['musicUrl'] as String).toString(),
         title: kit.title(record),
-        artwork: kit.images(record).firstOrNull,
+        artwork: kit.images(canonicalRecord).firstOrNull,
       );
       final playing = audio.isPlaying(track.id, track.url);
       actions.add(
@@ -323,23 +344,52 @@ class _Page {
           icon: playing ? Symbols.pause_rounded : Symbols.play_arrow_rounded,
           label: t(playing ? 'common.actions.pause' : 'common.actions.play'),
           onPressed: () async {
-            await audio.enqueueTrack(track);
+            if (playing) {
+              await audio.pause();
+            } else {
+              await audio.enqueueTrack(track);
+            }
             host.refresh(() {});
           },
         ),
       );
     }
-    final charts = _charts;
+    final charts = _canonicalCharts;
     final chosen =
         host._difficulty ??
         (charts.any((c) => c['difficulty'] == 3)
             ? 3
             : charts.lastOrNull?['difficulty'] as int?);
     final chart = charts.where((c) => c['difficulty'] == chosen).firstOrNull;
-    final musicId = '${record['musicId'] ?? ''}'.trim();
+    final musicId = '${canonicalRecord['musicId'] ?? ''}'.trim();
     if (native &&
         chart?['file'] != null &&
         RegExp(r'^\d{1,16}$').hasMatch(musicId)) {
+      actions.add(
+        BarAction(
+          icon: Symbols.play_circle_rounded,
+          label: t('navigation.chartSimulator', 'Chart player'),
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              settings: RouteSettings(
+                name: Uri(
+                  path: '/chart-simulator',
+                  queryParameters: {
+                    'id': musicId,
+                    'server': kit.api.server,
+                    'difficulty': '$chosen',
+                  },
+                ).toString(),
+              ),
+              builder: (_) => NativeChartPlayerScreen(
+                song: canonicalRecord,
+                api: kit.api,
+                difficulty: chosen!,
+              ),
+            ),
+          ),
+        ),
+      );
       const names = ['easy', 'normal', 'hard', 'expert', 'master'];
       final raw = '${chart!['difficultyName'] ?? ''}'.toLowerCase();
       final difficulty =
@@ -399,7 +449,7 @@ class _Page {
         ? null
         : entityCommentTarget(
             host.widget.profile.resource,
-            record,
+            canonicalRecord,
             '${host.widget.summary[serverKey] ?? kit.api.server}',
           );
     return [
@@ -423,6 +473,11 @@ class _Page {
 
   // ---------- Songs ----------
 
+  List<Entry> get _canonicalCharts => [
+    for (final row in (canonicalRecord['difficulty'] as List? ?? const []))
+      if (row is Entry) row,
+  ];
+
   List<Entry> get _charts => [
     for (final row in (record['difficulty'] as List? ?? const []))
       if (row is Entry) row,
@@ -436,6 +491,9 @@ class _Page {
             ? 3
             : charts.lastOrNull?['difficulty'] as int?);
     final chart = charts.where((c) => c['difficulty'] == chosen).firstOrNull;
+    final canonicalChart = _canonicalCharts
+        .where((c) => c['difficulty'] == chosen)
+        .firstOrNull;
     String list(Object? value) => switch (value) {
       List() =>
         value.whereType<String>().where((s) => s.isNotEmpty).take(1).join(),
@@ -532,14 +590,19 @@ class _Page {
           ],
         ),
       ),
-      if (chart?['file'] case final String file when file.isNotEmpty)
-        SongSkillPoints(
-          key: ValueKey(file),
-          source: kit.api.asset(file).toString(),
-        ),
+      if (ready)
+        if (canonicalChart?['file'] case final String file when file.isNotEmpty)
+          SongSkillPoints(
+            key: ValueKey(file),
+            source: kit.api.asset(file).toString(),
+          ),
       GekisouStages(song: record, metrics: gekisou),
       ?_rewards(chart),
-      SongVideos(key: ValueKey('mv:${record['musicId']}'), song: record),
+      if (ready)
+        SongVideos(
+          key: ValueKey('mv:${canonicalRecord['musicId']}'),
+          song: canonicalRecord,
+        ),
     ];
   }
 

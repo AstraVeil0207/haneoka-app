@@ -46,7 +46,8 @@
       "rename": "Rename",
       "confirm": "Confirm",
       "moreActions": "More options",
-      "reload": "Reload"
+      "reload": "Reload",
+      "fullscreenExit": "Exit fullscreen"
     },
     "fields": {
       "duration": "Duration",
@@ -1119,7 +1120,8 @@
       "playVoice": "Play voice",
       "fullscreenExit": "Exit fullscreen",
       "firstCharacter": "Character",
-      "secondCharacter": "Bond partner"
+      "secondCharacter": "Bond partner",
+      "autoDelay": "Auto delay"
     },
     "navigation": {
       "event": "Event Stories",
@@ -1345,7 +1347,12 @@
       "noteFlick": "Flick",
       "noteSlide": "Slide",
       "loading": "Loading…",
-      "runtimeError": "Unable to load the Our Notes chart runtime."
+      "runtimeError": "Unable to load the Our Notes chart runtime.",
+      "liveMode": "Live mode",
+      "normalLive": "Normal Live",
+      "gekisouLive": "Gekisou Live",
+      "vibration": "Vibration",
+      "vibrationUnavailable": "Unavailable on this device"
     }
   },
   "tools": {

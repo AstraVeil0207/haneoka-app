@@ -67,6 +67,18 @@ Future<bool> openLink(
     navigate?.call('/');
     return navigate != null;
   }
+  if ((parts.first == 'chart-simulator' && uri.queryParameters['id'] != null) ||
+      (parts.first == 'stories' &&
+          parts.length > 1 &&
+          uri.queryParameters['view'] == 'play')) {
+    navigate?.call(
+      Uri(
+        path: '/${parts.join('/')}',
+        queryParameters: {...uri.queryParameters, 'server': ?server},
+      ).toString(),
+    );
+    return navigate != null;
+  }
   if (parts.length >= 3 &&
       parts.first == 'catalog' &&
       _kindResources.containsKey(parts[1]) &&
