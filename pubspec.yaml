@@ -57,7 +57,7 @@ dependencies:
   cassiopeia_plugin_our_notes:
     git:
       url: https://github.com/haneoka-gakuen/cassiopeia-plugin-our-notes.git
-      ref: 0d66edd1dd8a8ba533478ce13c4f01a02f355c11
+      ref: 0d2891b3e6e02c56f44b27800412a7be43f40f30
       path: dart
   flutter_gpu:
     sdk: flutter

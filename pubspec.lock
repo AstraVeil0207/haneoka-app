@@ -189,8 +189,8 @@ packages:
     dependency: "direct main"
     description:
       path: dart
-      ref: "0d66edd1dd8a8ba533478ce13c4f01a02f355c11"
-      resolved-ref: "0d66edd1dd8a8ba533478ce13c4f01a02f355c11"
+      ref: "0d2891b3e6e02c56f44b27800412a7be43f40f30"
+      resolved-ref: "0d2891b3e6e02c56f44b27800412a7be43f40f30"
       url: "https://github.com/haneoka-gakuen/cassiopeia-plugin-our-notes.git"
     source: git
     version: "0.1.0"

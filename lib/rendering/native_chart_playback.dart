@@ -722,15 +722,7 @@ final class NativeChartPlayback extends ChangeNotifier {
           ? (1, 1)
           : (backgroundImage.width, backgroundImage.height);
       if (_disposed || generation != _generation) return;
-      await _deviceHaptics.initialize(
-        (jsonDecode(
-          await loadHaneokaProfileString(
-            '${haneokaProfileAssetRoot}haptic-recipes.json',
-          ),
-        ) as Map)['_allData'].cast<Map>().map<Map<String, Object?>>(
-          (Map value) => Map<String, Object?>.from(value),
-        ),
-      );
+      await _deviceHaptics.initialize(OurNotesHapticFeedbackProfile.recipes);
       if (_disposed || generation != _generation) return;
       _haptics = NativeChartHaptics(_deviceHaptics);
       final sounds = NativeChartSounds();
@@ -1001,6 +993,8 @@ final class NativeChartPlayback extends ChangeNotifier {
       recipes,
       playing: playing,
       enabled: preferences.vibration,
+      held: ourNotesWatchHoldActive(positionUs, _holdSpans),
+      historical: observation.historical || terminal,
     );
     _sounds?.observe(
       cues,
