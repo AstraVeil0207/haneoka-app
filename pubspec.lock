@@ -232,10 +232,10 @@ packages:
     dependency: transitive
     description:
       name: code_assets
-      sha256: bf394f466ba9205f1812a0433b392d6af280f155f56651eda7c18cc32ed493b8
+      sha256: "828110d598123b5ea96c00c9f3c72105bf79f8ee36c20a39b26209ade421ec57"
       url: "https://pub.dev"
     source: hosted
-    version: "1.2.1"
+    version: "2.1.0"
   collection:
     dependency: transitive
     description:
@@ -287,11 +287,12 @@ packages:
   cupertino_http:
     dependency: "direct main"
     description:
-      name: cupertino_http
-      sha256: d57188b07349a373bec9a78997a80c00e1de08dab0fe454b3f86c84661ac457c
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.1.0"
+      path: "pkgs/cupertino_http"
+      ref: "6e91ce3e73ab079114de3684367318287b08d893"
+      resolved-ref: "6e91ce3e73ab079114de3684367318287b08d893"
+      url: "https://github.com/dart-lang/http.git"
+    source: git
+    version: "3.1.1-wip"
   cupertino_ui:
     dependency: transitive
     description:
@@ -471,10 +472,10 @@ packages:
     dependency: "direct main"
     description:
       name: flutter_soloud
-      sha256: "9e753b54f858f988558614db82ae692dd1043fe2a446dd6187076e7d34c000b4"
+      sha256: "1c297e52182c5e8fd447ae8430bf0b598445dc586e72863ceeef0416242b2ae8"
       url: "https://pub.dev"
     source: hosted
-    version: "4.1.7"
+    version: "5.2.1"
   flutter_svg:
     dependency: "direct main"
     description:
@@ -741,18 +742,18 @@ packages:
     dependency: transitive
     description:
       name: native_toolchain_c
-      sha256: a1c26117c48cebe5677b0cf0e33a980a79a7c5577effc86f52e5a0d309cdcb60
+      sha256: "90eaad8059ebc2004a63810a4696ea9acdb02473e47ed3b6b3bafb100ac77e31"
       url: "https://pub.dev"
     source: hosted
-    version: "0.19.3"
+    version: "0.19.5"
   objective_c:
     dependency: transitive
     description:
       name: objective_c
-      sha256: b7fb95a6d9a4f009edd63dc5ac69f07420b23a16161c6dd8660290b59c602e8e
+      sha256: "5c80c2ad6e2c0397de5db38c6d653e69616a3397e13aa7633bf39eb668f2041b"
       url: "https://pub.dev"
     source: hosted
-    version: "9.5.0"
+    version: "9.6.2"
   octo_image:
     dependency: transitive
     description:
@@ -897,6 +898,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.5.2"
+  process:
+    dependency: transitive
+    description:
+      name: process
+      sha256: "4242ba3508d37e01808bdf71ad1d5bb93a8d671bf2e7450e6b1b353fb0808891"
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.0.6"
   pub_semver:
     dependency: transitive
     description:
@@ -1276,8 +1285,8 @@ packages:
     dependency: "direct main"
     description:
       path: dart
-      ref: b8affe6af9ae19791b930556da5e01bde5d1a06a
-      resolved-ref: b8affe6af9ae19791b930556da5e01bde5d1a06a
+      ref: "9b870d6215d29178279ce124267c11c2457e9c7d"
+      resolved-ref: "9b870d6215d29178279ce124267c11c2457e9c7d"
       url: "https://github.com/haneoka-gakuen/vega-plugin-cubism.git"
     source: git
     version: "0.1.0"
@@ -1285,8 +1294,8 @@ packages:
     dependency: "direct main"
     description:
       path: dart
-      ref: "5cec3bd8792d924620b2fd7a64d0490f1ceefa5a"
-      resolved-ref: "5cec3bd8792d924620b2fd7a64d0490f1ceefa5a"
+      ref: d84ecfbf888083a15a442f34790b106a64b1aec6
+      resolved-ref: d84ecfbf888083a15a442f34790b106a64b1aec6
       url: "https://github.com/haneoka-gakuen/vega-plugin-haneoka.git"
     source: git
     version: "0.1.0"

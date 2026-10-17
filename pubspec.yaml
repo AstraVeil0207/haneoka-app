@@ -15,7 +15,7 @@ dependencies:
   vega_plugin_cubism:
     git:
       url: https://github.com/haneoka-gakuen/vega-plugin-cubism.git
-      ref: b8affe6af9ae19791b930556da5e01bde5d1a06a
+      ref: 9b870d6215d29178279ce124267c11c2457e9c7d
       path: dart
   render_contracts:
     git:
@@ -47,7 +47,7 @@ dependencies:
   vega_plugin_haneoka:
     git:
       url: https://github.com/haneoka-gakuen/vega-plugin-haneoka.git
-      ref: 5cec3bd8792d924620b2fd7a64d0490f1ceefa5a
+      ref: d84ecfbf888083a15a442f34790b106a64b1aec6
       path: dart
   cassiopeia_plugin_our_notes:
     git:
@@ -73,7 +73,11 @@ dependencies:
   cached_network_image: ^4.0.4
   cronet_http: ^1.10.0
   crypto: ^3.0.7
-  cupertino_http: ^3.1.0
+  cupertino_http:
+    git:
+      url: https://github.com/dart-lang/http.git
+      ref: 6e91ce3e73ab079114de3684367318287b08d893
+      path: pkgs/cupertino_http
   file_picker: ^13.1.0
   flutter:
     sdk: flutter
@@ -101,7 +105,7 @@ dependencies:
   url_launcher: ^6.3.3
   audio_service: ^0.18.19
   audio_session: ^0.2.4
-  flutter_soloud: ^4.1.7
+  flutter_soloud: 5.2.1
   window_manager: ^0.5.2
 dependency_overrides:
   media_kit_libs_windows_video:
@@ -136,3 +140,8 @@ flutter:
     - family: SSFangTangTi
       fonts:
         - asset: assets/stamp-fonts/SSFangTangTi.ttf
+
+hooks:
+  user_defines:
+    flutter_soloud:
+      prebuild_tag: v1.0.2

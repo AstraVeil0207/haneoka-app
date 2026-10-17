@@ -45,6 +45,19 @@ jobs:
           # uses the same monotonically increasing code so either can update it.
           echo "ANDROID_BUILD_NUMBER=$((10000 + ${{ github.run_number }}))" >> "$GITHUB_ENV"
       - run: flutter pub get
+      - name: Native Rust target toolchains
+        run: |
+          python3 - <<'PYTHON'
+          import json, pathlib, subprocess, urllib.parse, urllib.request
+          config = pathlib.Path('.dart_tool/package_config.json').resolve()
+          packages = {item['name']: item for item in json.loads(config.read_text())['packages']}
+          targets = ['aarch64-linux-android', 'armv7-linux-androideabi', 'x86_64-linux-android']
+          for name in ['cassiopeia_runtime', 'vega_runtime_ffi']:
+              uri = urllib.parse.urlparse(urllib.parse.urljoin(config.as_uri(), packages[name]['rootUri']))
+              root = pathlib.Path(urllib.request.url2pathname(uri.path))
+              subprocess.run(['rustup', 'show', 'active-toolchain'], cwd=root, check=True)
+              subprocess.run(['rustup', 'target', 'add', *targets], cwd=root, check=True)
+          PYTHON
       - name: Provision Cubism Core
         run: dart run scripts/provision_cubism_core.dart --platform android --arch arm64
       - name: Release key
@@ -101,7 +114,7 @@ jobs:
       - run: |
           sudo apt-get update
           if [[ "${{ matrix.arch }}" == "x64" ]]; then sudo apt-get remove -y libunwind-14-dev; fi
-          sudo apt-get install -y ninja-build clang cmake pkg-config libgtk-3-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libmpv-dev libsecret-1-dev libjsoncpp-dev libjavascriptcoregtk-4.1-dev rpm zstd patchelf file adb squashfs-tools flatpak flatpak-builder
+          sudo apt-get install -y ninja-build clang cmake pkg-config libgtk-3-dev libasound2-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libmpv-dev libsecret-1-dev libjsoncpp-dev libjavascriptcoregtk-4.1-dev rpm zstd patchelf file adb squashfs-tools flatpak flatpak-builder
       - uses: subosito/flutter-action@v2
         if: matrix.arch == 'x64'
         with:
