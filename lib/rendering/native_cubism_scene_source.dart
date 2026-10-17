@@ -36,23 +36,18 @@ final class NativeCubismSceneSource {
           identity: identity,
           sourcePath: path,
           current: current,
-          retain: (row) => const {
-            'GameObject',
-            'Transform',
-            'Camera',
-            'MonoBehaviour',
-            'SpriteRenderer',
-          }.contains(row['type']),
+          decodeOffThread: true,
+          retain: _retainSceneRecord,
         );
-    final camera = await common(
-      'Assets/AddressableResources/Common/Prefab/CameraManager.prefab',
-    );
-    final field = await common(
-      'Assets/AddressableResources/Common/Adv/Prefab/AdvCharacterField.prefab',
-    );
-    final background = await common(
-      'Assets/AddressableResources/Common/Adv/Prefab/AdvBackgroundField.prefab',
-    );
+    final [camera, field, background] = await Future.wait([
+      common('Assets/AddressableResources/Common/Prefab/CameraManager.prefab'),
+      common(
+        'Assets/AddressableResources/Common/Adv/Prefab/AdvCharacterField.prefab',
+      ),
+      common(
+        'Assets/AddressableResources/Common/Adv/Prefab/AdvBackgroundField.prefab',
+      ),
+    ]);
     final manager = camera.requireScript('CameraManager')['data'] as Map;
     final cameraId = _local(manager['_mainCamera']);
     final cameraRow = camera.requireRecord(cameraId, 'Camera');
@@ -136,14 +131,8 @@ final class NativeCubismSceneSource {
       sourcePath:
           'Assets/AddressableResources/Adv/Stage/$exactStageRef/$exactStageRef.prefab',
       current: current,
-      retain: (row) => const {
-        'GameObject',
-        'Transform',
-        'MonoBehaviour',
-        'Sprite',
-        'Light',
-        'RectTransform',
-      }.contains(row['type']),
+      decodeOffThread: true,
+      retain: _retainStageRecord,
     );
     final stageRow = source.requireScript('AdvStage');
     final data = stageRow['data'] as Map;
@@ -226,3 +215,20 @@ double _number(Object? value) {
   }
   return value.toDouble();
 }
+
+bool _retainSceneRecord(Map row) => const {
+  'GameObject',
+  'Transform',
+  'Camera',
+  'MonoBehaviour',
+  'SpriteRenderer',
+}.contains(row['type']);
+
+bool _retainStageRecord(Map row) => const {
+  'GameObject',
+  'Transform',
+  'MonoBehaviour',
+  'Sprite',
+  'Light',
+  'RectTransform',
+}.contains(row['type']);

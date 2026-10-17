@@ -14,6 +14,7 @@ import '../core/api.dart';
 import 'native_cubism_model_source.dart';
 import 'native_cubism_scene_source.dart';
 import 'native_unity_source_archive.dart';
+
 import 'native_story_colour_scene.dart';
 import 'native_story_document.dart';
 import 'native_story_playback.dart';
@@ -21,6 +22,8 @@ import 'native_story_media.dart';
 import 'story_snapshot_data.dart';
 
 part 'native_story_world_data.dart';
+
+bool _retainFocusRecord(Map record) => record['type'] == 'MonoBehaviour';
 
 /// Pinned resources, model ownership and render composition for the App host.
 /// Source character rules are applied by the game plugin's presentation state.
@@ -597,7 +600,8 @@ final class NativeStoryWorld {
       identity: document.chapter.sourceIdentity,
       sourcePath: 'Assets/AddressableResources/Common/Adv/Settings/FocusData/AdvFocusDataSettings-Sirius.asset',
       current: _alive,
-      retain: (record) => record['type'] == 'MonoBehaviour',
+      decodeOffThread: true,
+      retain: _retainFocusRecord,
     );
     _focusSettings = focus.requireScript('AdvFocusDataSettings')['data'] as Map;
     final defaults = jsonDecode(

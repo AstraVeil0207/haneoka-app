@@ -1,10 +1,8 @@
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
-    show HaneokaProfileAssets, haneokaProfileAssetRoot, loadHaneokaProfileAsset;
+    show HaneokaProfileAssets, haneokaProfileAssetRoot;
 
 import 'dart:convert';
 
-import 'package:crypto/crypto.dart';
-import 'package:flutter/services.dart';
 import 'package:vega_plugin_haneoka/render_profile.dart';
 
 import 'native_story_ui_graphics_source.dart';
@@ -78,13 +76,9 @@ final class NativeStoryUiSource {
     final profile = await HaneokaProfileAssets.open();
     final hashes = <String, String>{'profile-manifest': profile.manifestSHA256};
     Future<Map<String, Object?>> read(String path) async {
-      final ByteData data = await loadHaneokaProfileAsset('$base$path');
-      final bytes = data.buffer.asUint8List(
-        data.offsetInBytes,
-        data.lengthInBytes,
-      );
-      hashes[path] = sha256.convert(bytes).toString();
-      return Map<String, Object?>.from(jsonDecode(utf8.decode(bytes)) as Map);
+      final packet = await profile.loadJson('$base$path');
+      hashes[path] = packet.sha256;
+      return packet.data;
     }
 
     final sceneData = await read('ui/scenes.json');

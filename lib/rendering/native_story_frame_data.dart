@@ -1,9 +1,5 @@
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
-    show haneokaProfileAssetRoot, loadHaneokaProfileAsset;
-
-import 'dart:convert';
-
-import 'package:crypto/crypto.dart';
+    show HaneokaProfileAssets, haneokaProfileAssetRoot;
 import 'package:vega_plugin_haneoka/render_profile.dart';
 
 /// Exact source Frame prefab/controller/clip/image and host-canvas packets.
@@ -31,19 +27,14 @@ final class NativeStoryFrameData {
       throw UnsupportedError('native_frame_data_source:${source.sourceId}');
     }
     final hashes = <String, String>{};
+    final profile = await HaneokaProfileAssets.open();
     Future<Map<String, Object?>> read(String name, String expected) async {
-      final data = await loadHaneokaProfileAsset('$_base$name');
-      final bytes = data.buffer.asUint8List(
-        data.offsetInBytes,
-        data.lengthInBytes,
-      );
-      final hash = sha256.convert(bytes).toString();
+      final packet = await profile.loadJson('$_base$name');
+      final hash = packet.sha256;
       if (hash != expected) {
         throw FormatException('native_frame_data_hash:$name');
       }
-      final value = Map<String, Object?>.from(
-        jsonDecode(utf8.decode(bytes)) as Map,
-      );
+      final value = packet.data;
       if (value['sourceId'] != source.sourceId) {
         throw FormatException('native_frame_packet_source:$name');
       }

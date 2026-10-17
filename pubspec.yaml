@@ -68,7 +68,7 @@ dependencies:
   haneoka_render_profile_flutter:
     git:
       url: https://github.com/haneoka-gakuen/haneoka-render-profile.git
-      ref: 4a2a7bd45956ce30d16e74c033ac0ef5647716ef
+      ref: 6baf2d21b3a8e213e8ec1b57980f0184a39ad91d
       path: flutter
   image: ^4.12.0
   jni: ^1.1.0

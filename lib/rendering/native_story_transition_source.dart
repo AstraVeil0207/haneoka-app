@@ -24,7 +24,8 @@ final class NativeStoryTransitionSource {
           definition['sourcePath'] as String? ??
           'Assets/AddressableResources/Adv/Transition/$name/$name.asset',
       current: current,
-      retain: (record) => record['type'] == 'MonoBehaviour',
+      decodeOffThread: true,
+      retain: _retainTransitionRecord,
     );
     final data = archive.requireScript('RuleTransitionSettings')['data'] as Map;
     final uri = api.asset(definition['maskTexture'] as String);
@@ -37,3 +38,5 @@ final class NativeStoryTransitionSource {
     );
   }
 }
+
+bool _retainTransitionRecord(Map record) => record['type'] == 'MonoBehaviour';
