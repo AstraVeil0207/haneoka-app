@@ -1,7 +1,7 @@
 name: haneoka
 description: "Reads your Our Notes save on every platform and shows everything it holds."
 publish_to: 'none'
-version: 0.1.2+34
+version: 0.1.3+38
 
 environment:
   sdk: ^3.13.5
@@ -15,7 +15,7 @@ dependencies:
   vega_plugin_cubism:
     git:
       url: https://github.com/haneoka-gakuen/vega-plugin-cubism.git
-      ref: 9b870d6215d29178279ce124267c11c2457e9c7d
+      ref: fd4ff01be937c9ca478fede6a21723ec7686a508
       path: dart
   render_contracts:
     git:
@@ -47,7 +47,7 @@ dependencies:
   vega_plugin_haneoka:
     git:
       url: https://github.com/haneoka-gakuen/vega-plugin-haneoka.git
-      ref: c127e5cd21b9b90388f3487df8457dc2ce42964f
+      ref: 6318f65bdef41df351f8a9b3d80b93083ca95d15
       path: dart
   cassiopeia_plugin_our_notes:
     git:

@@ -54,9 +54,13 @@ final class NativeStoryWorld {
 
   Future<MotionSyncController> _prepareVoiceEngine() =>
       _voiceEngine ??= () async {
-        final bytes = await fetch(
-          document.assets.pinned('/Core/CRI/live2dcubismmotionsynccore.min.js'),
-        );
+        final bytes = MotionSyncController.requiresExternalCore()
+            ? await fetch(
+                document.assets.pinned(
+                  '/Core/CRI/live2dcubismmotionsynccore.min.js',
+                ),
+              )
+            : null;
         if (!_alive()) throw StateError('story_voice_source_closed');
         final engine = await MotionSyncController.open(coreBytes: bytes);
         if (!_alive()) {

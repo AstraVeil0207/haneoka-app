@@ -1286,8 +1286,8 @@ packages:
     dependency: "direct main"
     description:
       path: dart
-      ref: "9b870d6215d29178279ce124267c11c2457e9c7d"
-      resolved-ref: "9b870d6215d29178279ce124267c11c2457e9c7d"
+      ref: fd4ff01be937c9ca478fede6a21723ec7686a508
+      resolved-ref: fd4ff01be937c9ca478fede6a21723ec7686a508
       url: "https://github.com/haneoka-gakuen/vega-plugin-cubism.git"
     source: git
     version: "0.1.0"
@@ -1295,8 +1295,8 @@ packages:
     dependency: "direct main"
     description:
       path: dart
-      ref: c127e5cd21b9b90388f3487df8457dc2ce42964f
-      resolved-ref: c127e5cd21b9b90388f3487df8457dc2ce42964f
+      ref: "6318f65bdef41df351f8a9b3d80b93083ca95d15"
+      resolved-ref: "6318f65bdef41df351f8a9b3d80b93083ca95d15"
       url: "https://github.com/haneoka-gakuen/vega-plugin-haneoka.git"
     source: git
     version: "0.1.0"
