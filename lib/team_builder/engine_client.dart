@@ -12,6 +12,7 @@ import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 
 import '../chart/runtime_chart.dart' show RuntimeChart;
+import '../core/storage.dart';
 
 import 'dart:ui' show IsolateNameServer;
 
@@ -154,13 +155,20 @@ class EngineClient {
   ReceivePort? _replies, _errors;
   SendPort? _port;
   Future<SendPort>? _ready;
+  OwnedTemporaryDirectory? _temporary;
+
+  Future<void> _releaseTemporary() async {
+    final owned = _temporary;
+    _temporary = null;
+    await owned?.dispose();
+  }
 
   Future<SendPort> _connect() => _ready ??= () async {
     if (_disposed) throw const EngineCancelled();
     final ready = Completer<SendPort>();
     final replies = _replies = ReceivePort();
     final errors = _errors = ReceivePort();
-    errors.listen((error) {
+    errors.listen((error) async {
       final failure = StateError('engine-bridge:$error');
       _failure = failure;
       if (!ready.isCompleted) ready.completeError(failure);
@@ -168,6 +176,7 @@ class EngineClient {
         if (!call.completer.isCompleted) call.completer.completeError(failure);
       }
       _pending.clear();
+      await _releaseTemporary();
     });
     replies.listen((message) async {
       if (message is SendPort) {
@@ -184,6 +193,7 @@ class EngineClient {
           }
         }
         _pending.clear();
+        await _releaseTemporary();
         return;
       }
       if (kind == 'native-start') {
@@ -204,6 +214,7 @@ class EngineClient {
           replies.close();
           errors.close();
           _bridge?.kill(priority: Isolate.immediate);
+          await _releaseTemporary();
         }
         return;
       }
@@ -241,20 +252,35 @@ class EngineClient {
               ) ??
               '',
     };
-    final bridge = await Isolate.spawn(
-      _displayBridge,
-      (replies.sendPort, data, urls, _key),
-      onError: errors.sendPort,
-      errorsAreFatal: true,
-    );
-    if (_disposed) {
-      bridge.kill(priority: Isolate.immediate);
+    try {
+      if (Platform.isLinux) {
+        _temporary = await CacheStorage.instance.createTemporaryDirectory(
+          'engine-',
+        );
+        if (utf8.encode('${_temporary!.directory.path}/ipc').length >= 108) {
+          throw const FileSystemException('Engine IPC path exceeds 107 bytes');
+        }
+      }
+      if (_disposed) throw const EngineCancelled();
+      final bridge = await Isolate.spawn(
+        _displayBridge,
+        (replies.sendPort, data, urls, _key, _temporary?.directory.path),
+        onError: errors.sendPort,
+        errorsAreFatal: true,
+      );
+      if (_disposed || _failure != null) {
+        bridge.kill(priority: Isolate.immediate);
+        if (_disposed) throw const EngineCancelled();
+        throw _failure!;
+      }
+      _bridge = bridge;
+      return await ready.future;
+    } catch (_) {
       replies.close();
       errors.close();
-      throw const EngineCancelled();
+      await _releaseTemporary();
+      rethrow;
     }
-    _bridge = bridge;
-    return ready.future;
   }();
 
   void warm() => _connect().ignore();
@@ -349,14 +375,17 @@ class EngineClient {
       _bridge?.kill(priority: Isolate.immediate);
       _replies?.close();
       _errors?.close();
+      _releaseTemporary().ignore();
     }
   }
 }
 
 /// Transport runs beside the UI, while all compute and GC-heavy allocations
 /// run in another isolate group. Only JSON and SendPorts cross that boundary.
-void _displayBridge((SendPort, Doc, Map<String, String>, String) args) {
-  final (ui, data, urls, key) = args;
+void _displayBridge(
+  (SendPort, Doc, Map<String, String>, String, String?) args,
+) {
+  final (ui, data, urls, key, temporaryDirectory) = args;
   final calls = ReceivePort(), replies = ReceivePort();
   final host = Completer<SendPort>(), initialized = Completer<void>();
   initialized.future.ignore();
@@ -368,8 +397,11 @@ void _displayBridge((SendPort, Doc, Map<String, String>, String) args) {
   }
   ui.send(calls.sendPort);
   if (Platform.isLinux) {
-    _processTransport(replies.sendPort).catchError((Object error) {
+    _processTransport(replies.sendPort, temporaryDirectory!).catchError((
+      Object error,
+    ) {
       calls.sendPort.send((0, 'native-error', '$error'));
+      ui.send((0, 'fatal', '$error'));
     });
   } else {
     ui.send((0, 'native-start', key));
@@ -515,8 +547,11 @@ void _displayBridge((SendPort, Doc, Map<String, String>, String) args) {
 
 /// Linux runs a separate application process: even VM-wide pauses and runtime
 /// worker threads are kept out of the process handling input and drawing.
-Future<void> _processTransport(SendPort replies) async {
-  final directory = await Directory.systemTemp.createTemp('haneoka-engine-');
+Future<void> _processTransport(
+  SendPort replies,
+  String temporaryDirectory,
+) async {
+  final directory = Directory(temporaryDirectory);
   final path = '${directory.path}/ipc';
   final server = await ServerSocket.bind(
     InternetAddress(path, type: InternetAddressType.unix),
@@ -533,7 +568,11 @@ Future<void> _processTransport(SendPort replies) async {
     socket?.destroy();
     await server.close();
     process?.kill();
-    if (await directory.exists()) await directory.delete(recursive: true);
+    try {
+      if (await directory.exists()) await directory.delete(recursive: true);
+    } on FileSystemException {
+      if (await directory.exists()) rethrow;
+    }
   }
 
   try {

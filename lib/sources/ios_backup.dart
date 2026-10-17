@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:pointycastle/export.dart';
 import 'package:sqlite3/sqlite3.dart';
 
+import '../core/storage.dart';
 import '../save/codec.dart';
 import '../save/game_save.dart';
 import 'plist.dart';
@@ -102,11 +103,11 @@ class IosBackup {
     final keys = encrypted
         ? await _unlockBackup(_manifest, password ?? '')
         : null;
-    final database = keys == null
-        ? File(p.join(path, 'Manifest.db'))
-        : await _decryptedManifest(keys);
-    final db = sqlite3.open(database.path, mode: OpenMode.readOnly);
+    final decrypted = keys == null ? null : await _decryptedManifest(keys);
+    final database = decrypted?.$1 ?? File(p.join(path, 'Manifest.db'));
+    Database? db;
     try {
+      db = sqlite3.open(database.path, mode: OpenMode.readOnly);
       final domains = {
         for (final release in GameRelease.values)
           'AppDomain-${release.packageId}': release,
@@ -146,12 +147,17 @@ class IosBackup {
       }
       return rows.length;
     } finally {
-      db.close();
-      if (keys != null) await database.parent.delete(recursive: true);
+      try {
+        db?.close();
+      } finally {
+        await decrypted?.$2.dispose();
+      }
     }
   }
 
-  Future<File> _decryptedManifest(_BackupKeys keys) async {
+  Future<(File, OwnedTemporaryDirectory)> _decryptedManifest(
+    _BackupKeys keys,
+  ) async {
     final manifestKey = _manifest['ManifestKey'] as Uint8List;
     final protectionClass = ByteData.sublistView(
       manifestKey,
@@ -166,10 +172,17 @@ class IosBackup {
       key,
       await File(p.join(path, 'Manifest.db')).readAsBytes(),
     );
-    final dir = await Directory.systemTemp.createTemp('haneoka-backup-');
-    final file = File(p.join(dir.path, 'Manifest.db'));
-    await file.writeAsBytes(plain, flush: true);
-    return file;
+    final owned = await CacheStorage.instance.createTemporaryDirectory(
+      'backup-',
+    );
+    try {
+      final file = File(p.join(owned.directory.path, 'Manifest.db'));
+      await file.writeAsBytes(plain, flush: true);
+      return (file, owned);
+    } catch (_) {
+      await owned.dispose();
+      rethrow;
+    }
   }
 
   static const _skipped = {

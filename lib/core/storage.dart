@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:path/path.dart' as p;
@@ -32,6 +34,23 @@ final class StorageLease {
   final Future<void> Function() _release;
   Future<void>? _released;
   Future<void> release() => _released ??= _release();
+}
+
+final class OwnedTemporaryDirectory {
+  OwnedTemporaryDirectory._(this.directory, this._lease);
+  final Directory directory;
+  final StorageLease _lease;
+  Future<void>? _disposing;
+
+  Future<void> dispose() => _disposing ??= () async {
+    try {
+      if (await directory.exists()) await directory.delete(recursive: true);
+    } on FileSystemException {
+      if (await directory.exists()) rethrow;
+    } finally {
+      await _lease.release();
+    }
+  }();
 }
 
 class _CacheFile {
@@ -194,6 +213,32 @@ class CacheStorage extends ChangeNotifier {
     return result;
   }
 
+  Future<Directory> get temporaryRoot async {
+    final cache = (await getApplicationCacheDirectory()).absolute.path;
+    final owner = sha256
+        .convert(utf8.encode(cache))
+        .toString()
+        .substring(0, 12);
+    return Directory(
+      p.join((await getTemporaryDirectory()).path, 'haneoka-$owner'),
+    );
+  }
+
+  Future<OwnedTemporaryDirectory> createTemporaryDirectory(
+    String prefix,
+  ) async {
+    final root = await temporaryRoot;
+    await root.create(recursive: true);
+    if (await FileSystemEntity.type(root.path, followLinks: false) !=
+        FileSystemEntityType.directory) {
+      throw const FileSystemException(
+        'Temporary cache root is not a directory',
+      );
+    }
+    final directory = await root.createTemp(prefix);
+    return OwnedTemporaryDirectory._(directory, lease([directory.path]));
+  }
+
   Future<Directory> get _dataRoot async =>
       Directory(p.join((await getApplicationCacheDirectory()).path, 'api'));
   Future<Directory> get _imagesRoot async => Directory(
@@ -213,7 +258,11 @@ class CacheStorage extends ChangeNotifier {
     Set<String> excluded = const {},
   ]) async {
     final result = <File>[];
-    if (!await root.exists() || excluded.contains(root.path)) return result;
+    if (excluded.contains(root.path) ||
+        await FileSystemEntity.type(root.path, followLinks: false) !=
+            FileSystemEntityType.directory) {
+      return result;
+    }
     await for (final entry in root.list(followLinks: false)) {
       if (excluded.contains(entry.path)) continue;
       if (entry is File) result.add(entry);
@@ -242,7 +291,7 @@ class CacheStorage extends ChangeNotifier {
     final accounts = Directory(p.join(support.path, 'accounts'));
     final roots = {
       support.path,
-      (await getTemporaryDirectory()).path,
+      (await temporaryRoot).path,
       (await getApplicationCacheDirectory()).path,
     }.toList();
     final distinct = roots.where(
@@ -258,7 +307,7 @@ class CacheStorage extends ChangeNotifier {
         accounts.path,
       });
     }
-    final temporary = await _size(await getTemporaryDirectory(), {
+    final temporary = await _size(await temporaryRoot, {
       data.path,
       images.path,
       media.path,
@@ -342,7 +391,8 @@ class CacheStorage extends ChangeNotifier {
     if (const {CacheCategory.temporary, CacheCategory.all}.contains(category)) {
       final data = await _dataRoot, images = await _imagesRoot;
       final media = await mediaRoot, resources = await resourceRoot;
-      for (final file in await _files(await getTemporaryDirectory(), {
+      for (final file in await _files(await temporaryRoot, {
+        ..._active.keys,
         data.path,
         images.path,
         media.path,
