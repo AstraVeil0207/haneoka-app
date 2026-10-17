@@ -189,8 +189,8 @@ packages:
     dependency: "direct main"
     description:
       path: dart
-      ref: "9a267dd8f8ce1b9374ee88220143a39576adbe95"
-      resolved-ref: "9a267dd8f8ce1b9374ee88220143a39576adbe95"
+      ref: "2eeaec71f89f578e305439647ea584fc6cff1c0f"
+      resolved-ref: "2eeaec71f89f578e305439647ea584fc6cff1c0f"
       url: "https://github.com/haneoka-gakuen/cassiopeia-plugin-our-notes.git"
     source: git
     version: "0.1.0"
@@ -207,8 +207,8 @@ packages:
     dependency: "direct main"
     description:
       path: dart
-      ref: cda415ba147285e4cdc320bea1f53258432c3f11
-      resolved-ref: cda415ba147285e4cdc320bea1f53258432c3f11
+      ref: "9bc194e433372fe1784f94a609de9755e894ce51"
+      resolved-ref: "9bc194e433372fe1784f94a609de9755e894ce51"
       url: "https://github.com/haneoka-gakuen/cassiopeia.git"
     source: git
     version: "0.1.0"
@@ -1331,8 +1331,8 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/runtime-ffi/dart"
-      ref: "4aa5e3a76c540e142be75293d4d34463c138f3d0"
-      resolved-ref: "4aa5e3a76c540e142be75293d4d34463c138f3d0"
+      ref: dbd403ca49fbeb00d3778485f75b447e3aa8cbad
+      resolved-ref: dbd403ca49fbeb00d3778485f75b447e3aa8cbad
       url: "https://github.com/haneoka-gakuen/vega.git"
     source: git
     version: "0.1.0"

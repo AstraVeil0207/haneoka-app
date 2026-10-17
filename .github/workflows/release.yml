@@ -10,6 +10,10 @@ on:
         type: choice
         default: all
         options: [all, android, linux, windows, apple, macos, ios]
+      only_arm64:
+        description: Build only the ARM64 installation-test APK
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -21,11 +25,14 @@ jobs:
   android:
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'android'
     runs-on: ubuntu-latest
+    env:
+      ANDROID_TARGETS: ${{ github.event_name == 'workflow_dispatch' && inputs.only_arm64 && 'android-arm64' || 'android-arm64,android-x64' }}
+      ANDROID_RUST_TARGETS: ${{ github.event_name == 'workflow_dispatch' && inputs.only_arm64 && 'aarch64-linux-android' || 'aarch64-linux-android,x86_64-linux-android' }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,x86_64-linux-android
+          targets: ${{ env.ANDROID_RUST_TARGETS }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -48,10 +55,10 @@ jobs:
       - name: Native Rust target toolchains
         run: |
           python3 - <<'PYTHON'
-          import json, pathlib, subprocess, urllib.parse, urllib.request
+          import json, os, pathlib, subprocess, urllib.parse, urllib.request
           config = pathlib.Path('.dart_tool/package_config.json').resolve()
           packages = {item['name']: item for item in json.loads(config.read_text())['packages']}
-          targets = ['aarch64-linux-android', 'x86_64-linux-android']
+          targets = os.environ['ANDROID_RUST_TARGETS'].split(',')
           for name in ['cassiopeia_runtime', 'vega_runtime_ffi']:
               uri = urllib.parse.urlparse(urllib.parse.urljoin(config.as_uri(), packages[name]['rootUri']))
               root = pathlib.Path(urllib.request.url2pathname(uri.path))
@@ -79,17 +86,20 @@ jobs:
             echo "keyAlias=$KEY_ALIAS"
             echo "keyPassword=$KEY_PASSWORD"
           } > android/key.properties
-      - run: flutter build apk --release --target-platform=android-arm64,android-x64 --build-name="${{ env.APP_VERSION }}" --build-number="${{ env.ANDROID_BUILD_NUMBER }}" --android-project-arg=force-version-code-ignoring-abi=true --split-per-abi --dart-define=cronetHttpNoPlay=true
-      - run: flutter build apk --release --target-platform=android-arm64,android-x64 --build-name="${{ env.APP_VERSION }}" --build-number="${{ env.ANDROID_BUILD_NUMBER }}" --android-project-arg=force-version-code-ignoring-abi=true --dart-define=cronetHttpNoPlay=true
-      - run: flutter build appbundle --release --target-platform=android-arm64,android-x64 --build-name="${{ env.APP_VERSION }}" --build-number="${{ env.ANDROID_BUILD_NUMBER }}" --android-project-arg=force-version-code-ignoring-abi=true --dart-define=cronetHttpNoPlay=true
+      - run: flutter build apk --release --target-platform=${{ env.ANDROID_TARGETS }} --build-name="${{ env.APP_VERSION }}" --build-number="${{ env.ANDROID_BUILD_NUMBER }}" --android-project-arg=force-version-code-ignoring-abi=true --split-per-abi --dart-define=cronetHttpNoPlay=true
+      - if: github.event_name != 'workflow_dispatch' || !inputs.only_arm64
+        run: flutter build apk --release --target-platform=${{ env.ANDROID_TARGETS }} --build-name="${{ env.APP_VERSION }}" --build-number="${{ env.ANDROID_BUILD_NUMBER }}" --android-project-arg=force-version-code-ignoring-abi=true --dart-define=cronetHttpNoPlay=true
+      - if: github.event_name != 'workflow_dispatch' || !inputs.only_arm64
+        run: flutter build appbundle --release --target-platform=${{ env.ANDROID_TARGETS }} --build-name="${{ env.APP_VERSION }}" --build-number="${{ env.ANDROID_BUILD_NUMBER }}" --android-project-arg=force-version-code-ignoring-abi=true --dart-define=cronetHttpNoPlay=true
       - name: Collect
         run: |
           mkdir dist
-          cp build/app/outputs/flutter-apk/app-release.apk dist/haneoka-android.apk
-          for abi in arm64-v8a x86_64; do
-            cp build/app/outputs/flutter-apk/app-$abi-release.apk dist/haneoka-android-$abi.apk
-          done
-          cp build/app/outputs/bundle/release/app-release.aab dist/haneoka-android.aab
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk dist/haneoka-android-arm64-v8a.apk
+          if [[ "$ANDROID_TARGETS" == android-arm64,android-x64 ]]; then
+            cp build/app/outputs/flutter-apk/app-release.apk dist/haneoka-android.apk
+            cp build/app/outputs/flutter-apk/app-x86_64-release.apk dist/haneoka-android-x86_64.apk
+            cp build/app/outputs/bundle/release/app-release.aab dist/haneoka-android.aab
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: android
@@ -367,7 +377,7 @@ jobs:
 
   release:
     needs: [android, linux, windows, apple]
-    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    if: always() && !(github.event_name == 'workflow_dispatch' && inputs.only_arm64) && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
