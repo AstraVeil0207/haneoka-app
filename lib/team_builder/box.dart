@@ -544,7 +544,7 @@ class BoxView {
     final bandItems = <String, int?>{};
     final characterMemory = <String, int?>{};
     final musicMemory = <String, int?>{};
-    int? vip, total;
+    int? vip;
     final bandRanks = <String, int?>{};
     final teams = <SavedTeam>[];
     final prefs = <String, Object?>{};
@@ -605,8 +605,6 @@ class BoxView {
         musicMemory[parts[1]] = number(entry.v);
       } else if (key == 'p.vip') {
         vip = number(entry.v);
-      } else if (key == 'p.total') {
-        total = number(entry.v);
       } else if (head == 'team' && entry.v is Map) {
         final value = (entry.v as Map).cast<String, Object?>();
         final song = value['song'];
@@ -648,7 +646,7 @@ class BoxView {
       snaps,
       PlayerInput(
         characterRanks: characterRanks,
-        characterTotalRank: total,
+        characterTotalRank: null,
         bandItems: bandItems,
         vipRank: vip,
         characterMemory: characterMemory,
