@@ -212,15 +212,12 @@ class AppUpdates extends ChangeNotifier {
           ? supported!
           : switch (abi) {
               Abi.androidArm64 => ['arm64-v8a'],
-              Abi.androidArm => ['armeabi-v7a'],
               Abi.androidX64 => ['x86_64'],
               _ => <String>[],
             };
-      const universalAbis = {'arm64-v8a', 'armeabi-v7a', 'x86_64'};
-      return [
-        for (final name in abis) 'haneoka-android-$name.apk',
-        if (abis.any(universalAbis.contains)) 'haneoka-android.apk',
-      ];
+      const apkAbis = {'arm64-v8a', 'x86_64'};
+      final preferred = abis.where(apkAbis.contains).firstOrNull;
+      return [if (preferred != null) 'haneoka-android-$preferred.apk'];
     }
     final arch = switch (abi) {
       Abi.linuxArm64 || Abi.windowsArm64 || Abi.macosArm64 => 'arm64',
