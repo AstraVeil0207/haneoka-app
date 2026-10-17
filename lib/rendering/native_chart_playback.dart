@@ -61,7 +61,8 @@ Future<NativeTextureData> _composeChartBackground(
 /// Flutter Ticker schedules requests without advancing either clock itself.
 final class NativeChartPlayback extends ChangeNotifier {
   NativeChartPlayback(this._locale, {required this.fetch}) {
-    audio = PageAudio(onFocusInterrupted: pause);
+    // The chart samples the real decoder once for each rendered frame.
+    audio = PageAudio(onFocusInterrupted: pause, pollPosition: false);
     audio.addListener(_audioStateChanged);
   }
   void _audioStateChanged() {
@@ -458,6 +459,7 @@ final class NativeChartPlayback extends ChangeNotifier {
   Map<String, Object?> _fxFrame = const {};
   Map<String, Object?> _hudFrame = const {};
   bool _completionPresented = false;
+  bool _forcedFramePending = false;
   bool get needsCompletionFrame =>
       controlsThisAudio && audio.completed && !_completionPresented;
   Map<String, Object?> get watchObservation => {
@@ -544,6 +546,7 @@ final class NativeChartPlayback extends ChangeNotifier {
     await oldSounds?.close();
     if (_disposed || generation != _generation) return;
     _completionPresented = false;
+    _forcedFramePending = false;
     ++_intent;
     _frameBusy = false;
     _commandPending = false;
@@ -1091,11 +1094,14 @@ final class NativeChartPlayback extends ChangeNotifier {
     if (_disposed ||
         loading ||
         error != null ||
-        _frameBusy ||
         _commandPending ||
         _exportBusy ||
         session == null ||
         (!controlsThisAudio && !force)) {
+      return;
+    }
+    if (_frameBusy) {
+      if (force) _forcedFramePending = true;
       return;
     }
     _frameBusy = true;
@@ -1247,6 +1253,10 @@ final class NativeChartPlayback extends ChangeNotifier {
       if (identical(_frameCompletion, completion)) _frameCompletion = null;
       if (!_disposed && generation == _generation) {
         _queueIntroHandoff(generation);
+        if (_forcedFramePending) {
+          _forcedFramePending = false;
+          unawaited(requestFrame(force: true));
+        }
       }
     }
   }

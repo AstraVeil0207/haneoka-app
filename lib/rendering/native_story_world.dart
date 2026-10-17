@@ -146,7 +146,7 @@ final class NativeStoryWorld {
       );
       if (!_voiceCurrent(actor, binding)) return;
       binding.channel = channel;
-      final bytes = await fetch(binding.cue.uri);
+      final bytes = await binding.cue.encodedBytes();
       if (!_voiceCurrent(actor, binding)) return;
       final initial = actor.model.parameterValues(profile.parameterIds);
       final voice = await channel.prepare(
@@ -895,6 +895,9 @@ final class NativeStoryWorld {
       core: _core!,
       mocBytes: original.mocBytes,
       prefabRecords: original.records,
+      preparedPrefab: original.preparedPrefab,
+      onPreparationPhase: (phase, us) =>
+          _preparationTiming(key, 'construct.$phase', us),
       randomUnit: _randomUnit,
       initialSeconds: _sceneUs / 1000000,
       initialFrame: currentStamp().updateIndex,

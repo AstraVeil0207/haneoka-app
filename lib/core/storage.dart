@@ -9,7 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'net.dart';
 
-enum CacheCategory { data, images, temporary, all }
+enum CacheCategory { data, media, resources, images, temporary, all }
 
 class StorageUsage {
   const StorageUsage(
@@ -18,11 +18,20 @@ class StorageUsage {
     this.accounts,
     this.other,
     this.temporary,
-    this.memory,
-  );
-  final int data, images, accounts, other, temporary, memory;
-  int get cache => data + images;
+    this.memory, {
+    this.media = 0,
+    this.resources = 0,
+  });
+  final int data, images, accounts, other, temporary, memory, media, resources;
+  int get cache => data + images + media + resources;
   int get total => cache + accounts + other + temporary;
+}
+
+final class StorageLease {
+  StorageLease._(this._release);
+  final Future<void> Function() _release;
+  Future<void>? _released;
+  Future<void> release() => _released ??= _release();
 }
 
 class _CacheFile {
@@ -39,6 +48,8 @@ class CacheStorage extends ChangeNotifier {
   CacheStorage._();
   static final instance = CacheStorage._();
   int generation = 0;
+  int mediaGeneration = 0;
+  int resourceGeneration = 0;
   int limitMb = 0;
   bool automatic = true;
   bool busy = false;
@@ -76,6 +87,8 @@ class CacheStorage extends ChangeNotifier {
         ? saved
         : 1024;
     automatic = prefs.getBool('storage.automatic') ?? true;
+    mediaGeneration = prefs.getInt('storage.mediaGeneration') ?? 0;
+    resourceGeneration = prefs.getInt('storage.resourceGeneration') ?? 0;
     PaintingBinding.instance.imageCache.maximumSizeBytes = 64 << 20;
   }
 
@@ -95,17 +108,12 @@ class CacheStorage extends ChangeNotifier {
     if (automatic) await trim();
   }
 
-  Future<T> protect<T>(
-    Iterable<String> paths,
-    Future<T> Function() action,
-  ) async {
+  StorageLease lease(Iterable<String> paths) {
     final files = paths.toSet();
     for (final path in files) {
       _active.update(path, (count) => count + 1, ifAbsent: () => 1);
     }
-    try {
-      return await action();
-    } finally {
+    return StorageLease._(() async {
       for (final path in files) {
         final count = (_active[path] ?? 1) - 1;
         if (count > 0) {
@@ -115,12 +123,40 @@ class CacheStorage extends ChangeNotifier {
         _active.remove(path);
         if (_deleteWhenIdle.remove(path)) await _delete(File(path));
       }
+    });
+  }
+
+  Future<T> protect<T>(
+    Iterable<String> paths,
+    Future<T> Function() action,
+  ) async {
+    final held = lease(paths);
+    try {
+      return await action();
+    } finally {
+      await held.release();
     }
   }
 
   bool canRead(String path) => !_deleteWhenIdle.contains(path);
   bool permitWrite(int requestGeneration, String path) {
     if (requestGeneration != generation) return false;
+    _deleteWhenIdle.remove(path);
+    return true;
+  }
+
+  int fileGeneration(CacheCategory category) => switch (category) {
+    CacheCategory.media => mediaGeneration,
+    CacheCategory.resources => resourceGeneration,
+    _ => throw ArgumentError.value(category),
+  };
+
+  bool permitFileWrite(
+    CacheCategory category,
+    int requestGeneration,
+    String path,
+  ) {
+    if (requestGeneration != fileGeneration(category)) return false;
     _deleteWhenIdle.remove(path);
     return true;
   }
@@ -164,6 +200,14 @@ class CacheStorage extends ChangeNotifier {
     p.join((await getTemporaryDirectory()).path, 'haneoka-artwork'),
   );
 
+  Future<Directory> get mediaRoot async => Directory(
+    p.join((await getApplicationCacheDirectory()).path, 'media', 'v1'),
+  );
+
+  Future<Directory> get resourceRoot async => Directory(
+    p.join((await getApplicationCacheDirectory()).path, 'resources', 'v1'),
+  );
+
   Future<List<File>> _files(
     Directory root, [
     Set<String> excluded = const {},
@@ -193,6 +237,7 @@ class CacheStorage extends ChangeNotifier {
   Future<StorageUsage> usage() async {
     await initialize();
     final data = await _dataRoot, images = await _imagesRoot;
+    final media = await mediaRoot, resources = await resourceRoot;
     final support = await getApplicationSupportDirectory();
     final accounts = Directory(p.join(support.path, 'accounts'));
     final roots = {
@@ -208,12 +253,16 @@ class CacheStorage extends ChangeNotifier {
       other += await _size(Directory(root), {
         data.path,
         images.path,
+        media.path,
+        resources.path,
         accounts.path,
       });
     }
     final temporary = await _size(await getTemporaryDirectory(), {
       data.path,
       images.path,
+      media.path,
+      resources.path,
       accounts.path,
     });
     return StorageUsage(
@@ -223,6 +272,8 @@ class CacheStorage extends ChangeNotifier {
       (other - temporary).clamp(0, other),
       temporary,
       PaintingBinding.instance.imageCache.currentSizeBytes,
+      media: await _size(media),
+      resources: await _size(resources),
     );
   }
 
@@ -252,6 +303,30 @@ class CacheStorage extends ChangeNotifier {
         }
       }
     }
+    if (const {CacheCategory.media, CacheCategory.all}.contains(category)) {
+      mediaGeneration++;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('storage.mediaGeneration', mediaGeneration);
+      for (final file in await _files(await mediaRoot)) {
+        if ((_active[file.path] ?? 0) > 0) {
+          _deleteWhenIdle.add(file.path);
+        } else {
+          await _delete(file);
+        }
+      }
+    }
+    if (const {CacheCategory.resources, CacheCategory.all}.contains(category)) {
+      resourceGeneration++;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('storage.resourceGeneration', resourceGeneration);
+      for (final file in await _files(await resourceRoot)) {
+        if ((_active[file.path] ?? 0) > 0) {
+          _deleteWhenIdle.add(file.path);
+        } else {
+          await _delete(file);
+        }
+      }
+    }
     if (const {CacheCategory.images, CacheCategory.all}.contains(category)) {
       await artworkCache.emptyCache();
       for (final file in await _files(await _imagesRoot)) {
@@ -266,9 +341,12 @@ class CacheStorage extends ChangeNotifier {
     }
     if (const {CacheCategory.temporary, CacheCategory.all}.contains(category)) {
       final data = await _dataRoot, images = await _imagesRoot;
+      final media = await mediaRoot, resources = await resourceRoot;
       for (final file in await _files(await getTemporaryDirectory(), {
         data.path,
         images.path,
+        media.path,
+        resources.path,
       })) {
         if ((_active[file.path] ?? 0) == 0) await _delete(file);
       }
@@ -281,12 +359,14 @@ class CacheStorage extends ChangeNotifier {
     _lastTrim = DateTime.now();
     if (!automatic || limitMb == 0) return;
     final files = <_CacheFile>[];
-    for (final file in await _files(await _dataRoot)) {
-      try {
-        final stat = await file.stat();
-        files.add(_CacheFile(file, stat.size, stat.accessed));
-      } on FileSystemException {
-        continue;
+    for (final root in [await _dataRoot, await mediaRoot, await resourceRoot]) {
+      for (final file in await _files(root)) {
+        try {
+          final stat = await file.stat();
+          files.add(_CacheFile(file, stat.size, stat.accessed));
+        } on FileSystemException {
+          continue;
+        }
       }
     }
     await artworkCache.config.repo.open();

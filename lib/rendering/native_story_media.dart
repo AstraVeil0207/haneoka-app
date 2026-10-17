@@ -3,12 +3,94 @@ import 'dart:io';
 
 import '../core/media_lifecycle.dart';
 import '../core/media_kit_transport.dart';
-import '../core/system_proxy.dart';
+import '../core/resource_file_cache.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:vega_plugin_haneoka/render_profile.dart';
 import 'package:media_kit/media_kit.dart' as media;
 import 'package:media_kit_video/media_kit_video.dart';
+
+media.Player _newStoryMediaPlayer() => media.Player(
+  configuration: media.PlayerConfiguration(
+    protocolWhitelist: [
+      ...const media.PlayerConfiguration().protocolWhitelist,
+      if (Platform.isAndroid) 'httpproxy',
+    ],
+  ),
+);
+
+final class NativeStoryPreparedMedia {
+  NativeStoryPreparedMedia._(this.player, this.lease) {
+    _errors = player.stream.error.listen((value) => error = value);
+  }
+  final media.Player player;
+  final ResourceFileLease lease;
+  late final StreamSubscription<String> _errors;
+  String? error;
+  bool _claimed = false;
+  Future<void>? _disposing;
+
+  static Future<NativeStoryPreparedMedia> load(
+    Uri uri,
+    Future<void> cancelled,
+  ) async {
+    final lease = await resourceFileCache.acquire(
+      uri,
+      kind: ResourceFileKind.media,
+      cancelled: cancelled,
+    );
+    NativeStoryPreparedMedia? result;
+    try {
+      result = NativeStoryPreparedMedia._(_newStoryMediaPlayer(), lease);
+      var aborted = false;
+      unawaited(cancelled.then((_) => aborted = true));
+      await result.player.setVolume(0);
+      if (aborted) throw const ResourceCacheCancelled();
+      await result.player.open(media.Media(lease.file.path), play: false);
+      await waitForMediaKitMetadata(result.player, interrupted: cancelled);
+      if (aborted) throw const ResourceCacheCancelled();
+      if (result.error != null) {
+        throw StateError('story_media_prepare:${result.error}');
+      }
+      return result;
+    } catch (_) {
+      if (result != null) {
+        await result.dispose();
+      } else {
+        await lease.release();
+      }
+      rethrow;
+    }
+  }
+
+  ResourceFileLease claim() {
+    if (_claimed || _disposing != null) {
+      throw StateError('story_media_prepare_claimed');
+    }
+    _claimed = true;
+    unawaited(_errors.cancel());
+    return lease;
+  }
+
+  Future<void> dispose() => _disposing ??= _dispose();
+  Future<void> _dispose() async {
+    if (_claimed) return;
+    try {
+      await _errors.cancel();
+      await player.dispose();
+    } finally {
+      await lease.release();
+    }
+  }
+}
+
+final class _StoryMediaPreparation {
+  _StoryMediaPreparation(this.uri);
+  final Uri uri;
+  final cancelled = Completer<void>();
+  late final Future<NativeStoryPreparedMedia?> ready;
+  bool claimed = false;
+}
 
 /// A cue owns its native decoder and completion. Concurrent voices and effects
 /// remain independent of the application's music dock and chart audio owner.
@@ -25,14 +107,10 @@ final class NativeStoryMediaCue {
     this.sourceDurationUs,
     this.loopStartUs = 0,
     this.loopEndUs,
-  }) : player = media.Player(
-         configuration: media.PlayerConfiguration(
-           protocolWhitelist: [
-             ...const media.PlayerConfiguration().protocolWhitelist,
-             if (Platform.isAndroid) 'httpproxy',
-           ],
-         ),
-       ) {
+    NativeStoryPreparedMedia? prepared,
+  }) : player = prepared?.player ?? _newStoryMediaPlayer() {
+    _fileLease = prepared?.claim();
+    _prepared = prepared != null;
     unawaited(_completion.future.catchError((Object _) {}));
     if (kind == StoryMediaKind.movie) video = VideoController(player);
     _subscriptions.addAll([
@@ -52,6 +130,11 @@ final class NativeStoryMediaCue {
           _completion.completeError(StateError('story_media:$id:$message'));
         }
         _publish();
+        unawaited(
+          dispose().catchError((Object error, StackTrace stack) {
+            debugPrint('story_media_dispose:$error');
+          }),
+        );
       }),
     ]);
   }
@@ -83,6 +166,16 @@ final class NativeStoryMediaCue {
   Future<void> get completed => _completion.future;
   final _io = <Future<void>>{};
   Future<void>? _disposing;
+  ResourceFileLease? _fileLease;
+  Future<Uint8List>? _encoded;
+  bool _prepared = false;
+  final _cancelled = Completer<void>();
+  Future<Uint8List> encodedBytes() => _encoded ??= _track(() async {
+    if (_disposed || _fileLease == null) {
+      throw StateError('story_media_file_unavailable');
+    }
+    return _fileLease!.readBytes();
+  }());
   Future<T> _track<T>(Future<T> work) {
     final settled = work.then<void>(
       (_) {},
@@ -196,10 +289,25 @@ final class NativeStoryMediaCue {
     _opened = true;
     this.looping = looping;
     final generation = ++_generation;
-    final source = media.Media(uri.toString());
+    final preparation = Stopwatch()..start();
+    if (_fileLease == null) {
+      try {
+        _fileLease = await resourceFileCache.acquire(
+          uri,
+          kind: ResourceFileKind.media,
+          cancelled: _cancelled.future,
+        );
+      } on ResourceCacheCancelled {
+        if (_disposed) return;
+        rethrow;
+      }
+    }
+    if (_disposed || generation != _generation) return;
+    preparationMicroseconds['cacheFile'] = preparation.elapsedMicroseconds;
+    preparation.reset();
+    final source = media.Media(_fileLease!.file.path);
     _mediaUri = source.uri;
     _accept = false;
-    final preparation = Stopwatch()..start();
     await player.setVolume(volume.clamp(0.0, 100.0));
     if (_disposed || generation != _generation) return;
     await player.setRate(playbackRate);
@@ -208,21 +316,12 @@ final class NativeStoryMediaCue {
       looping ? media.PlaylistMode.single : media.PlaylistMode.none,
     );
     final backend = player.platform;
-    if (Platform.isAndroid && backend is media.NativePlayer) {
-      final proxy = systemProxyFor(uri);
-      // FFmpeg passes http_proxy through TLS to CONNECT for HTTPS media too.
-      // Preserve the source URI, decoder timing and native range seeking.
-      await backend.setProperty(
-        'stream-lavf-o',
-        proxy.httpProxy == null ? '' : 'http_proxy=${proxy.httpProxy}',
-      );
-    }
     if (looping && loopEndUs != null && backend is media.NativePlayer) {
       await backend.setProperty('ab-loop-a', '${loopStartUs / 1000000}');
       await backend.setProperty('ab-loop-b', '${loopEndUs! / 1000000}');
     }
     if (_disposed || generation != _generation) return;
-    await player.open(source, play: false);
+    if (!_prepared) await player.open(source, play: false);
     preparationMicroseconds['open'] = preparation.elapsedMicroseconds;
     preparation.reset();
     if (_disposed || generation != _generation) return;
@@ -341,16 +440,23 @@ final class NativeStoryMediaCue {
     _disposed = true;
     _accept = false;
     _generation++;
+    if (!_cancelled.isCompleted) _cancelled.complete();
     if (!_completion.isCompleted) {
       _completion.completeError(StateError('story_media_source_closed:$id'));
     }
-    for (final subscription in _subscriptions) {
-      await subscription.cancel();
+    try {
+      for (final subscription in _subscriptions) {
+        await subscription.cancel();
+      }
+      while (_io.isNotEmpty) {
+        await Future.wait(_io.toList());
+      }
+      await player.dispose();
+    } finally {
+      _encoded = null;
+      await _fileLease?.release();
+      _fileLease = null;
     }
-    while (_io.isNotEmpty) {
-      await Future.wait(_io.toList());
-    }
-    await player.dispose();
   }
 }
 
@@ -360,6 +466,8 @@ final class NativeStoryMediaHost extends ChangeNotifier {
     required this.sourceEpoch,
     required this.resolve,
     this.maxRetainedLoopDecoders = 4,
+    this.preparationPlan,
+    this.resolveUpcoming,
   }) {
     if (maxRetainedLoopDecoders < 0) {
       throw ArgumentError('story_media_decoder_cache_budget');
@@ -368,13 +476,175 @@ final class NativeStoryMediaHost extends ChangeNotifier {
   }
   final int sourceEpoch;
   final Uri Function(String reference, StoryMediaKind kind) resolve;
+  final StoryMediaPreparationPlan? preparationPlan;
+  final Uri Function(StoryMediaEvent)? resolveUpcoming;
+  final _warming = <String, _StoryMediaPreparation>{};
+  final _upcoming = <String, StoryMediaEvent>{};
+  final _deferredWarm = <String>{};
+  final _claimedWarm = <String>{};
+  final _warmTasks = <_StoryMediaPreparation>{};
+  int _warmActive = 0;
+  int? _preparationCursor;
+
+  String _warmKey(StoryMediaKind kind, Uri uri) => '${kind.name}:$uri';
+
+  void prepareForCommand(int index) {
+    if (_disposed ||
+        _preparationCursor == index ||
+        preparationPlan == null ||
+        resolveUpcoming == null) {
+      return;
+    }
+    _preparationCursor = index;
+    final selected = preparationPlan!.upcoming(index, (event) {
+      try {
+        return _warmKey(event.kind, resolveUpcoming!(event));
+      } catch (_) {
+        return 'unresolved:${event.kind.name}:${event.cueId}';
+      }
+    });
+    _selectUpcoming(selected);
+  }
+
+  void _selectUpcoming(Iterable<StoryMediaEvent> selected) {
+    final values = selected.toList();
+    _upcoming.clear();
+    _deferredWarm.clear();
+    for (final event in values) {
+      try {
+        _upcoming[_warmKey(event.kind, resolveUpcoming!(event))] = event;
+      } catch (_) {
+        // Unresolved future media retains its original command-time failure.
+      }
+    }
+    for (final entry in _warming.entries.toList()) {
+      if (_upcoming.containsKey(entry.key) || entry.value.claimed) continue;
+      _warming.remove(entry.key);
+      if (!entry.value.cancelled.isCompleted) entry.value.cancelled.complete();
+      unawaited(_discardPrepared(entry.value));
+    }
+    _pumpUpcoming();
+  }
+
+  Future<void> _discardPrepared(_StoryMediaPreparation task) async {
+    try {
+      await (await task.ready)?.dispose();
+    } catch (error) {
+      debugPrint('story_media_prepare_dispose:$error');
+    }
+  }
+
+  void _pumpUpcoming() {
+    if (_disposed) return;
+    for (final entry in _upcoming.entries) {
+      if (_warmActive >= StoryMediaPreparationPlan.concurrency) break;
+      if (_warming.containsKey(entry.key) ||
+          _deferredWarm.contains(entry.key) ||
+          _claimedWarm.contains(entry.key)) {
+        continue;
+      }
+      final uri = resolveUpcoming!(entry.value);
+      if (cues.any(
+        (cue) =>
+            cue.kind == entry.value.kind && cue.uri == uri && cue.error == null,
+      )) {
+        continue;
+      }
+      final task = _StoryMediaPreparation(uri);
+      _warming[entry.key] = task;
+      _warmTasks.add(task);
+      _warmActive++;
+      task.ready = NativeStoryPreparedMedia.load(uri, task.cancelled.future)
+          .then<NativeStoryPreparedMedia?>((prepared) async {
+            if (_disposed ||
+                task.cancelled.isCompleted ||
+                (!task.claimed && !_upcoming.containsKey(entry.key))) {
+              await prepared.dispose();
+              return null;
+            }
+            return prepared;
+          })
+          .catchError((Object error, StackTrace stack) {
+            _deferredWarm.add(entry.key);
+            return null;
+          })
+          .whenComplete(() {
+            _warmActive--;
+            _warmTasks.remove(task);
+            _pumpUpcoming();
+          });
+    }
+  }
+
+  Future<void> prepareInitialMedia() async {
+    final plan = preparationPlan, resolver = resolveUpcoming;
+    if (_disposed || plan == null || resolver == null) return;
+    final first = plan.entries
+        .where((event) => event.kind == StoryMediaKind.voice)
+        .firstOrNull;
+    prepareForCommand(0);
+    if (first == null) return;
+    final firstUri = resolver(first);
+    if (cues.any(
+      (cue) => cue.kind == first.kind && cue.uri == firstUri && cue.ready,
+    )) {
+      return;
+    }
+    final firstKey = _warmKey(first.kind, firstUri);
+    if (!_upcoming.containsKey(firstKey)) {
+      _selectUpcoming([
+        first,
+        ..._upcoming.values.take(StoryMediaPreparationPlan.lookahead - 1),
+      ]);
+    }
+    while (!_disposed &&
+        !_warming.containsKey(firstKey) &&
+        !_deferredWarm.contains(firstKey) &&
+        _warmTasks.isNotEmpty) {
+      await Future.any([for (final task in _warmTasks) task.ready]);
+    }
+    final prepared = await _warming[firstKey]?.ready;
+    if (!_disposed && prepared == null) {
+      throw StateError('story_media_initial_preparation:$firstKey');
+    }
+  }
+
+  void cancelPreparation() {
+    _preparationCursor = null;
+    _selectUpcoming(const []);
+  }
+
+  Future<NativeStoryPreparedMedia?> _takePrepared(
+    StoryMediaKind kind,
+    Uri uri,
+  ) async {
+    final key = _warmKey(kind, uri),
+        task = _warming.remove(_warmKey(kind, uri));
+    if (task == null) return null;
+    task.claimed = true;
+    _claimedWarm.add(key);
+    try {
+      final prepared = await task.ready;
+      if (prepared?.error != null || prepared?.player.state.completed == true) {
+        await prepared?.dispose();
+        return null;
+      }
+      return prepared;
+    } finally {
+      _claimedWarm.remove(key);
+    }
+  }
+
   final int maxRetainedLoopDecoders;
   final _retainedLoopDecoders = <NativeStoryMediaCue>[];
-  int _decoderReuses = 0;
+  int _decoderReuses = 0, _preparedDecoderReuses = 0;
   Map<String, Object?> get decoderCacheObservation => {
     'capacity': maxRetainedLoopDecoders,
     'retained': _retainedLoopDecoders.length,
     'reuses': _decoderReuses,
+    'preparedRetained': _warming.length,
+    'preparing': _warmActive,
+    'preparedReuses': _preparedDecoderReuses,
   };
   final Map<String, NativeStoryMediaCue> _cues = {};
   final Set<NativeStoryMediaCue> _retiring = {};
@@ -479,10 +749,18 @@ final class NativeStoryMediaHost extends ChangeNotifier {
     if (reference == null || reference.isEmpty) {
       throw StateError('story_actual_resource_ref_missing:${event.cueId}');
     }
+    final uri = resolve(reference, event.kind);
+    final prepared = await _takePrepared(event.kind, uri);
+    if (!current()) {
+      await prepared?.dispose();
+      return null;
+    }
+    if (prepared != null) _preparedDecoderReuses++;
     final cue = NativeStoryMediaCue(
       id: event.cueId,
       kind: event.kind,
-      uri: resolve(reference, event.kind),
+      uri: uri,
+      prepared: prepared,
       resourceRef: reference,
       instanceId: intent,
       commandIndex: event.commandIndex,
@@ -509,6 +787,9 @@ final class NativeStoryMediaHost extends ChangeNotifier {
         _retiring.remove(cue);
         await cue.dispose();
         return null;
+      }
+      if (cue.error != null) {
+        throw StateError('story_media:${cue.id}:${cue.error}');
       }
       if (_replayAtUs != null) {
         _replayClocks[cue] = _StoryMediaReplayClock(
@@ -839,6 +1120,9 @@ final class NativeStoryMediaHost extends ChangeNotifier {
           _decoderReuses++;
         }
         checkCurrent();
+        if (cue.error != null) {
+          throw StateError('story_media:${cue.id}:${cue.error}');
+        }
       }
       if (!_disposed) notifyListeners();
     } finally {
@@ -899,6 +1183,13 @@ final class NativeStoryMediaHost extends ChangeNotifier {
   Future<void> close() => _closing ??= _close();
   Future<void> _close() async {
     _disposed = true;
+    final warming = {..._warming.values, ..._warmTasks}.toList();
+    cancelPreparation();
+    _warming.clear();
+    for (final task in warming) {
+      if (!task.cancelled.isCompleted) task.cancelled.complete();
+    }
+    await Future.wait([for (final task in warming) _discardPrepared(task)]);
     _generation++;
     _intents.clear();
     _replayAtUs = null;

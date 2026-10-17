@@ -143,6 +143,13 @@ final class NativeStoryAssets {
   final stills = <String, Map<String, Object?>>{};
   final backgrounds = <String, Map<String, Object?>>{};
   final frames = <String, Map<String, Object?>>{};
+  Set<Uri>? _mediaUris;
+
+  bool isMediaUri(Uri uri) => (_mediaUris ??= {
+    for (final record in _media.values)
+      if (record['playableUrl'] case final String path when path.isNotEmpty)
+        pinned(path),
+  }).contains(uri);
 
   void _insert(StoryMediaKind kind, Map record, String idField) {
     final reference = record['resourceRef'];

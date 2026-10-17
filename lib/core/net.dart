@@ -7,6 +7,7 @@ import 'package:cupertino_http/cupertino_http.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
+import 'package:http/retry.dart';
 
 import 'system_proxy.dart';
 
@@ -54,9 +55,30 @@ final class _AndroidSystemProxyClient extends http.BaseClient {
   bool _closed = false;
   final http.Client _proxied = IOClient(
     HttpClient()
+      ..connectionTimeout = const Duration(seconds: 15)
       ..idleTimeout = const Duration(seconds: 30)
       ..userAgent = 'haneoka-app'
       ..findProxy = (uri) => systemProxyFor(uri).directive,
+  );
+
+  late final _proxyReads = RetryClient(
+    _proxied,
+    retries: 2,
+    when: (_) => false,
+    whenError: (error, _) {
+      if (error is HandshakeException) {
+        return error.message == 'Connection terminated during handshake';
+      }
+      if (error is SocketException) {
+        return switch (error.osError?.errorCode) {
+          // Android/Linux: EPIPE, ECONNABORTED, ECONNRESET.
+          32 || 103 || 104 => true,
+          _ => false,
+        };
+      }
+      return false;
+    },
+    delay: (retry) => Duration(milliseconds: 200 * (retry + 1)),
   );
 
   Future<void> _acquire(Uri uri) {
@@ -94,7 +116,10 @@ final class _AndroidSystemProxyClient extends http.BaseClient {
     }
 
     try {
-      final response = await _proxied.send(request);
+      final client = request.method == 'GET' || request.method == 'HEAD'
+          ? _proxyReads
+          : _proxied;
+      final response = await client.send(request);
       StreamSubscription<List<int>>? subscription;
       late final StreamController<List<int>> body;
       body = StreamController<List<int>>(

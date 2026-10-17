@@ -144,6 +144,18 @@ class _StorageSettingsState extends State<StorageSettings> {
                 () => _clear(CacheCategory.data),
               ),
               row(
+                t('app.storage.media', 'Audio and video cache'),
+                usage?.media,
+                Symbols.movie_rounded,
+                () => _clear(CacheCategory.media),
+              ),
+              row(
+                t('app.storage.resources', 'Player resource cache'),
+                usage?.resources,
+                Symbols.view_in_ar_rounded,
+                () => _clear(CacheCategory.resources),
+              ),
+              row(
                 t('app.storage.images', 'Image cache'),
                 usage?.images,
                 Symbols.image_rounded,

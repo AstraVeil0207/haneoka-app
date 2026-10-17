@@ -4,10 +4,11 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:vega_plugin_haneoka/render_profile.dart';
 import 'package:vega_plugin_haneoka/native_cubism.dart'
-    show retainNativeCubismModelSourceRecord;
+    show retainNativeCubismModelSourceRecord, NativeCubismUnityPrefab;
 
 import '../core/api.dart';
-import '../core/net.dart';
+import '../core/background_work.dart';
+import '../core/resource_file_cache.dart';
 import 'native_unity_source_archive.dart';
 
 /// Loads the actual registered model variant from one source release. Generic
@@ -18,6 +19,7 @@ final class NativeCubismModelSource {
     required this.key,
     required this.catalog,
     required this.records,
+    required this.preparedPrefab,
     required this.mocBytes,
     required this.archiveHash,
     required this.mocHash,
@@ -26,6 +28,7 @@ final class NativeCubismModelSource {
   final String key, archiveHash, mocHash;
   final Map<String, Object?> catalog;
   final List<Map> records;
+  final NativeCubismUnityPrefab preparedPrefab;
   final Uint8List mocBytes;
 
   static Future<NativeCubismModelSource> load(
@@ -48,14 +51,15 @@ final class NativeCubismModelSource {
       final uri = api
           .asset(path)
           .replace(queryParameters: {'release': identity.release});
-      final response = await netClient.get(uri);
+      final bytes = await resourceFileCache.readBytes(
+        uri,
+        kind: ResourceFileKind.renderResource,
+      );
       checkOwner();
-      if (response.statusCode != 200 || response.bodyBytes.length > limit) {
-        throw StateError(
-          'native_model_source_http:${response.statusCode}:$path',
-        );
+      if (bytes.length > limit) {
+        throw StateError('native_model_source_size:$path');
       }
-      return response.bodyBytes;
+      return bytes;
     }
 
     Future<Map> readJson(String path) async {
@@ -92,6 +96,7 @@ final class NativeCubismModelSource {
       onTiming: (phase, us) => onTiming?.call('archive.$phase', us),
       decodeOffThread: true,
       retain: retainNativeCubismModelSourceRecord,
+      prepareRecords: NativeCubismUnityPrefab.new,
     );
     onTiming?.call('archive.total', timer.elapsedMicroseconds);
     timer.reset();
@@ -106,14 +111,28 @@ final class NativeCubismModelSource {
     final mocBytes = await read(moc, 32 * 1024 * 1024);
     onTiming?.call('moc', timer.elapsedMicroseconds);
     checkOwner();
+    timer.reset();
+    final mocHash = await runBackgroundWork(
+      _MocHashInput(mocBytes).compute,
+      checkCurrent: checkOwner,
+      debugName: 'cubism-moc-hash',
+    );
+    onTiming?.call('mocHash', timer.elapsedMicroseconds);
     return NativeCubismModelSource._(
       identity: identity,
       key: actualRegisteredKey,
       catalog: Map.unmodifiable(catalog.cast<String, Object?>()),
       records: archive.records,
+      preparedPrefab: archive.preparedRecords! as NativeCubismUnityPrefab,
       mocBytes: mocBytes,
       archiveHash: archive.archiveHash,
-      mocHash: sha256.convert(mocBytes).toString(),
+      mocHash: mocHash,
     );
   }
+}
+
+final class _MocHashInput {
+  const _MocHashInput(this.bytes);
+  final Uint8List bytes;
+  String compute() => sha256.convert(bytes).toString();
 }

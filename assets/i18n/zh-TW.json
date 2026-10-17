@@ -4449,7 +4449,9 @@
       "clearAll": "清空所有快取",
       "cleared": "已釋放 {size}",
       "unlimited": "不限大小",
-      "noLimit": "不限大小時，不執行容量清理。"
+      "noLimit": "不限大小時，不執行容量清理。",
+      "media": "音訊與影片快取",
+      "resources": "播放器資源快取"
     },
     "distribution": {
       "title": "安裝包與安裝指南",

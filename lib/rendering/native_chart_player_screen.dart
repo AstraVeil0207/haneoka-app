@@ -18,7 +18,7 @@ import 'package:cassiopeia_renderer_flutter/overview.dart';
 
 import '../core/api.dart';
 import '../core/app_state.dart';
-import '../core/net.dart';
+import '../core/resource_file_cache.dart';
 import '../shell/page.dart';
 import '../ui/playback_pane.dart';
 import '../ui/player_orientation.dart';
@@ -96,14 +96,10 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
           );
         }
         if (uri.scheme == 'file') return File.fromUri(uri).readAsBytes();
-        final response = await netClient.get(uri);
-        if (response.statusCode != 200) {
-          throw HttpException(
-            'native_resource_${response.statusCode}',
-            uri: uri,
-          );
-        }
-        return response.bodyBytes;
+        return resourceFileCache.readBytes(
+          uri,
+          kind: ResourceFileKind.renderResource,
+        );
       })
       .catchError((Object error) {
         _bytes.remove(uri.toString());
@@ -817,6 +813,81 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
     child: _buildPlayer(context),
   );
 
+  Widget _watchStage(NativeChartPlayback player, {required bool ready}) =>
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final t = AppScope.of(context).text;
+          final doc = _document, error = _error ?? player.error;
+          if (error != null) {
+            return Center(
+              child: FilledButton.tonal(
+                onPressed: _retry,
+                child: Text(t('common.actions.retry', 'Retry')),
+              ),
+            );
+          }
+          if (doc == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final viewport = (
+            constraints.maxWidth,
+            constraints.maxHeight,
+            MediaQuery.devicePixelRatioOf(context),
+          );
+          _queueViewport(
+            player,
+            doc,
+            viewport,
+            PlaybackStageScope.maybeOf(context),
+          );
+          final session = player.session;
+          if (session == null) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final pauseHit = player.pauseHitBounds(
+            constraints.maxWidth,
+            constraints.maxHeight,
+          );
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: ValueListenableBuilder<ui.Image?>(
+                  valueListenable: session.image,
+                  builder: (_, image, _) =>
+                      RawImage(image: image, fit: BoxFit.contain),
+                ),
+              ),
+              if (pauseHit != null)
+                Positioned(
+                  left: pauseHit.left,
+                  top: pauseHit.top,
+                  width: pauseHit.width,
+                  height: pauseHit.height,
+                  child: Tooltip(
+                    message: t('common.actions.pause', 'Pause'),
+                    child: Semantics(
+                      button: true,
+                      label: t('common.actions.pause', 'Pause'),
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: !ready
+                            ? null
+                            : () {
+                                _action(player.pause);
+                                PlaybackStageScope.maybeOf(context)
+                                    ?.setControlsExpanded
+                                    ?.call(true);
+                              },
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      );
+
   Widget _buildPlayer(BuildContext context) {
     final state = AppScope.of(context), t = state.text, player = _player;
     final title =
@@ -866,7 +937,7 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
                 player.audio.position,
                 player.audio.duration,
               ]),
-              builder: (context, _) => PlaybackPane(
+              builder: (context, stage) => PlaybackPane(
                 key: _paneKey,
                 playing: playingThisChart,
                 position: player.audio.position.value.inMicroseconds / 1000000,
@@ -898,79 +969,9 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
                 onSettings: _settings,
                 onLoop: () => player.setLoop(!player.audio.loop),
                 loop: player.audio.loop,
-                stage: (context) => LayoutBuilder(
-                  builder: (context, constraints) {
-                    final doc = _document, error = _error ?? player.error;
-                    if (error != null) {
-                      return Center(
-                        child: FilledButton.tonal(
-                          onPressed: _retry,
-                          child: Text(t('common.actions.retry', 'Retry')),
-                        ),
-                      );
-                    }
-                    if (doc == null) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final viewport = (
-                      constraints.maxWidth,
-                      constraints.maxHeight,
-                      MediaQuery.devicePixelRatioOf(context),
-                    );
-                    _queueViewport(
-                      player,
-                      doc,
-                      viewport,
-                      PlaybackStageScope.maybeOf(context),
-                    );
-                    final session = player.session;
-                    if (session == null) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final pauseHit = player.pauseHitBounds(
-                      constraints.maxWidth,
-                      constraints.maxHeight,
-                    );
-                    return Stack(
-                      children: [
-                        Positioned.fill(
-                          child: ValueListenableBuilder<ui.Image?>(
-                            valueListenable: session.image,
-                            builder: (_, image, _) =>
-                                RawImage(image: image, fit: BoxFit.contain),
-                          ),
-                        ),
-                        if (pauseHit != null)
-                          Positioned(
-                            left: pauseHit.left,
-                            top: pauseHit.top,
-                            width: pauseHit.width,
-                            height: pauseHit.height,
-                            child: Tooltip(
-                              message: t('common.actions.pause', 'Pause'),
-                              child: Semantics(
-                                button: true,
-                                label: t('common.actions.pause', 'Pause'),
-                                child: GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTap: !ready
-                                      ? null
-                                      : () {
-                                          _action(player.pause);
-                                          PlaybackStageScope.maybeOf(context)
-                                              ?.setControlsExpanded
-                                              ?.call(true);
-                                        },
-                                  child: const SizedBox.expand(),
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    );
-                  },
-                ),
+                stage: (_) => stage!,
               ),
+              child: _watchStage(player, ready: ready),
             ),
     );
   }

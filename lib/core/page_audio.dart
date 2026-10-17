@@ -9,7 +9,8 @@ import 'playback_focus.dart';
 
 /// Page-owned transport. It has no queue, persistence or system media item.
 final class PageAudio extends ChangeNotifier {
-  PageAudio({this.onFocusInterrupted}) {
+  PageAudio({this.onFocusInterrupted, bool pollPosition = true})
+    : _output = AudioOutput(pollPosition: pollPosition) {
     _subscriptions.addAll([
       _output.onPlayerStateChanged.listen((state) {
         if (_disposed) return;
@@ -37,7 +38,7 @@ final class PageAudio extends ChangeNotifier {
       }),
     ]);
   }
-  final _output = AudioOutput();
+  final AudioOutput _output;
   final Future<void> Function()? onFocusInterrupted;
   late final _focus = PlaybackFocus(onFocusInterrupted ?? pause);
   final _subscriptions = <StreamSubscription<dynamic>>[];
@@ -105,7 +106,16 @@ final class PageAudio extends ChangeNotifier {
     await _output.seek(value);
     position.value = value;
   });
-  Future<Duration?> samplePosition() => _output.samplePosition();
+  Future<Duration?> samplePosition() async {
+    if (_disposed) return null;
+    if (completed && duration.value > Duration.zero) {
+      position.value = duration.value;
+      return duration.value;
+    }
+    final value = await _output.samplePosition();
+    if (!_disposed && value != null) position.value = value;
+    return value;
+  }
 
   Future<void> close() async {
     if (_disposed) return;

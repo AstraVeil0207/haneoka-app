@@ -227,27 +227,7 @@ class _PlaybackPaneState extends State<PlaybackPane> {
 
   Widget _controls(BuildContext context, bool fullscreen) {
     final t = AppScope.of(context).text;
-    if (_collapsed || _hidden) {
-      return Align(
-        alignment: Alignment.bottomRight,
-        child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Material(
-            color: Theme.of(context).colorScheme.surfaceContainer,
-            shape: const StadiumBorder(),
-            child: _button(
-              Symbols.expand_less_rounded,
-              t('common.actions.expand', 'Expand'),
-              () {
-                _collapsed = false;
-                widget.onCollapsed?.call(false);
-                _showControls();
-              },
-            ),
-          ),
-        ),
-      );
-    }
+    if (_collapsed || _hidden) return const SizedBox.shrink();
     final scheme = Theme.of(context).colorScheme;
     final value = (_scrub ?? widget.position).clamp(
       0.0,

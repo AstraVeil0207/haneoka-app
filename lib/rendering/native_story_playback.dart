@@ -114,6 +114,12 @@ final class NativeStoryPlayback extends ChangeNotifier {
     media = NativeStoryMediaHost(
       sourceEpoch: sourceEpoch,
       resolve: document.assets.resolve,
+      preparationPlan: StoryMediaPreparationPlan(document.chapter.commands),
+      resolveUpcoming: (event) => document.assets.resolve(
+        event.resourceRef ??
+            document.assets.referenceFor(event.kind, event.cueId),
+        event.kind,
+      ),
     );
     controller = StoryPlaybackController(
       chapter: document.chapter,
@@ -140,6 +146,22 @@ final class NativeStoryPlayback extends ChangeNotifier {
     }
     MediaLifecycle.register(this, close);
   }
+  bool _initialMediaPrepared = false;
+  Future<void> prepareInitialMedia() async {
+    await media.prepareInitialMedia();
+    if (!_disposed) _initialMediaPrepared = true;
+  }
+
+  void _prepareMediaAtCursor() {
+    if (_disposed || _seekReplaying || !_initialMediaPrepared) return;
+    final index = controller.cursor;
+    media.prepareForCommand(
+      index < document.chapter.commands.length
+          ? document.chapter.commands[index].index
+          : (document.chapter.commands.lastOrNull?.index ?? 0) + 1,
+    );
+  }
+
   final NativeStoryDocument document;
   final NativeStoryHandlers handlers;
   final int sourceEpoch;
@@ -614,6 +636,7 @@ final class NativeStoryPlayback extends ChangeNotifier {
     await media.finishReplay();
     _seekHistory = null;
     _seekReplaying = false;
+    _prepareMediaAtCursor();
     await Future.wait([for (final cue in media.cues) _applyVolume(cue)]);
     restoreClock(atUs);
     handlers.onActualUpdate?.call(actualUpdateStamp);
@@ -980,6 +1003,7 @@ final class NativeStoryPlayback extends ChangeNotifier {
   }) async {
     seek.checkCurrent();
     _seekReplaying = true;
+    media.cancelPreparation();
     await media.beginReplay(storyUs);
     final command = document.chapter.commands.singleWhere(
       (row) => row.index == execution.commandIndex,
@@ -1412,6 +1436,9 @@ final class NativeStoryPlayback extends ChangeNotifier {
   ) async {
     if (!context.isCurrent() || _disposed) {
       throw StateError('story_source_replaced');
+    }
+    if (!_seekReplaying && _initialMediaPrepared) {
+      media.prepareForCommand(command.index);
     }
     final resuming = context.resuming;
     if (resuming && !_restoredPendingExecutions.remove(context.executionId)) {

@@ -1,15 +1,13 @@
-import 'dart:async';
-import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:vega_plugin_haneoka/render_profile.dart';
 
 import '../core/api.dart';
-import '../core/net.dart';
+import '../core/background_work.dart';
+import '../core/resource_file_cache.dart';
 
 /// A verified actual source archive. Only requested typed records are retained;
 /// callers never execute Material or Shader programs from an archive.
@@ -20,11 +18,13 @@ final class NativeUnitySourceArchive {
     this.descriptor,
     this.archiveHash,
     this.records,
+    this.preparedRecords,
   );
   final StorySourceIdentity identity;
   final String sourcePath, archiveHash;
   final Map descriptor;
   final List<Map> records;
+  final Object? preparedRecords;
 
   static Future<NativeUnitySourceArchive> load({
     required HaneokaApi api,
@@ -33,6 +33,7 @@ final class NativeUnitySourceArchive {
     required bool Function() current,
     required bool Function(Map) retain,
     bool decodeOffThread = false,
+    Object? Function(List<Map>)? prepareRecords,
     void Function(String phase, int microseconds)? onTiming,
   }) async {
     final timer = Stopwatch()..start();
@@ -47,12 +48,12 @@ final class NativeUnitySourceArchive {
           '${sourcePath.split('/').map(Uri.encodeComponent).join('/')}',
         )
         .replace(queryParameters: {'release': identity.release});
-    final descriptorResponse = await netClient.get(descriptorUri);
+    final descriptorBytes = await resourceFileCache.readBytes(
+      descriptorUri,
+      kind: ResourceFileKind.renderResource,
+    );
     if (!current()) throw StateError('unity_archive_cancelled');
-    if (descriptorResponse.statusCode != 200) {
-      throw StateError('unity_descriptor_http');
-    }
-    final descriptor = jsonDecode(descriptorResponse.body) as Map;
+    final descriptor = jsonDecode(utf8.decode(descriptorBytes)) as Map;
     onTiming?.call('descriptor', timer.elapsedMicroseconds);
     timer.reset();
     if (descriptor['basePath'] != sourcePath) {
@@ -74,12 +75,13 @@ final class NativeUnitySourceArchive {
           '/objects/${identity.server}/${path.substring('objects/'.length)}',
         )
         .replace(queryParameters: {'release': identity.release});
-    final response = await netClient.get(uri);
+    final bytes = await resourceFileCache.readBytes(
+      uri,
+      kind: ResourceFileKind.renderResource,
+    );
     if (!current()) throw StateError('unity_archive_cancelled');
-    if (response.statusCode != 200 ||
-        response.bodyBytes.length > 32 * 1024 * 1024 ||
-        (!decodeOffThread &&
-            sha256.convert(response.bodyBytes).toString() != hash)) {
+    if (bytes.length > 32 * 1024 * 1024 ||
+        (!decodeOffThread && sha256.convert(bytes).toString() != hash)) {
       throw const FormatException('unity_archive_bytes');
     }
     onTiming?.call(
@@ -93,11 +95,12 @@ final class NativeUnitySourceArchive {
         .toSet();
     final files = (archive['serializedFiles'] as List).cast<String>().toSet();
     final input = _ArchiveDecodeInput(
-      response.bodyBytes,
+      bytes,
       bundles,
       files,
       retain,
       expectedHash: decodeOffThread ? hash : null,
+      prepareRecords: prepareRecords,
     );
     final decoded = decodeOffThread
         ? await _decodeArchiveOffMain(input, current)
@@ -107,12 +110,16 @@ final class NativeUnitySourceArchive {
     onTiming?.call('hashVerify', decoded.verifyUs);
     onTiming?.call('decompress', decoded.decompressUs);
     onTiming?.call('records', decoded.recordsUs);
+    if (prepareRecords != null) {
+      onTiming?.call('prepareRecords', decoded.prepareUs);
+    }
     return NativeUnitySourceArchive._(
       identity,
       sourcePath,
       Map.unmodifiable(descriptor),
       hash,
       List.unmodifiable(decoded.records),
+      decoded.preparedRecords,
     );
   }
 
@@ -140,32 +147,16 @@ final class NativeUnitySourceArchive {
   };
 }
 
-int _archiveDecodeActive = 0;
-final _archiveDecodeWaiters = Queue<Completer<void>>();
-
 Future<_ArchiveDecodeResult> _decodeArchiveOffMain(
   _ArchiveDecodeInput input,
   bool Function() current,
-) async {
-  if (_archiveDecodeActive >= 2) {
-    final slot = Completer<void>();
-    _archiveDecodeWaiters.add(slot);
-    await slot.future;
-  } else {
-    _archiveDecodeActive++;
-  }
-  try {
+) => runBackgroundWork(
+  input.decode,
+  checkCurrent: () {
     if (!current()) throw StateError('unity_archive_cancelled');
-    // The method tear-off owns only this data request and a top-level retainer.
-    return await Isolate.run(input.decode, debugName: 'unity-source-records');
-  } finally {
-    if (_archiveDecodeWaiters.isNotEmpty) {
-      _archiveDecodeWaiters.removeFirst().complete();
-    } else {
-      _archiveDecodeActive--;
-    }
-  }
-}
+  },
+  debugName: 'unity-source-records',
+);
 
 final class _ArchiveDecodeResult {
   const _ArchiveDecodeResult(
@@ -173,9 +164,13 @@ final class _ArchiveDecodeResult {
     this.verifyUs,
     this.decompressUs,
     this.recordsUs,
+    this.preparedRecords,
+    this.prepareUs,
   );
   final List<Map> records;
   final int verifyUs, decompressUs, recordsUs;
+  final Object? preparedRecords;
+  final int prepareUs;
 }
 
 final class _ArchiveDecodeInput {
@@ -185,12 +180,14 @@ final class _ArchiveDecodeInput {
     this.files,
     this.retain, {
     this.expectedHash,
+    this.prepareRecords,
   });
   final Uint8List bytes;
   final Set<Object?> bundles;
   final Set<String> files;
   final bool Function(Map) retain;
   final String? expectedHash;
+  final Object? Function(List<Map>)? prepareRecords;
 
   _ArchiveDecodeResult decode() {
     final timer = Stopwatch()..start();
@@ -228,10 +225,15 @@ final class _ArchiveDecodeInput {
     if (!hasHeader || kept.isEmpty) {
       throw const FormatException('unity_archive_empty');
     }
+    final recordsUs = timer.elapsedMicroseconds;
+    timer.reset();
+    final prepared = prepareRecords?.call(kept);
     return _ArchiveDecodeResult(
       kept,
       verifyUs,
       decompressUs,
+      recordsUs,
+      prepared,
       timer.elapsedMicroseconds,
     );
   }

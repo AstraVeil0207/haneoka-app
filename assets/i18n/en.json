@@ -4449,7 +4449,9 @@
       "clearAll": "Clear all cache",
       "cleared": "Freed {size}",
       "unlimited": "Unlimited",
-      "noLimit": "Capacity cleanup is inactive with an unlimited cache."
+      "noLimit": "Capacity cleanup is inactive with an unlimited cache.",
+      "media": "Audio and video cache",
+      "resources": "Player resource cache"
     },
     "distribution": {
       "title": "Installers and installation guides",

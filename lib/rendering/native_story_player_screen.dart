@@ -28,7 +28,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../core/api.dart';
 import '../core/app_state.dart';
-import '../core/net.dart';
+import '../core/resource_file_cache.dart';
 import '../core/voice.dart';
 import '../shell/page.dart';
 import '../ui/adv_text.dart';
@@ -180,14 +180,12 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
             data.lengthInBytes,
           );
         }
-        final response = await netClient.get(uri);
-        if (response.statusCode != 200) {
-          throw HttpException(
-            'native_story_resource_${response.statusCode}',
-            uri: uri,
-          );
-        }
-        return response.bodyBytes;
+        return resourceFileCache.readBytes(
+          uri,
+          kind: _document?.assets.isMediaUri(uri) == true
+              ? ResourceFileKind.media
+              : ResourceFileKind.renderResource,
+        );
       })
       .catchError((Object error) {
         _bytes.remove(uri.toString());
@@ -562,6 +560,8 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
             _preparationIndexCommands = total;
           });
         });
+        if (!mounted || epoch != _epoch) return;
+        await _player!.prepareInitialMedia();
         if (!mounted || epoch != _epoch) return;
         await _player!.setSpeed(_preferences!.speed);
         if (mounted && epoch == _epoch) {

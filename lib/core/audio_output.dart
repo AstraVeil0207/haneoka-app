@@ -11,9 +11,14 @@ import 'media_kit_transport.dart';
 /// the desktop's optional GStreamer codecs. Other platforms retain their
 /// native audio focus and speech content type.
 class AudioOutput {
-  AudioOutput() {
+  AudioOutput({bool pollPosition = true}) {
     MediaLifecycle.requireOpen();
-    if (!_usesMedia) _audio = AudioPlayer();
+    if (!_usesMedia) {
+      final player = _audio = AudioPlayer();
+      player.positionUpdater = pollPosition
+          ? FramePositionUpdater(getPosition: samplePosition)
+          : null;
+    }
     MediaLifecycle.register(this, dispose);
   }
 
@@ -100,7 +105,21 @@ class AudioOutput {
       : 'audioplayers.getCurrentPosition';
   bool get completed => _mediaReady && _media!.state.completed;
 
-  Future<Duration?> samplePosition() => _track(_samplePosition());
+  Future<Duration?>? _positionSample;
+  int _positionSampleGeneration = -1;
+  Future<Duration?> samplePosition() {
+    final previous = _positionSample;
+    if (previous != null && _positionSampleGeneration == _generation) {
+      return previous;
+    }
+    late final Future<Duration?> pending;
+    pending = _track(_samplePosition()).whenComplete(() {
+      if (identical(_positionSample, pending)) _positionSample = null;
+    });
+    _positionSampleGeneration = _generation;
+    return _positionSample = pending;
+  }
+
   Future<Duration?> _samplePosition() async {
     if (_disposed) {
       return null;

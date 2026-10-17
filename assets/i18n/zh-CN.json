@@ -4449,7 +4449,9 @@
       "clearAll": "清空所有缓存",
       "cleared": "已释放 {size}",
       "unlimited": "不限大小",
-      "noLimit": "不限大小时，不执行容量清理。"
+      "noLimit": "不限大小时，不执行容量清理。",
+      "media": "音视频缓存",
+      "resources": "播放器资源缓存"
     },
     "distribution": {
       "title": "安装包与安装指南",
