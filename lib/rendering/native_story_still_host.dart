@@ -1,5 +1,8 @@
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
-    show haneokaShaderBundle, loadHaneokaProfileAsset;
+    show
+        haneokaShaderBundle,
+        loadHaneokaProfileAsset,
+        loadHaneokaProfileTexture;
 
 import 'dart:async';
 import 'dart:ui' as ui;
@@ -390,6 +393,7 @@ final class NativeStoryStillHost {
         programs: haneokaShaderPrograms,
       ),
       fetch: fetch,
+      textureDataFetch: loadHaneokaProfileTexture,
     );
     try {
       await session.open(

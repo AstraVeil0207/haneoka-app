@@ -4,6 +4,7 @@ import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.da
         haneokaProfileAssetRoot,
         haneokaShaderBundle,
         loadHaneokaProfileAsset,
+        loadHaneokaProfileTexture,
         loadHaneokaProfileString;
 
 import 'dart:convert';
@@ -120,7 +121,7 @@ final class NativeChartPlayback extends ChangeNotifier {
       _introPreparedLocale = locale;
       return;
     }
-    if (selected != null && _introProjector != null) {
+    if (selected != null && _introProjector != null && _introPresenting) {
       await _prepareIntroTextures(
         selected,
         () => !_disposed && generation == _generation && session == owner,
@@ -213,6 +214,37 @@ final class NativeChartPlayback extends ChangeNotifier {
       await sounds.close();
       rethrow;
     }
+  }
+
+  Future<void> _retireIntroTextures(
+    CassiopeiaRenderSession owner,
+    RenderScene resources,
+  ) async {
+    if (_introPresenting || _introTexturePaths.isEmpty) return;
+    final paths = _introTexturePaths;
+    final bound = {
+      for (final material in resources.materials.values)
+        ...material.textures.values,
+    };
+    final retired = _introTexturePaths.keys
+        .where((key) => !bound.contains(key))
+        .toSet();
+    if (retired.isEmpty) return;
+    await owner.releaseTextures(retired);
+    if (_disposed ||
+        !identical(owner, session) ||
+        !identical(paths, _introTexturePaths)) {
+      return;
+    }
+    _introTexturePaths = {
+      for (final entry in _introTexturePaths.entries)
+        if (!retired.contains(entry.key)) entry.key: entry.value,
+    };
+    _introDataTextures = {
+      for (final entry in _introDataTextures.entries)
+        if (!retired.contains(entry.key)) entry.key: entry.value,
+    };
+    _introResources.releaseDecodedPixels();
   }
 
   void _queueIntroHandoff(int generation) {
@@ -769,6 +801,7 @@ final class NativeChartPlayback extends ChangeNotifier {
           programs: haneokaShaderPrograms,
         ),
         fetch: fetch,
+        textureDataFetch: loadHaneokaProfileTexture,
       );
       pendingSession = current;
       await current.open(
@@ -1155,6 +1188,8 @@ final class NativeChartPlayback extends ChangeNotifier {
             sameAudio(),
       );
       if (_disposed || generation != _generation || intent != _intent) return;
+      await _retireIntroTextures(current, resources);
+      if (_disposed || generation != _generation || intent != _intent) return;
       if (observation != null) {
         _deliverFeedback(
           observation.value,
@@ -1190,7 +1225,7 @@ final class NativeChartPlayback extends ChangeNotifier {
       if (const bool.fromEnvironment('HANEOKA_NATIVE_TRACE') &&
           _frames % 60 == 0) {
         debugPrint(
-          'HANEOKA_NATIVE_FRAME source=${document!.key} audioUs=$mediaUs frames=$_frames resources=$resources fx=${_effects?.diagnostic}',
+          'HANEOKA_NATIVE_FRAME source=${document!.key} audioUs=$mediaUs frames=$_frames resources=${this.resources} fx=${_effects?.diagnostic}',
         );
       }
     } catch (exception, stack) {
@@ -1503,6 +1538,8 @@ final class NativeChartPlayback extends ChangeNotifier {
           'actualAudioFrameUs': frameUs,
           'renderedFrames': count,
           'resources': stats,
+          'textureResources': current.renderer.textureResources,
+          'targetResources': current.renderer.targetResources,
           'viewport': [image.width, image.height],
           'unsupported': unsupported,
           'boundaryReadbacks': false,

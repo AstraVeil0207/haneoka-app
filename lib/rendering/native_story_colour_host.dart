@@ -1,5 +1,8 @@
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
-    show haneokaShaderBundle, loadHaneokaProfileAsset;
+    show
+        haneokaShaderBundle,
+        loadHaneokaProfileAsset,
+        loadHaneokaProfileTexture;
 
 import 'dart:ui' as ui;
 
@@ -122,6 +125,7 @@ final class NativeStoryColourHost {
             programs: haneokaShaderPrograms,
           ),
           fetch: verifiedFetch,
+          textureDataFetch: loadHaneokaProfileTexture,
         );
         try {
           await session.open(
@@ -197,6 +201,9 @@ final class NativeStoryColourHost {
     'workingTargets': _last?.scene.targets.length,
     'viewport': [_width, _height],
     'pendingTextures': _pendingTextures.length,
+    'resources': _session?.renderer.resourceCounts,
+    'textureResources': _session?.renderer.textureResources,
+    'targetResources': _session?.renderer.targetResources,
   };
   Future<void> dispose() async {
     if (_disposed) return;

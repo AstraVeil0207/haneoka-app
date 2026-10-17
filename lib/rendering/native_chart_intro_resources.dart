@@ -30,6 +30,7 @@ final class NativeChartIntroResources {
   ) as Map).cast<String, Object?>();
 
   Future<SourceSdfFontBank> _loadFonts(Map<String, Object?> packet) async {
+    final profile = await HaneokaProfileAssets.open();
     final fonts = <SourceFontData>[];
     for (final entry in (packet['fontMetadata'] as Map).entries) {
       final descriptor = entry.value as Map,
@@ -47,6 +48,9 @@ final class NativeChartIntroResources {
         SourceFontData.fromJson(
           (jsonDecode(utf8.decode(bytes)) as Map).cast<String, Object?>(),
           sourceHash: hash,
+          coverageChannel: profile.fontCoverageChannel(
+            (descriptor['atlases'] as List).cast<String>(),
+          ),
           glyphPairs: descriptor['pairs'] as List?,
           actualAtlasAssetKeys: [
             for (
@@ -115,6 +119,17 @@ final class NativeChartIntroResources {
         for (final entry in group.value.entries)
           entry.key: resolve(entry.value, selected).toString(),
       };
+      for (final uri in uris.values.toSet()) {
+        if (_pixels.containsKey((uri, group.key))) continue;
+        final numeric = await loadHaneokaProfileTexture(Uri.parse(uri));
+        if (_disposed || !current()) {
+          return (
+            paths: <String, String>{},
+            data: <String, NativeTextureData>{},
+          );
+        }
+        if (numeric != null) _pixels[(uri, group.key)] = numeric;
+      }
       final missing = uris.values
           .where((uri) => !_pixels.containsKey((uri, group.key)))
           .toSet()
@@ -147,6 +162,8 @@ final class NativeChartIntroResources {
     }
     return (paths: paths, data: result);
   }
+
+  void releaseDecodedPixels() => _pixels.clear();
 
   void dispose() {
     _disposed = true;

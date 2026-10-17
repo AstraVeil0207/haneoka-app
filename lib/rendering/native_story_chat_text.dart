@@ -27,8 +27,7 @@ final class NativeStoryChatText {
     StoryFontData font,
   ) {
     final authored = storyChatTextData(request.component).materialName;
-    final exact = '${font.id}:$authored';
-    final key = ui.materials.containsKey(exact) ? exact : '${font.id}-default';
+    final key = ui.localizedMaterialKey(font, authored) ?? '${font.id}-default';
     return _materials.putIfAbsent(key, () {
       final raw = ui.materials[key];
       if (raw is! Map) throw FormatException('story_chat_font_material:$key');
@@ -36,8 +35,8 @@ final class NativeStoryChatText {
         Map<String, Object?>.from(raw),
         actualFont: font,
         sourceMaterialKey: key,
-        sourcePath: '${NativeStoryUiSource.base}fonts/materials.json',
-        sourceHash: ui.sourceHashes['fonts/materials.json']!,
+        sourcePath: ui.materialSourcePath(key),
+        sourceHash: ui.materialSourceHash(key),
       );
     });
   }
@@ -139,7 +138,10 @@ final class NativeStoryChatText {
       materials[key] = NativeMaterial(
         texture: first.atlasAsset,
         recipe: NativeMaterialRecipe.sdfText,
-        textureAlpha: NativeTextureAlpha.premultiplied,
+        coverageChannel: font.coverageChannel,
+        textureAlpha: font.coverageChannel == TextureChannel.red
+            ? NativeTextureAlpha.independent
+            : NativeTextureAlpha.premultiplied,
         uniformFloats: nativeStorySdfUniforms(
           material,
           glyphScale: first.glyphScale!,

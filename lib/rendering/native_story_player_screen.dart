@@ -3,6 +3,7 @@ import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.da
         haneokaProfileAssetRoot,
         haneokaShaderBundle,
         loadHaneokaProfileAsset,
+        loadHaneokaProfileTexture,
         loadHaneokaProfileString;
 
 import 'dart:async';
@@ -568,6 +569,10 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
             _preparing = false;
             _preparingIndex = false;
           });
+          if (const bool.fromEnvironment('HANEOKA_NATIVE_STORY_AUTOPLAY')) {
+            _player!.setAutoPlayback(true);
+            _start();
+          }
         }
       });
       unawaited(
@@ -738,6 +743,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
           programs: haneokaShaderPrograms,
         ),
         fetch: _fetch,
+        textureDataFetch: loadHaneokaProfileTexture,
       );
       await session.open(
         handwrittenShaderBundle: await loadHaneokaProfileAsset(
@@ -2887,6 +2893,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
           'HANEOKA_NATIVE_STORY_FRAME source=${_document!.chapter.sourceIdentity.document} '
           'storyUs=${player.storyUs} update=$_update textIndex=$_textIndex '
           'visible=${_text?.visibleLength} glyphs=${_uiFrame?.talk.renderedGlyphCount} '
+          'resources=${_colourHost?.observation['resources'] ?? _uiSession?.renderer.resourceCounts} '
           'media=${await player.media.sample()} unsupported=$_unsupportedVisual',
         );
       }
@@ -3022,11 +3029,22 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
         'frame': _frameHost?.observation,
         'chat': _chat?.snapshotData(),
         'colourScene': _colourHost?.observation,
+        'uiTextureResources': _uiSession?.renderer.textureResources,
+        'uiTargetResources': _uiSession?.renderer.targetResources,
         'commandObservations': player.commandObservations,
         'completePlayer': false,
         'physicalTapEvidence': false,
       };
-      await File('$exportPath.json').writeAsString(jsonEncode(receipt));
+      await File('$exportPath.json').writeAsString(
+        jsonEncode(
+          receipt,
+          toEncodable: (value) => value is Map
+              ? value.map((key, entry) => MapEntry(key.toString(), entry))
+              : throw UnsupportedError(
+                  'story_export_value:${value.runtimeType}',
+                ),
+        ),
+      );
       debugPrint('HANEOKA_NATIVE_STORY_EXPORT $receipt');
       return true;
     } finally {

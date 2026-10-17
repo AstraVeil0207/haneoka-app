@@ -347,8 +347,9 @@ NativeStoryUiSnapshot buildNativeStoryUiFrame({
           : node.path == speakerPath
           ? 'outline'
           : 'default';
-      final exact = '${font.id}:${node.text!.materialName}';
-      final key = ui.materials.containsKey(exact) ? exact : '${font.id}-$role';
+      final key =
+          ui.localizedMaterialKey(font, node.text!.materialName) ??
+          '${font.id}-$role';
       final originalRaw = ui.materials[key];
       var raw = originalRaw;
       if (raw is! Map) {
@@ -368,8 +369,8 @@ NativeStoryUiSnapshot buildNativeStoryUiFrame({
         Map<String, Object?>.from(raw),
         actualFont: font,
         sourceMaterialKey: key,
-        sourcePath: '${NativeStoryUiSource.base}fonts/materials.json',
-        sourceHash: ui.sourceHashes['fonts/materials.json']!,
+        sourcePath: ui.materialSourcePath(key),
+        sourceHash: ui.materialSourceHash(key),
       );
     });
   }
@@ -743,7 +744,10 @@ NativeStoryUiSnapshot buildNativeStoryUiFrame({
       materials[key] = NativeMaterial(
         texture: firstGlyph.atlasAsset,
         recipe: NativeMaterialRecipe.sdfText,
-        textureAlpha: NativeTextureAlpha.premultiplied,
+        coverageChannel: font.coverageChannel,
+        textureAlpha: font.coverageChannel == TextureChannel.red
+            ? NativeTextureAlpha.independent
+            : NativeTextureAlpha.premultiplied,
         uniformFloats: nativeStorySdfUniforms(
           packet,
           glyphScale: firstGlyph.glyphScale!,

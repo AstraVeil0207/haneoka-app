@@ -31,6 +31,7 @@ final class NativeStoryUiSource {
     this.frontFontPresets,
     this.frontScene,
     this.frontLayout,
+    this.localizedFontMaterials,
     Map<String, bool> textExtraPadding,
   ) : _textExtraPadding = Map.unmodifiable(textExtraPadding);
   static const sourceId = 'v25-c0b6a1541e45-3a5d2eec9935-n653c6392';
@@ -48,6 +49,7 @@ final class NativeStoryUiSource {
   final NativeStoryFrontUiSource front;
   final StoryUiSceneData frontScene;
   final NativeStoryUiLayoutWindow frontLayout;
+  final Map<String, Object?> localizedFontMaterials;
   final Map<String, NativeStoryFontMaterialBindings> frontFontPresets;
   final Map<String, bool> _textExtraPadding;
 
@@ -73,9 +75,8 @@ final class NativeStoryUiSource {
         'native_story_ui_source:${source.server}:${source.sourceId}',
       );
     }
-    final hashes = <String, String>{
-      'profile-manifest': (await HaneokaProfileAssets.open()).manifestSHA256,
-    };
+    final profile = await HaneokaProfileAssets.open();
+    final hashes = <String, String>{'profile-manifest': profile.manifestSHA256};
     Future<Map<String, Object?>> read(String path) async {
       final ByteData data = await loadHaneokaProfileAsset('$base$path');
       final bytes = data.buffer.asUint8List(
@@ -105,12 +106,31 @@ final class NativeStoryUiSource {
       fontData[name] = StoryFontData.fromJson(
         raw,
         sourceHash: hashes[path]!,
+        coverageChannel: profile.fontCoverageChannel([
+          for (final atlas in atlases) '${base}fonts/$atlas',
+        ]),
         actualAtlasAssetKeys: [
           for (final atlas in atlases) '${base}fonts/$atlas',
         ],
       );
     }
     final materials = await read('fonts/materials.json');
+    final localizedFontMaterials = await read(
+      'source-bindings/localized-font-materials.json',
+    );
+    if (localizedFontMaterials['schema'] !=
+        'haneoka-localized-font-materials-v1') {
+      throw const FormatException('native_localized_font_material_schema');
+    }
+    for (final entry in (localizedFontMaterials['sources'] as Map).entries) {
+      if ((entry.value as Map)['compactSHA256'] !=
+          fontData[entry.key]?.sourceHash) {
+        throw const FormatException('native_localized_font_material_binding');
+      }
+    }
+    materials.addAll(
+      Map<String, Object?>.from(localizedFontMaterials['materials'] as Map),
+    );
     final bindings = await read('source-bindings/text-components.json');
     final typing = await read('source-bindings/typing.json');
     final linebreak = await read('source-bindings/linebreak.json');
@@ -272,6 +292,7 @@ final class NativeStoryUiSource {
       frontFontPresets,
       frontScene,
       frontLayout,
+      Map.unmodifiable(localizedFontMaterials),
       textPadding,
     );
   }
@@ -352,17 +373,34 @@ final class NativeStoryUiSource {
     StoryFontData font,
     String sourceMaterialName,
   ) {
-    final key = '${font.id}:$sourceMaterialName';
+    final key = localizedMaterialKey(font, sourceMaterialName);
     final value = materials[key];
-    if (value is! Map) {
+    if (key == null || value is! Map) {
       throw UnsupportedError('native_story_source_font_material:$key');
     }
     return StorySdfMaterialData.fromRaw(
       Map<String, Object?>.from(value),
       actualFont: font,
       sourceMaterialKey: key,
-      sourcePath: '${base}fonts/materials.json',
-      sourceHash: sourceHashes['fonts/materials.json']!,
+      sourcePath: materialSourcePath(key),
+      sourceHash: materialSourceHash(key),
     );
   }
+
+  String? localizedMaterialKey(StoryFontData font, String sourceName) {
+    final exact = '${font.id}:$sourceName';
+    if (materials.containsKey(exact)) return exact;
+    final selected =
+        ((localizedFontMaterials['presets'] as Map)[sourceName]
+            as Map?)?[font.id];
+    return selected is String ? selected : null;
+  }
+
+  String _materialSource(String key) =>
+      (localizedFontMaterials['materials'] as Map).containsKey(key)
+      ? 'source-bindings/localized-font-materials.json'
+      : 'fonts/materials.json';
+
+  String materialSourcePath(String key) => '$base${_materialSource(key)}';
+  String materialSourceHash(String key) => sourceHashes[_materialSource(key)]!;
 }

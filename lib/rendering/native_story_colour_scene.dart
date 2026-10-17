@@ -328,6 +328,7 @@ NativeStoryColourScene composeStoryColour({
         materials['$prefix${draw.material}'] = NativeMaterial(
           texture: auxiliaryTexture(material.texture),
           recipe: material.recipe,
+          coverageChannel: material.coverageChannel,
           blend: material.blend,
           textureAlpha: material.textureAlpha,
           uniformFloats: material.uniformFloats,
@@ -436,6 +437,7 @@ NativeStoryColourScene composeStoryColour({
       materials['$prefix${draw.material}'] = NativeMaterial(
         texture: texture(material.texture),
         recipe: material.recipe,
+        coverageChannel: material.coverageChannel,
         blend: material.blend,
         textureAlpha: material.textureAlpha,
         depthTest: material.depthTest,

@@ -478,7 +478,10 @@ NativeStoryFrontUiSnapshot buildNativeStoryFrontUiFrame({
       materials[key] = NativeMaterial(
         texture: q.atlasAsset,
         recipe: NativeMaterialRecipe.sdfText,
-        textureAlpha: NativeTextureAlpha.premultiplied,
+        coverageChannel: font.coverageChannel,
+        textureAlpha: font.coverageChannel == TextureChannel.red
+            ? NativeTextureAlpha.independent
+            : NativeTextureAlpha.premultiplied,
         uniformFloats: nativeStorySdfUniforms(
           packet,
           glyphScale: q.glyphScale!,
