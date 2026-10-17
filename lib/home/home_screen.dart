@@ -274,13 +274,19 @@ class _HomeScreenState extends State<HomeScreen> {
     ].take(8).toList();
   }
 
+  Object? _dataKey;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _data ??= _load();
-    _announcements ??= _loadNews();
+    final key = AppScope.of(context).publicDataKey;
+    if (_dataKey != key) {
+      _dataKey = key;
+      _data = _load();
+      _announcements = _loadNews();
+      _fanInfo = _loadFanInfo();
+    }
     _community ??= _loadCommunity();
-    _fanInfo ??= _loadFanInfo();
   }
 
   Future<_HomeData> _load() async {

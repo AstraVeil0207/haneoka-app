@@ -1,43 +1,59 @@
 import 'dart:convert';
 import 'dart:isolate';
+import 'dart:typed_data';
 
-import 'net.dart';
-import 'api.dart';
+import 'document_cache.dart';
 
-/// Data the website builds into a page (`serializePageData`): the calendar,
-/// the skill catalogue. The app reads the same published document, so both
-/// show one build of the data.
+const _pageOrigin = String.fromEnvironment(
+  'HANEOKA_API_ORIGIN',
+  defaultValue: 'https://haneoka.org',
+);
+final _pageKeys = <PublicDocumentKey>{};
+
+Stream<PublicDocumentChange> get publicPageDataChanges => publicDocumentCache
+    .changes
+    .where((change) => _pageKeys.contains(change.key));
+
+Future<Map<String, Object?>> _decodePage(
+  Uint8List bytes,
+  String scriptId,
+  bool attribute,
+) => Isolate.run(() {
+  final html = utf8.decode(bytes);
+  final selector = attribute
+      ? '\\s${RegExp.escape(scriptId)}(?=[\\s=>])'
+      : '\\sid=["\x27]${RegExp.escape(scriptId)}["\x27]';
+  final match = RegExp(
+    '<script[^>]*$selector[^>]*>([\\s\\S]*?)</script>',
+    caseSensitive: false,
+  ).firstMatch(html);
+  if (match == null) throw const FormatException('page data');
+  return (jsonDecode(match[1]!) as Map).cast<String, Object?>();
+});
+
+/// Generated pages and their decoded payloads share the public document cache.
 Future<Map<String, Object?>> pageData(
   String path,
   String scriptId, {
   bool attribute = false,
-}) async {
-  final response = await netClient
-      .get(Uri.parse('https://haneoka.org$path'))
-      .timeout(const Duration(seconds: 30));
-  if (response.statusCode != 200) {
-    throw StateError('HTTP ${response.statusCode}');
+}) {
+  final uri = Uri.parse(_pageOrigin).resolve(path);
+  final key = PublicDocumentKey(
+    uri: uri,
+    server: uri.pathSegments.firstOrNull ?? '',
+  );
+  _pageKeys.remove(key);
+  _pageKeys.add(key);
+  while (_pageKeys.length > 128) {
+    _pageKeys.remove(_pageKeys.first);
   }
-  final bytes = response.bodyBytes;
-  return Isolate.run(() {
-    final html = utf8.decode(bytes);
-    final selector = attribute
-        ? '\\s${RegExp.escape(scriptId)}(?=[\\s=>])'
-        : '\\sid=["\x27]${RegExp.escape(scriptId)}["\x27]';
-    final match = RegExp(
-      '<script[^>]*$selector[^>]*>([\\s\\S]*?)</script>',
-      caseSensitive: false,
-    ).firstMatch(html);
-    if (match == null) throw const FormatException('page data');
-    return (jsonDecode(match[1]!) as Map).cast<String, Object?>();
-  });
+  return publicDocumentCache.read<Map<String, Object?>>(
+    key: key,
+    decodeVariant: 'page.v1.$attribute.$scriptId',
+    decode: (bytes) => _decodePage(bytes, scriptId, attribute),
+  );
 }
 
-final _entityPages = <String, Future<Map<String, Object?>>>{};
-
-/// The payload an entity page is built from (`catalog-page-{resource}-{id}`):
-/// the entity, the marks and game items it shows, and `aux` with its
-/// progression and resolved associations. Null when the page does not exist.
 Future<Map<String, Object?>?> entityPage(
   String server,
   String locale,
@@ -46,9 +62,8 @@ Future<Map<String, Object?>?> entityPage(
 ) {
   final kind = resource == 'cards' ? 'member-cards' : resource;
   final path = '/$server/$locale/$kind/${Uri.encodeComponent(id)}/';
-  return cachedResource(
-    _entityPages,
+  return pageData(
     path,
-    () => pageData(path, 'catalog-page-$resource-$id'),
+    'catalog-page-$resource-$id',
   ).then<Map<String, Object?>?>((value) => value, onError: (_) => null);
 }

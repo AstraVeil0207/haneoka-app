@@ -212,10 +212,16 @@ class _StoriesScreenState extends State<StoriesScreen> {
         .contains(query);
   }
 
+  Object? _dataKey;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _data ??= _load();
+    final key = AppScope.of(context).publicDataKey;
+    if (_dataKey != key) {
+      _dataKey = key;
+      _data = _load();
+    }
   }
 
   Future<_StoryData> _load() async {
@@ -1481,11 +1487,17 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
 
   Future<(Map, CatalogVisuals)>? _data;
 
+  Object? _dataKey;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final api = widget.api ?? AppScope.of(context).api;
-    _data ??= _load(api);
+    final state = AppScope.of(context);
+    final api = widget.api ?? state.api;
+    if (_dataKey != state.publicDataKey) {
+      _dataKey = state.publicDataKey;
+      _data = _load(api);
+    }
   }
 
   Future<(Map, CatalogVisuals)> _load(HaneokaApi api) async {

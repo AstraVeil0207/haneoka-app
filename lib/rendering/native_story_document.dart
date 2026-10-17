@@ -1,10 +1,20 @@
 import 'dart:convert';
+import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:vega_plugin_haneoka/vega_plugin_haneoka.dart';
 
 import '../core/api.dart';
-import '../core/net.dart';
+import '../core/document_cache.dart';
+
+Future<(Map<String, Object?>, String)> _decodeStoryInput(Uint8List bytes) =>
+    Isolate.run(
+      () => (
+        (jsonDecode(utf8.decode(bytes)) as Map).cast<String, Object?>(),
+        sha256.convert(bytes).toString(),
+      ),
+    );
 
 /// A normal selected episode, pinned before any command or media dispatch.
 final class NativeStoryDocument {
@@ -20,6 +30,10 @@ final class NativeStoryDocument {
   final String runtimeHash;
 
   static Future<NativeStoryDocument> load(HaneokaApi api, String id) async {
+    await api.release();
+    if (api.sourceId == null || api.sourceId!.isEmpty) {
+      await api.revalidate();
+    }
     final release = await api.release();
     final sourceId = api.sourceId;
     if (release == 'offline' || sourceId == null || sourceId.isEmpty) {
@@ -31,34 +45,32 @@ final class NativeStoryDocument {
           '${Uri.encodeComponent(id)}',
         )
         .replace(queryParameters: {'release': release});
-    final response = await netClient.get(uri);
-    if (response.statusCode != 200) {
-      throw StateError('story_selected_entity_http:${response.statusCode}');
-    }
-    final bytes = response.bodyBytes;
-    final entity = Map<String, Object?>.from(
-      jsonDecode(utf8.decode(bytes)) as Map,
-    );
+    final runtimeUri = api
+        .asset('/api/v1/servers/${api.server}/story-runtime')
+        .replace(queryParameters: {'release': release});
+    Future<(Map<String, Object?>, String)> input(Uri uri) =>
+        publicDocumentCache.read<(Map<String, Object?>, String)>(
+          key: PublicDocumentKey(
+            uri: uri,
+            server: api.server,
+            releaseId: release,
+            sourceId: sourceId,
+          ),
+          decodeVariant: 'json.sha256.v1',
+          decode: _decodeStoryInput,
+          revalidateAfter: null,
+        );
+    final (selected, runtimeInput) = await (input(uri), input(runtimeUri)).wait;
+    final (entity, entityHash) = selected;
     final source = StorySourceIdentity(
       namespace: api.server,
       revision: release,
       resourceScope: sourceId,
       document: id,
-      contentIdentity: sha256.convert(bytes).toString(),
+      contentIdentity: entityHash,
     );
     final chapter = HaneokaStoryCatalogDecoder.decode(entity, source);
-    final runtimeUri = api
-        .asset('/api/v1/servers/${api.server}/story-runtime')
-        .replace(queryParameters: {'release': release});
-    final runtimeResponse = await netClient.get(runtimeUri);
-    if (runtimeResponse.statusCode != 200) {
-      throw StateError(
-        'story_actual_runtime_http:${runtimeResponse.statusCode}',
-      );
-    }
-    final runtime = Map<String, Object?>.unmodifiable(
-      jsonDecode(utf8.decode(runtimeResponse.bodyBytes)) as Map,
-    );
+    final runtime = Map<String, Object?>.unmodifiable(runtimeInput.$1);
     return NativeStoryDocument._(
       chapter,
       NativeStoryAssets(
@@ -68,7 +80,7 @@ final class NativeStoryDocument {
         commands: chapter.commands,
       ),
       runtime,
-      sha256.convert(runtimeResponse.bodyBytes).toString(),
+      runtimeInput.$2,
     );
   }
 }

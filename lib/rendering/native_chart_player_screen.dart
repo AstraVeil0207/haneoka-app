@@ -830,9 +830,7 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
         player?.session != null &&
         player?.loading == false;
     return ShellPage(
-      title: title.isEmpty
-          ? t('navigation.chartSimulator', 'Chart player')
-          : title,
+      title: title.isEmpty ? t('navigation.chart', 'Chart') : title,
       actions: [
         BarAction.choice(
           label: t('common.actions.view', 'View'),

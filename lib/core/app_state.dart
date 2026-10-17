@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart' show ThemeMode;
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,6 +8,7 @@ import 'api.dart';
 import 'audio.dart';
 import 'provider_api.dart';
 import 'i18n.dart';
+import 'page_data.dart';
 
 /// The reader's choices and what follows from them: release server, language,
 /// the API client and the site's text for that language.
@@ -19,26 +22,50 @@ class AppState extends ChangeNotifier {
       compact = _prefs.getBool('compact') ?? false,
       japaneseTitles = _prefs.getBool('japaneseTitles') ?? true,
       difficultyEstimates = _prefs.getBool('difficultyEstimates') ?? false,
-      spoilers = _prefs.getBool('spoilers') ?? false;
+      spoilers = _prefs.getBool('spoilers') ?? false {
+    _apis[server] = api;
+    api.addListener(_publicDataChanged);
+    _pageUpdates = publicPageDataChanges.listen((_) => _publicDataChanged());
+  }
   final SharedPreferences _prefs;
   String server;
   SiteText text;
   HaneokaApi api;
   late final AudioService audio = AudioService(_prefs);
   final _apis = <String, HaneokaApi>{};
+  late final StreamSubscription<Object?> _pageUpdates;
+  int _publicDataRevision = 0;
+  bool _dataChangeQueued = false, _disposed = false;
+
+  Object get publicDataKey => (server, text.locale, _publicDataRevision);
+
+  void _publicDataChanged() {
+    if (_disposed || _dataChangeQueued) return;
+    _dataChangeQueued = true;
+    scheduleMicrotask(() {
+      _dataChangeQueued = false;
+      if (_disposed) return;
+      _publicDataRevision++;
+      notifyListeners();
+    });
+  }
+
+  T _observe<T extends HaneokaApi>(T value) {
+    value.addListener(_publicDataChanged);
+    return value;
+  }
 
   /// The client for one release server; the selected one is [api].
   HaneokaApi apiFor(String value) =>
-      value == server ? api : _apis[value] ??= HaneokaApi(server: value);
+      _apis[value] ??= _observe(HaneokaApi(server: value));
 
   final _providers = <String, ProviderApi>{};
 
   /// GBP (`bestdori`) or Project Sekai (`sekai`) data in the reading
   /// language's region.
   ProviderApi providerApi(String provider) =>
-      _providers['$provider:${text.locale}'] ??= ProviderApi(
-        provider: provider,
-        locale: text.locale,
+      _providers['$provider:${text.locale}'] ??= _observe(
+        ProviderApi(provider: provider, locale: text.locale),
       );
 
   /// Both formal releases, for the cross-server catalogue.
@@ -118,7 +145,7 @@ class AppState extends ChangeNotifier {
 
   Future<void> setServer(String value) async {
     server = value;
-    api = HaneokaApi(server: value);
+    api = apiFor(value);
     await _prefs.setString('server', value);
     notifyListeners();
   }
@@ -127,6 +154,17 @@ class AppState extends ChangeNotifier {
     text = await SiteText.load(value);
     await _prefs.setString('locale', value);
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    unawaited(_pageUpdates.cancel());
+    for (final client in {..._apis.values, ..._providers.values}) {
+      client.removeListener(_publicDataChanged);
+      client.dispose();
+    }
+    super.dispose();
   }
 }
 

@@ -45,11 +45,14 @@ class _SongsScreenState extends State<SongsScreen> {
   List<Entry>? _sorted;
   List<Entry>? _source;
   int _metaSeen = 0;
+  Object? _dataKey;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_data == null) {
+    final key = AppScope.of(context).publicDataKey;
+    if (_dataKey != key) {
+      _dataKey = key;
       _data = _load();
       _loadMeta();
     }

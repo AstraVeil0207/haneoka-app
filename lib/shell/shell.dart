@@ -29,76 +29,14 @@ class AppShell extends StatefulWidget {
   State<AppShell> createState() => _AppShellState();
 }
 
-class _AddressPageRoute extends MaterialPageRoute<void> {
-  _AddressPageRoute({
-    required super.builder,
-    required super.settings,
-    this.restoringHistory = false,
-  });
-
-  final bool restoringHistory;
-  bool _returningToPrevious = false;
-
-  @override
-  void didChangeNext(Route<dynamic>? nextRoute) {
-    _returningToPrevious =
-        nextRoute is _AddressPageRoute && nextRoute.restoringHistory;
-    super.didChangeNext(nextRoute);
-  }
-
-  @override
-  Widget buildTransitions(
-    BuildContext context,
-    Animation<double> animation,
-    Animation<double> secondaryAnimation,
-    Widget child,
-  ) {
-    if (MediaQuery.disableAnimationsOf(context)) return child;
-    if (_returningToPrevious) {
-      return SlideTransition(
-        position: secondaryAnimation
-            .drive(CurveTween(curve: Curves.easeInOutCubic))
-            .drive(Tween(begin: Offset.zero, end: const Offset(1, 0))),
-        child: child,
-      );
-    }
-    if (restoringHistory) {
-      return SlideTransition(
-        position: animation
-            .drive(CurveTween(curve: Curves.easeInOutCubic))
-            .drive(Tween(begin: const Offset(-1, 0), end: Offset.zero)),
-        child: super.buildTransitions(
-          context,
-          const AlwaysStoppedAnimation(1),
-          secondaryAnimation,
-          child,
-        ),
-      );
-    }
-    return super.buildTransitions(
-      context,
-      animation,
-      secondaryAnimation,
-      child,
-    );
-  }
-}
-
 class _PageNavigationObserver extends NavigatorObserver {
   _PageNavigationObserver(this.onChange);
   final ValueChanged<String> onChange;
   final _routes = <Route<dynamic>>[];
   Route<dynamic>? _visibleRoute;
   Route<dynamic>? get current => _routes.lastOrNull;
-  Iterable<String> addressesFrom(Route<dynamic>? root) {
-    if (root == null) return const [];
-    final start = _routes.indexOf(root);
-    if (start < 0) return const [];
-    return _routes
-        .skip(start)
-        .map((route) => route.settings.name)
-        .whereType<String>();
-  }
+  List<PageRoute<dynamic>> get pages =>
+      _routes.whereType<PageRoute<dynamic>>().toList();
 
   void _changed() {
     playerOrientation.setActiveRoute(
@@ -157,8 +95,6 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late var _observer = _PageNavigationObserver(_routeChanged);
   bool _nestedCanPop = false;
   bool _drawerCollapsed = false;
-  final _routeHistory = <String>[];
-  Route<dynamic>? _rootRoute;
   bool _handlingBack = false;
   (String, String)? _dataKey;
   void _routeChanged(String value) {
@@ -241,36 +177,52 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     WidgetsBinding.instance.scheduleFrame();
   }
 
-  void _navigate(String route, {bool remember = true}) {
+  bool _isPlayerRoute(Route<dynamic> route) {
+    final uri = Uri.tryParse(route.settings.name ?? '');
+    return uri != null &&
+        (uri.path == '/chart-simulator' ||
+            uri.path == '/catalog/live2d' ||
+            uri.path == '/catalog/spine' ||
+            uri.queryParameters['view'] == 'play');
+  }
+
+  void _navigate(String route) {
     if (SchedulerBinding.instance.schedulerPhase ==
         SchedulerPhase.persistentCallbacks) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _navigate(route, remember: remember);
+        if (mounted) _navigate(route);
       });
       return;
     }
     if (route == '/catalog/stories') route = '/catalog/stories/band';
     _scaffold.currentState?.closeDrawer();
     if (route == _route) return;
-    if (remember) {
-      final addresses = _observer.addressesFrom(_rootRoute).toList();
-      for (final address in addresses.isEmpty ? [_route] : addresses) {
-        if (_routeHistory.lastOrNull != address) _routeHistory.add(address);
-      }
-      if (_routeHistory.length > 16) {
-        _routeHistory.removeRange(0, _routeHistory.length - 16);
-      }
-    }
+    final navigator = _pages.currentState;
+    if (navigator == null) return;
     final destination = route;
-    final page = _AddressPageRoute(
-      restoringHistory: !remember,
+    final page = MaterialPageRoute<void>(
       settings: RouteSettings(name: destination),
       builder: (_) =>
           screenFor(destination, navigate: _navigate) ??
           PendingScreen(label: destination),
     );
-    _rootRoute = page;
-    _pages.currentState?.pushAndRemoveUntil(page, (_) => false);
+    // Keep ordinary pages alive for Back. Leaving a player releases its GPU
+    // session and audio instead of retaining them behind the next page.
+    unawaited(
+      navigator.pushAndRemoveUntil(
+        page,
+        (previous) => previous is PageRoute && !_isPlayerRoute(previous),
+      ),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final retained = _observer.pages;
+      for (final previous in retained.take(
+        (retained.length - 16).clamp(0, retained.length),
+      )) {
+        if (!previous.isCurrent) navigator.removeRoute(previous);
+      }
+    });
   }
 
   Future<void> _back() async {
@@ -288,21 +240,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         _scaffold.currentState?.closeDrawer();
         return;
       }
-      // During a replacement animation Navigator briefly retains the outgoing
-      // route. It is not a detail level and must not be popped as one.
-      final atRoot =
-          _observer.current == _rootRoute &&
-          _rootRoute?.popDisposition != RoutePopDisposition.doNotPop;
-      final popped = atRoot
-          ? false
-          : await _pages.currentState?.maybePop() ?? false;
-      if (!popped && mounted) {
-        if (_routeHistory.isNotEmpty) {
-          _navigate(_routeHistory.removeLast(), remember: false);
-        } else if (_route != '/') {
-          _navigate('/', remember: false);
-        }
-      }
+      final popped = await _pages.currentState?.maybePop() ?? false;
+      if (!popped && mounted && _route != '/') _navigate('/');
     } finally {
       _handlingBack = false;
     }
@@ -363,19 +302,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         key: _pages,
         observers: [_observer],
         onGenerateRoute: (_) {
-          final route = _AddressPageRoute(
+          final route = MaterialPageRoute<void>(
             settings: RouteSettings(name: destinationRoute),
             builder: (_) =>
                 screenFor(destinationRoute, navigate: _navigate) ??
                 PendingScreen(label: destinationRoute),
           );
-          _rootRoute = route;
           return route;
         },
       ),
     );
     return PopScope<void>(
-      canPop: !_nestedCanPop && _routeHistory.isEmpty && _route == '/',
+      canPop: !_nestedCanPop && _route == '/',
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) unawaited(_back());
       },
@@ -399,7 +337,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           );
           final body = ShellScope(
             back: () => unawaited(_back()),
-            canGoBack: _routeHistory.isNotEmpty || _route != '/',
+            canGoBack: _nestedCanPop || _route != '/',
             compact: compact,
             openNavigation: () => _scaffold.currentState?.openDrawer(),
             navigate: _navigate,

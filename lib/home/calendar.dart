@@ -202,10 +202,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
   bool _agenda = false;
   Set<String> _categories = {...calendarFacets};
 
+  Object? _dataKey;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _data ??= _load();
+    final key = AppScope.of(context).publicDataKey;
+    if (_dataKey != key) {
+      _dataKey = key;
+      _data = _load();
+    }
   }
 
   /// The calendar the website publishes with its page (`loadCalendarData`).

@@ -49,10 +49,16 @@ class _CatalogScreenState extends State<CatalogScreen> {
   String? _railBand;
   List<Entry> _railItems = const [];
 
+  Object? _dataKey;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _data ??= _load();
+    final key = AppScope.of(context).publicDataKey;
+    if (_dataKey != key) {
+      _dataKey = key;
+      _data = _load();
+    }
   }
 
   Future<(List<Entry>, CatalogVisuals)> _load() async {

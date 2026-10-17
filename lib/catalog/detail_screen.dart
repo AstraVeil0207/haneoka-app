@@ -67,10 +67,16 @@ class _DetailScreenState extends State<DetailScreen> {
     if (mounted) setState(change);
   }
 
+  Object? _dataKey;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _data ??= _load();
+    final key = AppScope.of(context).publicDataKey;
+    if (_dataKey != key) {
+      _dataKey = key;
+      _data = _load();
+    }
   }
 
   Future<(Entry, CatalogVisuals, Entry?, Entry)> _load() async {
@@ -367,8 +373,8 @@ class _Page {
         RegExp(r'^\d{1,16}$').hasMatch(musicId)) {
       actions.add(
         BarAction(
-          icon: Symbols.play_circle_rounded,
-          label: t('navigation.chartSimulator', 'Chart player'),
+          icon: Symbols.sports_esports_rounded,
+          label: t('navigation.chart', 'Chart'),
           onPressed: () => Navigator.of(context).push(
             MaterialPageRoute<void>(
               settings: RouteSettings(
@@ -402,6 +408,11 @@ class _Page {
       actions.add(
         BarAction(
           icon: Symbols.sports_esports_rounded,
+          image: Image.asset(
+            'assets/settings/sonolus-icon.png',
+            width: 24,
+            height: 24,
+          ),
           label: 'Sonolus',
           onPressed: () => openLink(
             context,

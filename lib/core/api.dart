@@ -1,21 +1,37 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:isolate';
 
-import 'package:http/http.dart' as http;
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
+import 'package:flutter/foundation.dart';
 
+import 'document_cache.dart';
 import 'net.dart';
 import 'storage.dart';
 
-Future<Object?> _decodeResponse(List<int> bytes) =>
-    Isolate.run(() => jsonDecode(utf8.decode(bytes)));
+final class _ReleasePin {
+  const _ReleasePin(this.release, this.source);
+  factory _ReleasePin.fromJson(Object? value) {
+    if (value is! Map ||
+        value['releaseId'] is! String ||
+        (value['sourceId'] != null && value['sourceId'] is! String)) {
+      throw const FormatException('Release identity');
+    }
+    final map = value;
+    final release = map['releaseId'] as String;
+    if (!RegExp(r'^r-[A-Za-z0-9_-]+$').hasMatch(release)) {
+      throw const FormatException('Release identity');
+    }
+    return _ReleasePin(release, map['sourceId'] as String?);
+  }
+  final String release;
+  final String? source;
+  String get identity => '$release\u0000${source ?? ''}';
+  Map<String, Object?> toJson() => {'releaseId': release, 'sourceId': source};
+}
 
-/// Haneoka's public API, the same one the website reads. Responses are kept
-/// on disk per release, so a release's data is downloaded once and the app
-/// works offline with what it has seen.
-class HaneokaApi {
+/// Public API consumer over the same document store used by generated pages.
+/// Release changes are prepared before publishing one coherent new snapshot.
+class HaneokaApi extends ChangeNotifier {
   HaneokaApi({
     this.origin = const String.fromEnvironment(
       'HANEOKA_API_ORIGIN',
@@ -24,36 +40,82 @@ class HaneokaApi {
     required this.server,
   }) {
     _instances.add(WeakReference(this));
-    // The release pin is the first thing every page needs; ask at once.
-    release();
+    final reference = WeakReference(this);
+    _subscription = publicDocumentCache.changes.listen((change) {
+      reference.target?._documentChanged(change);
+    });
+    unawaited(release());
   }
-  final String origin;
 
-  /// `jp` or `intl`.
-  final String server;
-  http.Client get _client => netClient;
-  String? _releaseId, _sourceId;
-  String? get sourceId => _sourceId;
-  final Map<String, Future<Object?>> _inFlight = {};
+  final String origin, server;
+  _ReleasePin? _pin, _pendingPin;
+  Future<String>? _opening;
+  Future<void>? _promotion;
+  DateTime? _releaseRetryAt, _promotionRetryAt;
+  late final StreamSubscription<PublicDocumentChange> _subscription;
+  int _generation = CacheStorage.instance.generation;
+  int _epoch = 0, _revision = 0;
+  bool _disposed = false;
+  final _paths = <String>{};
+  final _keys = <String, PublicDocumentKey>{};
+
+  String? get sourceId => _pin?.source;
+  int get revision => _revision;
+  PublicDocumentKey get _identityKey => PublicDocumentKey(
+    uri: Uri.parse(origin)
+        .resolve('/api/v1/servers/$server/release?projection=identity'),
+    server: server,
+  );
 
   static final _instances = <WeakReference<HaneokaApi>>[];
   static final _resourceCaches = <Map<dynamic, dynamic>>{};
-  static void invalidateCaches() {
+  static final _releasePins = <String, String>{};
+
+  static void _clearResourceCaches() {
     for (final cache in _resourceCaches) {
       cache.clear();
     }
+  }
+
+  static void invalidateCaches() {
+    _clearResourceCaches();
+    publicDocumentCache.invalidate();
+    _releasePins.clear();
     _instances.removeWhere((reference) => reference.target == null);
     for (final reference in _instances) {
-      final api = reference.target;
-      if (api == null) continue;
-      api._releaseFuture = null;
-      api._releaseId = null;
-      api._sourceId = null;
-      api._releaseRetryAt = null;
+      reference.target?._reset();
     }
   }
 
-  static final _releasePins = <String, String>{};
+  void _reset() {
+    _generation = CacheStorage.instance.generation;
+    _epoch++;
+    _pin = _pendingPin = null;
+    _opening = null;
+    _promotion = null;
+    _releaseRetryAt = _promotionRetryAt = null;
+    _paths.clear();
+    _keys.clear();
+    _releasePins.remove('${Uri.parse(origin).origin}:$server');
+    _changed();
+  }
+
+  void _syncGeneration() {
+    if (_generation != CacheStorage.instance.generation) _reset();
+  }
+
+  void _changed() {
+    if (_disposed) return;
+    _clearResourceCaches();
+    _revision++;
+    notifyListeners();
+  }
+
+  void _setPin(_ReleasePin pin) {
+    _pin = pin;
+    _releasePins['${Uri.parse(origin).origin}:$server'] = pin.release;
+  }
+
   Uri asset(String path) {
     final uri = Uri.parse(origin).resolve(path);
     final parts = uri.pathSegments;
@@ -64,172 +126,237 @@ class HaneokaApi {
         uri.queryParameters.containsKey('release')) {
       return uri;
     }
-    final pin = _releasePins['$origin:${parts[1]}'];
-    if (pin == null || pin == 'offline') return uri;
+    final pin = _releasePins['${uri.origin}:${parts[1]}'];
+    if (pin == null) return uri;
     return uri.replace(
       queryParameters: {...uri.queryParameters, 'release': pin},
     );
   }
 
-  /// The release identity; data is cached under it so a new release refetches.
-  Future<String>? _releaseFuture;
-  DateTime? _releaseRetryAt;
-
+  /// Cached active identity is available without waiting for network freshness.
   Future<String> release() {
-    if (_releaseId == 'offline' &&
-        _releaseRetryAt != null &&
-        DateTime.now().isAfter(_releaseRetryAt!)) {
-      _releaseId = null;
-      _releaseFuture = null;
+    _syncGeneration();
+    if (_pin case final pin?) {
+      _checkIdentityLater();
+      return Future.value(pin.release);
     }
-    return _releaseFuture ??= _release();
+    if (_releaseRetryAt != null && DateTime.now().isAfter(_releaseRetryAt!)) {
+      _opening = null;
+    }
+    return _opening ??= _openPin();
   }
 
-  Future<String> _release() async {
-    if (_releaseId != null) return _releaseId!;
+  Future<String> _openPin() async {
+    final epoch = _epoch;
     try {
-      final body = await _get(
-        '/api/v1/servers/$server/release?projection=identity',
-      ) as Map<String, Object?>;
-      _releaseId = body['releaseId'] as String;
-      _sourceId = body['sourceId'] as String?;
-      _releasePins['$origin:$server'] = _releaseId!;
-      return _releaseId!;
+      final active = await readActiveApiPin(origin, server);
+      if (epoch != _epoch) return await release();
+      if (active != null) {
+        try {
+          _setPin(_ReleasePin.fromJson(active));
+          _checkIdentityLater();
+          return _pin!.release;
+        } on FormatException {
+          // Recover a usable identity from existing documents or the public API.
+        }
+      }
+      final oldRelease = await legacyApiRelease(origin, server);
+      if (epoch != _epoch) return await release();
+      if (oldRelease != null) {
+        _setPin(_ReleasePin(oldRelease, null));
+        _checkIdentityLater();
+        return oldRelease;
+      }
+      final pin = await _identity();
+      if (epoch != _epoch) return await release();
+      await writeActiveApiPin(origin, server, pin.toJson(), _generation);
+      if (epoch != _epoch) return await release();
+      _setPin(pin);
+      return pin.release;
     } on Exception {
+      if (epoch != _epoch) return await release();
       _releaseRetryAt = DateTime.now().add(const Duration(minutes: 1));
-      return _releaseId = 'offline';
+      return 'offline';
     }
   }
 
-  /// A catalogue resource (`songs`, `cards`, …) or one entity of it.
-  Future<Object?> catalog(String resource, [String? id]) async {
+  Future<_ReleasePin> _identity() => publicDocumentCache.read<_ReleasePin>(
+    key: _identityKey,
+    decodeVariant: 'api.release.identity.v1',
+    decode: (bytes) => _ReleasePin.fromJson(jsonDecode(utf8.decode(bytes))),
+  );
+
+  void _checkIdentityLater() {
+    if (_disposed) return;
+    unawaited(_identity().then(_adopt).catchError((Object _) {}));
+  }
+
+  Future<void> _adopt(_ReleasePin next) async {
+    if (_disposed || _pin?.identity == next.identity) return;
+    _pendingPin = next;
+    if (_promotion case final current?) {
+      await current;
+      if (_pendingPin != null && !_disposed) await _adopt(_pendingPin!);
+      return;
+    }
+    if (_promotionRetryAt?.isAfter(DateTime.now()) ?? false) {
+      return;
+    }
+    final epoch = _epoch;
+    late final Future<void> task;
+    task = _prepareSnapshot(epoch).whenComplete(() {
+      if (identical(_promotion, task)) _promotion = null;
+    });
+    _promotion = task;
+    await task;
+  }
+
+  Future<void> _prepareSnapshot(int epoch) async {
+    try {
+      while (_pendingPin != null) {
+        final next = _pendingPin!;
+        _pendingPin = null;
+        if (_pin?.identity == next.identity) continue;
+        final loaded = <String>{};
+        while (true) {
+          final missing = _paths
+              .where((path) => _isVersioned(path) && !loaded.contains(path))
+              .take(3)
+              .toList();
+          if (missing.isEmpty) break;
+          await Future.wait(missing.map((path) => _readAt(path, next)));
+          loaded.addAll(missing);
+          if (epoch != _epoch || _disposed) return;
+        }
+        if (epoch != _epoch || _disposed) return;
+        if (_pendingPin != null && _pendingPin!.identity != next.identity) {
+          continue;
+        }
+        await writeActiveApiPin(origin, server, next.toJson(), _generation);
+        if (epoch != _epoch || _disposed) return;
+        _setPin(next);
+        for (final path in _paths) {
+          _keys[path] = _key(path, next);
+        }
+        _promotionRetryAt = null;
+        _changed();
+      }
+    } on Exception {
+      _promotionRetryAt = DateTime.now().add(const Duration(minutes: 1));
+      // The active release and its decoded data remain available.
+    }
+  }
+
+  void _documentChanged(PublicDocumentChange change) {
+    if (_disposed) return;
+    _syncGeneration();
+    if (change.key == _identityKey) {
+      _checkIdentityLater();
+    } else if (_keys.values.contains(change.key)) {
+      _changed();
+    }
+  }
+
+  bool _isVersioned(String path) {
+    final uri = Uri.parse(origin).resolve(path);
+    return uri.origin == Uri.parse(origin).origin &&
+        (uri.path.startsWith('/api/v1/servers/$server/') ||
+            uri.path.startsWith('/runtime/$server/') ||
+            uri.path.startsWith('/assets/$server/'));
+  }
+
+  PublicDocumentKey _key(String path, _ReleasePin? pin) {
+    var uri = Uri.parse(origin).resolve(path);
+    final versioned = _isVersioned(path);
+    if (versioned && pin != null) {
+      uri = uri.replace(
+        queryParameters: {...uri.queryParameters, 'release': pin.release},
+      );
+    }
+    return PublicDocumentKey(
+      uri: uri,
+      server: server,
+      releaseId: versioned ? pin?.release : null,
+      sourceId: versioned ? pin?.source : null,
+    );
+  }
+
+  Future<Object?> _readAt(String path, _ReleasePin? pin) =>
+      publicDocumentCache.read<Object?>(
+        key: _key(path, pin),
+        decodeVariant: 'json.v1',
+        decode: decodePublicJson,
+        revalidateAfter: _isVersioned(path) ? null : const Duration(minutes: 5),
+      );
+
+  Future<Object?> json(String path) async {
+    _syncGeneration();
+    _paths.remove(path);
+    _paths.add(path);
+    while (_paths.length > 48) {
+      _keys.remove(_paths.first);
+      _paths.remove(_paths.first);
+    }
+    final epoch = _epoch;
+    if (_isVersioned(path)) {
+      await release();
+      if (_pin == null) throw const HttpException('Release is unavailable');
+    }
+    if (epoch != _epoch) return json(path);
+    final pin = _pin;
+    _keys[path] = _key(path, pin);
+    final value = await _readAt(path, pin);
+    if (epoch != _epoch ||
+        (_isVersioned(path) && pin?.identity != _pin?.identity)) {
+      return json(path);
+    }
+    return value;
+  }
+
+  Future<Object?> catalog(String resource, [String? id]) {
     final projection = id == null
         ? const {'songs': 4, 'ui-marks': 2}[resource]
         : null;
-    final path =
-        '/api/v1/servers/$server/$resource${id == null ? '' : '/${Uri.encodeComponent(id)}'}'
-        '${projection == null ? '' : '?projection=$projection'}';
-    return json(path);
-  }
-
-  /// Live data (game records), never cached.
-  Future<Object?> live(String path) async => (await _download(path)).$1;
-
-  /// Any API path, through the per-release cache.
-  Future<Object?> json(String path) =>
-      _inFlight[path] ??= _cached(path).whenComplete(() {
-        _inFlight.remove(path);
-      });
-
-  Future<Object?> _cached(String path) async {
-    final storage = CacheStorage.instance;
-    final requestGeneration = storage.generation;
-    final release = await this.release();
-    final dir = await getApplicationCacheDirectory();
-    final file = File(
-      p.join(
-        dir.path,
-        'api',
-        server,
-        release,
-        '${base64Url.encode(utf8.encode(path)).replaceAll('=', '')}.json',
-      ),
+    return json(
+      '/api/v1/servers/$server/$resource${id == null ? '' : '/${Uri.encodeComponent(id)}'}'
+      '${projection == null ? '' : '?projection=$projection'}',
     );
-    if (await file.exists() && storage.canRead(file.path)) {
-      try {
-        return await storage.protect([file.path], () => _decodeFile(file.path));
-      } on FormatException {
-        if (await file.exists()) await file.delete();
-      } on FileSystemException {
-        // Clearing a stale cache may race the initial existence check.
-      }
-    }
-    try {
-      final body = await _download(path);
-      final temporary = File(
-        '${file.path}.${DateTime.now().microsecondsSinceEpoch}.tmp',
-      );
-      try {
-        await storage.protect([file.path, temporary.path], () async {
-          if (!storage.permitWrite(requestGeneration, file.path)) return;
-          await file.parent.create(recursive: true);
-          await temporary.writeAsBytes(body.$2, flush: true);
-          if (storage.permitWrite(requestGeneration, file.path)) {
-            await temporary.rename(file.path);
-          }
-        });
-        storage.scheduleTrim();
-      } on FileSystemException {
-        // A full or read-only cache must not discard a downloaded document.
-      } finally {
-        try {
-          if (await temporary.exists()) await temporary.delete();
-        } on FileSystemException {
-          // The next cache cleanup can remove the unfinished temporary file.
-        }
-      }
-      return body.$1;
-    } on Exception {
-      final stale = await _latestStale(dir, path);
-      if (stale != null) return stale;
-      rethrow;
-    }
   }
 
-  /// The newest copy from an earlier release, for offline use.
-  Future<Object?> _latestStale(Directory dir, String path) async {
-    final root = Directory(p.join(dir.path, 'api', server));
-    if (!await root.exists()) return null;
-    final name =
-        '${base64Url.encode(utf8.encode(path)).replaceAll('=', '')}.json';
-    final candidates = <(File, DateTime)>[];
-    await for (final release in root.list()) {
-      if (release is! Directory) continue;
-      final file = File(p.join(release.path, name));
-      if (await file.exists()) {
-        candidates.add((file, await file.lastModified()));
-      }
-    }
-    candidates.sort((a, b) => b.$2.compareTo(a.$2));
-    for (final (file, _) in candidates) {
-      try {
-        if (!CacheStorage.instance.canRead(file.path)) continue;
-        return await CacheStorage.instance.protect([
-          file.path,
-        ], () => _decodeFile(file.path));
-      } on FormatException {
-        continue;
-      } on FileSystemException {
-        continue;
-      }
-    }
-    return null;
-  }
-
-  /// Large documents (the song list is half a megabyte) decode off the UI
-  /// thread; `Isolate.run` hands the result back without copying it.
-  static Future<Object?> _decodeFile(String path) =>
-      Isolate.run(() => jsonDecode(utf8.decode(File(path).readAsBytesSync())));
-
-  Future<(Object?, List<int>)> _download(String path) async {
-    final response = await _client
-        .get(Uri.parse('$origin$path'), headers: {'accept': 'application/json'})
+  /// Account/live records remain outside the public cache.
+  Future<Object?> live(String path) async {
+    final response = await netClient
+        .get(
+          Uri.parse(origin).resolve(path),
+          headers: {'accept': 'application/json'},
+        )
         .timeout(const Duration(seconds: 30));
     if (response.statusCode != 200) {
       throw HttpException('HTTP ${response.statusCode}', uri: Uri.parse(path));
     }
-    final bytes = response.bodyBytes;
-    return (await _decodeResponse(bytes), bytes);
+    return decodePublicJson(response.bodyBytes);
   }
 
-  Future<Object?> _get(String path) async {
-    final response = await _client
-        .get(Uri.parse('$origin$path'), headers: {'accept': 'application/json'})
-        .timeout(const Duration(seconds: 30));
-    if (response.statusCode != 200) {
-      throw HttpException('HTTP ${response.statusCode}', uri: Uri.parse(path));
+  /// Explicit refresh retains the visible snapshot until a replacement is ready.
+  Future<void> revalidate() async {
+    if (_pin != null || _paths.any(_isVersioned)) {
+      await publicDocumentCache.refresh(_identityKey);
+      _promotionRetryAt = null;
+      await _adopt(await _identity());
     }
-    return jsonDecode(utf8.decode(response.bodyBytes));
+    await Future.wait(
+      _paths
+          .where((path) => !_isVersioned(path))
+          .map((path) => publicDocumentCache.refresh(_key(path, null))),
+    );
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _epoch++;
+    unawaited(_subscription.cancel());
+    super.dispose();
   }
 }
 

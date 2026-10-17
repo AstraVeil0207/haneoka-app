@@ -495,7 +495,7 @@ class _ShellPageState extends State<ShellPage> {
         for (final action in hidden)
           if (action.options.isEmpty)
             MenuItemButton(
-              leadingIcon: Icon(action.icon),
+              leadingIcon: action.image ?? Icon(action.icon),
               trailingIcon: action.selected == true
                   ? const Icon(Symbols.check_rounded, size: 20)
                   : null,

@@ -52,7 +52,7 @@ class SkillsScreen extends StatefulWidget {
 class _SkillsScreenState extends State<SkillsScreen> {
   Future<Map<String, Object?>>? _data;
   bool _unlinked = false;
-  Object? _entrySource;
+  Object? _entrySource, _dataKey;
   List<Entry>? _all;
   List<Entry>? _shown;
 
@@ -60,10 +60,13 @@ class _SkillsScreenState extends State<SkillsScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final state = AppScope.of(context);
-    _data ??= pageData(
-      '/${state.server}/${state.text.locale}/skills/',
-      'skill-catalog-data',
-    );
+    if (_dataKey != state.publicDataKey) {
+      _dataKey = state.publicDataKey;
+      _data = pageData(
+        '/${state.server}/${state.text.locale}/skills/',
+        'skill-catalog-data',
+      );
+    }
   }
 
   @override
