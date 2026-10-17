@@ -12,6 +12,16 @@ val release = Properties().apply {
     rootProject.file("key.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
 
+val androidTargetAbis = mapOf("android-arm64" to "arm64-v8a", "android-x64" to "x86_64")
+val requestedAndroidTargets = project.findProperty("target-platform")?.toString()?.trim()
+val requestedAndroidAbis = if (requestedAndroidTargets.isNullOrEmpty()) {
+    androidTargetAbis.values.toList()
+} else {
+    requestedAndroidTargets.split(',').map { target ->
+        androidTargetAbis[target.trim()] ?: error("Unsupported Flutter Android target: $target")
+    }.distinct()
+}
+
 android {
     namespace = "org.haneoka.haneoka"
     compileSdk = flutter.compileSdkVersion
@@ -19,7 +29,7 @@ android {
 
     splits.abi {
         reset()
-        include("arm64-v8a", "x86_64")
+        include(*requestedAndroidAbis.toTypedArray())
     }
 
     compileOptions {
@@ -33,7 +43,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         if (project.findProperty("split-per-abi")?.toString()?.toBoolean() != true) {
             ndk.abiFilters.clear()
-            ndk.abiFilters.addAll(listOf("arm64-v8a", "x86_64"))
+            ndk.abiFilters.addAll(requestedAndroidAbis)
         }
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
@@ -84,7 +94,7 @@ val rustTriples = mapOf(
     "arm64-v8a" to ("aarch64-linux-android" to "aarch64-linux-android"),
     "x86_64" to ("x86_64-linux-android" to "x86_64-linux-android"),
 )
-val rustTasks = rustTriples.map { (abi, triple) ->
+val rustTasks = rustTriples.filterKeys { it in requestedAndroidAbis }.map { (abi, triple) ->
     tasks.register<Exec>("buildTeamEngine_${abi.replace('-', '_')}") {
         val source = rootProject.file("../native/team_engine")
         val target = rootProject.file("../build/rust-android")
