@@ -30,15 +30,15 @@ dependencies:
   render_kernel_flutter:
     git:
       url: https://github.com/haneoka-gakuen/render-kernel-flutter.git
-      ref: 235abdfab633a49acd7e78d81710bb7de9195d04
+      ref: b9c19fd2a3edf6d58d959e26ad3d28ee54dbbc2c
   vega_renderer_flutter:
     git:
       url: https://github.com/haneoka-gakuen/vega-renderer-flutter.git
-      ref: f744c37fcee90b085ad5f7a9da50c12c9eba19b1
+      ref: 6464568e7f1993d4764fe0d654488859f55d83c6
   cassiopeia_renderer_flutter:
     git:
       url: https://github.com/haneoka-gakuen/cassiopeia-renderer-flutter.git
-      ref: 4191e31a140ac935cb03bb3d32b36078dab76e4a
+      ref: f90784d5ea0c2b66206b7e0dfc454edec5c4b58c
   cassiopeia_runtime:
     git:
       url: https://github.com/haneoka-gakuen/cassiopeia.git
