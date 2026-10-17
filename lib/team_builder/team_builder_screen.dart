@@ -10,6 +10,7 @@ import '../account/haneoka_account.dart';
 import '../core/app_state.dart';
 import '../l10n/app_localizations.dart';
 import '../save/game_save.dart';
+import '../shell/links.dart';
 import '../shell/page.dart';
 import '../ui/labels.dart';
 import 'account_tab.dart';
@@ -203,6 +204,7 @@ class _TeamBuilderScreenState extends State<TeamBuilderScreen> {
               _Tab.teams => TeamsTab(controller: c),
             },
           ),
+          _Credit(controller: c),
         ],
       );
     }
@@ -239,6 +241,49 @@ class _TeamBuilderScreenState extends State<TeamBuilderScreen> {
                 ),
       ],
       body: body,
+    );
+  }
+}
+
+/// The engine's licence asks every interface showing its results to credit
+/// the algorithm and link to haneoka.org; its source is linked as well.
+class _Credit extends StatelessWidget {
+  const _Credit({required this.controller});
+  final TeamBuilderController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final style = theme.textTheme.labelSmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    Widget link(String label, String href) => InkWell(
+      onTap: () => openLink(context, href),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Text(
+          label,
+          style: style?.copyWith(decoration: TextDecoration.underline),
+        ),
+      ),
+    );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      child: Wrap(
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          Text(
+            '${controller.tb('credit', 'Team-building algorithm from Haneoka')} — ',
+            style: style,
+          ),
+          link('haneoka.org', 'https://haneoka.org'),
+          Text(' · ', style: style),
+          link(
+            controller.tb('creditSource', 'Source code'),
+            'https://github.com/haneoka-gakuen/ournotes-team-builder',
+          ),
+        ],
+      ),
     );
   }
 }
