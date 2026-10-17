@@ -1273,7 +1273,8 @@
       "playback": "播放控制",
       "morePlaybackControls": "更多播放控制",
       "tracks": "曲目",
-      "playAll": "全部播放"
+      "playAll": "全部播放",
+      "play": "播放"
     },
     "playback": {
       "fields": {
@@ -1375,7 +1376,14 @@
       "normalLive": "普通Live",
       "gekisouLive": "擊奏Live",
       "vibration": "震動",
-      "vibrationUnavailable": "此裝置不支援震動"
+      "vibrationUnavailable": "此裝置不支援震動",
+      "qualityOptions": {
+        "high": "高",
+        "middle": "中",
+        "low": "低"
+      },
+      "continuationEffects": "連擊特效",
+      "comboDisplay": "顯示連擊數"
     },
     "rendering": {
       "title": "畫質",

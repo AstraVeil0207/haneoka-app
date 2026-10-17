@@ -1273,7 +1273,8 @@
       "playback": "Playback",
       "morePlaybackControls": "More playback controls",
       "tracks": "Tracks",
-      "playAll": "Play all"
+      "playAll": "Play all",
+      "play": "Play"
     },
     "playback": {
       "fields": {
@@ -1375,7 +1376,14 @@
       "normalLive": "Normal Live",
       "gekisouLive": "Gekisou Live",
       "vibration": "Vibration",
-      "vibrationUnavailable": "Unavailable on this device"
+      "vibrationUnavailable": "Unavailable on this device",
+      "qualityOptions": {
+        "high": "High",
+        "middle": "Middle",
+        "low": "Low"
+      },
+      "continuationEffects": "Combo effects",
+      "comboDisplay": "Show combo count"
     },
     "rendering": {
       "title": "Graphics",

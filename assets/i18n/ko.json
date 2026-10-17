@@ -1273,7 +1273,8 @@
       "playback": "재생 제어",
       "morePlaybackControls": "추가 재생 제어",
       "tracks": "트랙",
-      "playAll": "모두 재생"
+      "playAll": "모두 재생",
+      "play": "재생"
     },
     "playback": {
       "fields": {
@@ -1375,7 +1376,14 @@
       "normalLive": "일반 라이브",
       "gekisouLive": "격주 라이브",
       "vibration": "진동",
-      "vibrationUnavailable": "이 기기에서는 사용할 수 없습니다"
+      "vibrationUnavailable": "이 기기에서는 사용할 수 없습니다",
+      "qualityOptions": {
+        "high": "높음",
+        "middle": "중간",
+        "low": "낮음"
+      },
+      "continuationEffects": "콤보 연출",
+      "comboDisplay": "콤보 수 표시"
     },
     "rendering": {
       "title": "그래픽",

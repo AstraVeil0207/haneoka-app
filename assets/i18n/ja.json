@@ -1273,7 +1273,8 @@
       "playback": "再生操作",
       "morePlaybackControls": "その他の再生操作",
       "tracks": "曲一覧",
-      "playAll": "すべて再生"
+      "playAll": "すべて再生",
+      "play": "再生"
     },
     "playback": {
       "fields": {
@@ -1375,7 +1376,14 @@
       "normalLive": "通常ライブ",
       "gekisouLive": "撃奏ライブ",
       "vibration": "振動",
-      "vibrationUnavailable": "このデバイスでは利用できません"
+      "vibrationUnavailable": "このデバイスでは利用できません",
+      "qualityOptions": {
+        "high": "高",
+        "middle": "中",
+        "low": "低"
+      },
+      "continuationEffects": "コンボ演出",
+      "comboDisplay": "コンボ数を表示"
     },
     "rendering": {
       "title": "画質",
