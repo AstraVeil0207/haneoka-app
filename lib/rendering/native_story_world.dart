@@ -1258,17 +1258,13 @@ final class NativeStoryWorld {
         document.runtime['allowCharacterBlur'] == true) {
       final position = command.payload['positionType'] as int? ?? 0;
       final slots = position > 0
-          ? {(position - 1) ~/ 2}
+          ? {if (position.isOdd) (position - 1) ~/ 2}
           : {
               for (final name in command.targets)
                 if (_actors[name] != null) _actors[name]!.slot,
             };
       for (final slot in slots) {
-        if (!_actors.values.any(
-          (actor) => actor.slot == slot && actor.model.visible,
-        )) {
-          continue;
-        }
+        if (slot < 0 || slot >= _scene!.projection.slotEuler.length) continue;
         final generation = (_blurGenerations[slot] ?? 0) + 1;
         _blurGenerations[slot] = generation;
         _cameraTweens.remove('blur:slot:$slot')?.finish();
