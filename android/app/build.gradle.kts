@@ -17,6 +17,11 @@ android {
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
+    splits.abi {
+        reset()
+        include("arm64-v8a", "x86_64")
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -26,6 +31,10 @@ android {
         applicationId = "org.haneoka.haneoka"
         minSdk = 26
         targetSdk = flutter.targetSdkVersion
+        if (project.findProperty("split-per-abi")?.toString()?.toBoolean() != true) {
+            ndk.abiFilters.clear()
+            ndk.abiFilters.addAll(listOf("arm64-v8a", "x86_64"))
+        }
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
         // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
