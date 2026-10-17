@@ -204,6 +204,10 @@ class AudioOutput {
         }
       }
     } else {
+      // Keep a completed source prepared for seek and page-owned looping.
+      // Explicit stop and disposal still release the native player.
+      await _audio!.setReleaseMode(ReleaseMode.stop);
+      if (_disposed || generation != _generation) return;
       await _audio!.setSource(source);
       if (!_disposed && generation == _generation && shouldPlay) {
         await _audio!.resume();
@@ -236,7 +240,7 @@ class AudioOutput {
     _interruptMediaLoad();
     ++_generation;
     _inputUri = null;
-    return _usesMedia ? _media?.stop() ?? Future.value() : _audio!.stop();
+    return _usesMedia ? _media?.stop() ?? Future.value() : _audio!.release();
   }
 
   Future<void> dispose() => _disposing ??= _dispose();
