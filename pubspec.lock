@@ -189,8 +189,8 @@ packages:
     dependency: "direct main"
     description:
       path: dart
-      ref: c4710df9c1c1c04b72330b4e6c0831ded2e189a5
-      resolved-ref: c4710df9c1c1c04b72330b4e6c0831ded2e189a5
+      ref: da2860c975d14fa33e6d501d4d21bf974679421d
+      resolved-ref: da2860c975d14fa33e6d501d4d21bf974679421d
       url: "https://github.com/haneoka-gakuen/cassiopeia-plugin-our-notes.git"
     source: git
     version: "0.1.0"
@@ -207,8 +207,8 @@ packages:
     dependency: "direct main"
     description:
       path: dart
-      ref: f51457fdee6cc0eeee9ebab486b0558c32c3b8bf
-      resolved-ref: f51457fdee6cc0eeee9ebab486b0558c32c3b8bf
+      ref: cda415ba147285e4cdc320bea1f53258432c3f11
+      resolved-ref: cda415ba147285e4cdc320bea1f53258432c3f11
       url: "https://github.com/haneoka-gakuen/cassiopeia.git"
     source: git
     version: "0.1.0"
@@ -1294,8 +1294,8 @@ packages:
     dependency: "direct main"
     description:
       path: dart
-      ref: d84ecfbf888083a15a442f34790b106a64b1aec6
-      resolved-ref: d84ecfbf888083a15a442f34790b106a64b1aec6
+      ref: c127e5cd21b9b90388f3487df8457dc2ce42964f
+      resolved-ref: c127e5cd21b9b90388f3487df8457dc2ce42964f
       url: "https://github.com/haneoka-gakuen/vega-plugin-haneoka.git"
     source: git
     version: "0.1.0"
@@ -1303,8 +1303,8 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/protocol/dart"
-      ref: "9959c66b0d2036c4a4cb2c9dd37dc698da9748fe"
-      resolved-ref: "9959c66b0d2036c4a4cb2c9dd37dc698da9748fe"
+      ref: "4aa5e3a76c540e142be75293d4d34463c138f3d0"
+      resolved-ref: "4aa5e3a76c540e142be75293d4d34463c138f3d0"
       url: "https://github.com/haneoka-gakuen/vega.git"
     source: git
     version: "0.1.0"
@@ -1321,8 +1321,8 @@ packages:
     dependency: "direct main"
     description:
       path: "packages/runtime-ffi/dart"
-      ref: "9959c66b0d2036c4a4cb2c9dd37dc698da9748fe"
-      resolved-ref: "9959c66b0d2036c4a4cb2c9dd37dc698da9748fe"
+      ref: "4aa5e3a76c540e142be75293d4d34463c138f3d0"
+      resolved-ref: "4aa5e3a76c540e142be75293d4d34463c138f3d0"
       url: "https://github.com/haneoka-gakuen/vega.git"
     source: git
     version: "0.1.0"

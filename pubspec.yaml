@@ -10,7 +10,7 @@ dependencies:
   vega_runtime_ffi:
     git:
       url: https://github.com/haneoka-gakuen/vega.git
-      ref: 9959c66b0d2036c4a4cb2c9dd37dc698da9748fe
+      ref: 4aa5e3a76c540e142be75293d4d34463c138f3d0
       path: packages/runtime-ffi/dart
   vega_plugin_cubism:
     git:
@@ -37,22 +37,22 @@ dependencies:
   cassiopeia_runtime:
     git:
       url: https://github.com/haneoka-gakuen/cassiopeia.git
-      ref: f51457fdee6cc0eeee9ebab486b0558c32c3b8bf
+      ref: cda415ba147285e4cdc320bea1f53258432c3f11
       path: dart
   vega_protocol:
     git:
       url: https://github.com/haneoka-gakuen/vega.git
-      ref: 9959c66b0d2036c4a4cb2c9dd37dc698da9748fe
+      ref: 4aa5e3a76c540e142be75293d4d34463c138f3d0
       path: packages/protocol/dart
   vega_plugin_haneoka:
     git:
       url: https://github.com/haneoka-gakuen/vega-plugin-haneoka.git
-      ref: d84ecfbf888083a15a442f34790b106a64b1aec6
+      ref: c127e5cd21b9b90388f3487df8457dc2ce42964f
       path: dart
   cassiopeia_plugin_our_notes:
     git:
       url: https://github.com/haneoka-gakuen/cassiopeia-plugin-our-notes.git
-      ref: c4710df9c1c1c04b72330b4e6c0831ded2e189a5
+      ref: da2860c975d14fa33e6d501d4d21bf974679421d
       path: dart
   flutter_gpu:
     sdk: flutter
