@@ -1202,9 +1202,10 @@ class _SystemDetailState extends State<SystemDetail> {
       child: _grid([
         Tile(
           title: kit.title(record),
-          subtitle: kit.bandName(record['bandId']),
+          subtitle: kit.subtitle(record),
           adornments: kit.adornments(record),
           images: kit.images(record),
+          marks: kit.marks(record),
           onTap: () => _open(song['href']),
         ),
       ], minWidth: kit.profile.minWidth),

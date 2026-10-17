@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../core/app_state.dart';
 import '../core/net.dart';
@@ -79,6 +81,8 @@ class AppImage extends StatefulWidget {
 class _AppImageState extends State<AppImage> {
   int _index = 0;
   Timer? _retry;
+  String? _vectorUrl;
+  Future<File>? _vectorFile;
 
   Widget _empty() => widget.naturalHeight
       ? const AspectRatio(aspectRatio: 1)
@@ -94,6 +98,26 @@ class _AppImageState extends State<AppImage> {
   void didUpdateWidget(AppImage old) {
     super.didUpdateWidget(old);
     if (!listEquals(old.candidates, widget.candidates)) _index = 0;
+  }
+
+  Widget _failed(String url, Object error) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (error is HttpExceptionWithStatus &&
+          const {404, 410}.contains(error.statusCode)) {
+        _missing.add(url);
+      } else {
+        _retryAfter[url] = DateTime.now().add(const Duration(seconds: 30));
+        if (mounted) {
+          _retry ??= Timer(const Duration(seconds: 31), () {
+            _retry = null;
+            _vectorUrl = null;
+            if (mounted) setState(() => _index = 0);
+          });
+        }
+      }
+      if (mounted) setState(() {});
+    });
+    return _empty();
   }
 
   @override
@@ -115,6 +139,32 @@ class _AppImageState extends State<AppImage> {
       return widget.placeholder ?? _empty();
     }
     final url = candidates[_index];
+    if (Uri.tryParse(url)?.path.toLowerCase().endsWith('.svg') == true) {
+      if (_vectorUrl != url) {
+        _vectorUrl = url;
+        _vectorFile = artworkCache.getSingleFile(url);
+      }
+      return FutureBuilder<File>(
+        key: ValueKey(url),
+        future: _vectorFile,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) return _failed(url, snapshot.error!);
+          final file = snapshot.data;
+          if (file == null) return _empty();
+          CacheStorage.instance.scheduleTrim();
+          return SvgPicture.file(
+            file,
+            key: ValueKey(url),
+            fit: widget.fit,
+            alignment: widget.alignment,
+            width: double.infinity,
+            height: widget.naturalHeight ? null : double.infinity,
+            placeholderBuilder: (_) => _empty(),
+            errorBuilder: (_, error, _) => _failed(url, error),
+          );
+        },
+      );
+    }
     return LayoutBuilder(
       builder: (context, constraints) {
         final ratio = MediaQuery.devicePixelRatioOf(context);
@@ -148,28 +198,7 @@ class _AppImageState extends State<AppImage> {
           fadeInDuration: const Duration(milliseconds: 120),
           fadeOutDuration: Duration.zero,
           placeholder: (_, _) => _empty(),
-          errorWidget: (_, _, error) {
-            final failed = url;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (error is HttpExceptionWithStatus &&
-                  const {404, 410}.contains(error.statusCode)) {
-                _missing.add(failed);
-              } else {
-                // Temporary network/decode failures can recover in this session.
-                _retryAfter[failed] = DateTime.now().add(
-                  const Duration(seconds: 30),
-                );
-                if (mounted) {
-                  _retry ??= Timer(const Duration(seconds: 31), () {
-                    _retry = null;
-                    if (mounted) setState(() => _index = 0);
-                  });
-                }
-              }
-              if (mounted) setState(() {});
-            });
-            return _empty();
-          },
+          errorWidget: (_, _, error) => _failed(url, error),
         );
       },
     );

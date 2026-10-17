@@ -1,4 +1,6 @@
 import '../core/api.dart';
+import '../core/provider_api.dart';
+import '../playlists/song_performer.dart';
 
 typedef Entry = Map<String, Object?>;
 
@@ -12,6 +14,41 @@ class CatalogVisuals {
   final Map<String, String> marks;
   final Map<int, Entry> bands;
   final Map<int, Entry> characters;
+
+  /// One source-scoped identity registry shared by every song presentation.
+  late final PerformerRegistry songPerformers = PerformerRegistry(
+    game: catalogGame(api),
+    server: api.server,
+    sourceId: api.sourceId,
+    bands: bands,
+    characters: characters,
+  );
+
+  final _portraitRegistries = Expando<PerformerRegistry>();
+
+  /// Explicit display fallback from a formal game's pinned character source.
+  /// Provider ids keep their own namespace; portrait ids are never song ids.
+  PerformerRegistry withPortraitSource(CatalogVisuals formal) {
+    if (songPerformers.game != 'gbp') return songPerformers;
+    return _portraitRegistries[formal] ??= PerformerRegistry(
+      game: songPerformers.game,
+      server: api.server,
+      bands: bands,
+      characters: characters,
+      portraitFallbacks: [
+        for (final face in auditedCryChicPortraits(formal.songPerformers))
+          PerformerPortrait(
+            key: face.key,
+            provider: face.provider,
+            server: face.server,
+            sourceId: face.sourceId,
+            id: face.id,
+            name: face.name,
+            image: formal.api.asset(face.image).toString(),
+          ),
+      ],
+    );
+  }
 
   static final _loaded = <HaneokaApi, Future<CatalogVisuals>>{};
 

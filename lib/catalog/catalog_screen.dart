@@ -13,6 +13,7 @@ import 'cross_server.dart';
 import 'profiles.dart';
 import 'shop_price.dart';
 import 'visuals.dart';
+import 'song_presentation.dart';
 
 const _rarities = {2: 'R', 3: 'SR', 4: 'SSR', 10: 'EX', 20: 'BD'};
 const _attributes = ['', 'red', 'blue', 'green', 'yellow', 'purple'];
@@ -261,6 +262,7 @@ class CatalogKit {
   final CatalogVisuals? visuals;
 
   Presentation get kind => profile.presentation;
+  late final songPresentation = SongPresentation(t, api, visuals);
 
   static final _markup = RegExp(r'<[^>]+>');
   String plain(Object? value) => t.text(value).replaceAll(_markup, '').trim();
@@ -342,7 +344,7 @@ class CatalogKit {
       'challenge' => t.text(item['band']),
       _ => systemWindow(item),
     },
-    Presentation.song => '',
+    Presentation.song => songPresentation.artist(item),
   };
 
   /// A rotating entry's window (`systemRelativeSubtitle`).
@@ -388,6 +390,7 @@ class CatalogKit {
   }
 
   List<String> adornments(Entry item) {
+    if (kind == Presentation.song) return songPresentation.avatars(item);
     if (const {
       Presentation.member,
       Presentation.support,
@@ -430,6 +433,7 @@ class CatalogKit {
   }
 
   List<TileMark> marks(Entry item) {
+    if (kind == Presentation.song) return songPresentation.marks(item);
     if (kind == Presentation.system) {
       final end = RelativeTime.timestamp(item['endAt']) ?? 0;
       final start = RelativeTime.timestamp(item['startAt']) ?? 0;

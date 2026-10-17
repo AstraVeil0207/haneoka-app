@@ -370,3 +370,43 @@ Doc mergeTeamData(List<Doc> sources, [List<String> unavailable = const []]) {
 
 /// A deep copy safe to send to another isolate as JSON text.
 String encodeTeamData(Doc data) => jsonEncode(data);
+
+/// Display metadata from each core document's exact release. The calculation
+/// input remains the original slim data; the shared document cache serves
+/// these same collection URLs to catalog pages and the chooser.
+Future<Map<int, Doc>> loadTeamSongVisuals(
+  Doc data,
+  HaneokaApi Function(String) apiFor,
+) async {
+  final cross = objectRow(data['crossServer']);
+  final primary = objectRow(data['identity']);
+  final identities = objectRow(cross['identities']);
+  final sourceIdentities = identities.isEmpty
+      ? <String, Object?>{'${primary['server']}': primary}
+      : identities;
+  final documents = await Future.wait([
+    for (final entry in sourceIdentities.entries)
+      () async {
+        final release = '${objectRow(entry.value)['releaseId'] ?? ''}';
+        if (release.isEmpty) return (entry.key, <String, Object?>{});
+        try {
+          final value = await apiFor(entry.key).json(
+            '/api/v1/servers/${Uri.encodeComponent(entry.key)}/songs?release=${Uri.encodeQueryComponent(release)}',
+          );
+          final document = objectRow(value);
+          return (entry.key, objectRow(document['items'] ?? document));
+        } catch (_) {
+          return (entry.key, <String, Object?>{});
+        }
+      }(),
+  ]);
+  final byServer = {for (final (server, songs) in documents) server: songs};
+  final owners = objectRow(objectRow(cross['owners'])['songs']);
+  return {
+    for (final key in objectRow(data['songs']).keys)
+      if (int.tryParse(key) case final id?)
+        if (objectRow(byServer['${owners[key] ?? primary['server']}'])[key]
+            case final Map song)
+          id: song.cast<String, Object?>(),
+  };
+}

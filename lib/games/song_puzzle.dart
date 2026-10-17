@@ -6,6 +6,8 @@ import 'package:material_new_shapes/material_new_shapes.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../core/app_state.dart';
+import '../catalog/song_presentation.dart';
+import '../catalog/visuals.dart';
 import '../shell/page.dart';
 import '../ui/app_image.dart';
 import '../ui/shapes.dart';
@@ -21,11 +23,20 @@ Future<SolveResult> _solveInBackground(
 ) => Isolate.run(() => solvePuzzle(size, start, goal, budget));
 
 class _Song {
-  const _Song(this.id, this.name, this.band, this.cover);
+  const _Song(
+    this.id,
+    this.name,
+    this.band,
+    this.cover, {
+    this.avatars = const [],
+    this.marks = const [],
+  });
   final String id;
   final String name;
   final String band;
   final String cover;
+  final List<String> avatars;
+  final List<TileMark> marks;
 }
 
 class _Solution {
@@ -97,7 +108,14 @@ class _SongPuzzleScreenState extends State<SongPuzzleScreen> {
       _songs = [];
     });
     try {
-      final document = await state.apiFor(_server).catalog('songs');
+      final api = state.apiFor(_server);
+      final (document, visuals) = await (
+        api.catalog('songs'),
+        CatalogVisuals.of(
+          api,
+        ).then<CatalogVisuals?>((value) => value, onError: (Object _) => null),
+      ).wait;
+      final presentation = SongPresentation(state.text, api, visuals);
       final rows = document is Map && document['items'] is Map
           ? document['items'] as Map
           : document as Map;
@@ -111,11 +129,13 @@ class _SongPuzzleScreenState extends State<SongPuzzleScreen> {
               '$key',
               // `localizedText(song.title, locale)`, as the site names them.
               state.text.text(value['musicTitle']),
-              state.text.text(value['bandName'] ?? value['artistName']),
+              presentation.artist(value.cast<String, Object?>()),
               state
                   .apiFor(_server)
                   .asset('${value['jacketUrl'] ?? value['jacketThumbUrl']}')
                   .toString(),
+              avatars: presentation.avatars(value.cast<String, Object?>()),
+              marks: presentation.marks(value.cast<String, Object?>()),
             ),
       ];
       if (!mounted) return;
@@ -1037,6 +1057,8 @@ class _SongPickerState extends State<_SongPicker> {
                       return Tile(
                         title: song.name,
                         subtitle: song.band,
+                        adornments: song.avatars,
+                        marks: song.marks,
                         images: [song.cover],
                         aspectRatio: 1,
                         selected: song.id == widget.selected,

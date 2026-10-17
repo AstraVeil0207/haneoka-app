@@ -138,12 +138,25 @@ class TeamBuilderController extends ChangeNotifier {
     try {
       final data = await loadTeamData(server);
       if (_disposed || _server != server) return;
-      final master = await _compileMaster(data);
+      final songVisuals = loadTeamSongVisuals(data, state.apiFor);
+      final (master, visuals) = await (
+        _compileMaster(data),
+        CatalogVisuals.of(state.apiFor(server))
+            .then<CatalogVisuals?>((v) => v, onError: (Object _) => null),
+      ).wait;
       if (_disposed || _server != server) return;
-      final visuals = await CatalogVisuals.of(state.apiFor(server))
-          .then<CatalogVisuals?>((v) => v, onError: (Object _) => null);
-      if (_server != server) return;
-      catalog = TeamCatalog(state, data, master, visuals, server: server);
+      final current = TeamCatalog(state, data, master, visuals, server: server);
+      catalog?.dispose();
+      catalog = current;
+      unawaited(
+        songVisuals.then((rows) {
+          if (_disposed || _server != server || !identical(catalog, current)) {
+            return;
+          }
+          current.updateSongVisuals(rows);
+          notifyListeners();
+        }),
+      );
       engine?.dispose();
       engine = EngineClient(data, catalog!.chartUrl)..warm();
       store?.removeListener(_adopt);
@@ -178,6 +191,7 @@ class TeamBuilderController extends ChangeNotifier {
 
   @override
   void dispose() {
+    catalog?.dispose();
     _disposed = true;
     _server = '';
     ++runGeneration;

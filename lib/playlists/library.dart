@@ -145,6 +145,7 @@ Future<_Source> _load(String provider, String server, HaneokaApi api) async {
     PerformerRegistry(
       game: provider == 'bestdori' ? 'gbp' : 'our-notes',
       server: server,
+      sourceId: provider == 'bestdori' ? null : api.sourceId,
       bands: {
         for (final MapEntry(key: id, value: row) in _rows(bands).entries)
           (row['bandId'] as num?)?.toInt() ?? int.tryParse(id) ?? 0: row,
@@ -157,41 +158,9 @@ Future<_Source> _load(String provider, String server, HaneokaApi api) async {
   );
 }
 
-/// Display-only portraits for CRYCHIC members GBP does not have
-/// (`auditedCryChicPortraits`).
-List<PerformerPortrait> _cryChicPortraits(_Source source) {
-  const names = {'若葉睦', '豊川祥子'};
-  List<String> identity(Row row) {
-    final raw = row['characterName'] is List
-        ? (row['characterName'] as List).firstOrNull
-        : row['characterName'];
-    return raw is String
-        ? raw
-              .split(RegExp('[／/]'))
-              .map((n) => n.replaceAll(RegExp(r'\s+'), ''))
-              .where(names.contains)
-              .toList()
-        : const [];
-  }
-
-  final characters = source.registry.characters;
-  return [
-    for (final MapEntry(key: id, value: row) in characters.entries)
-      if (identity(row) case [final name]
-          when characters.values
-                  .where((o) => identity(o).contains(name))
-                  .length ==
-              1)
-        PerformerPortrait(
-          key: 'our-notes:${source.server}::$id',
-          provider: 'our-notes',
-          server: source.server,
-          id: id,
-          name: name,
-          image: '${row['faceImage'] ?? ''}',
-        ),
-  ];
-}
+/// Display-only same-source portraits for members absent from GBP.
+List<PerformerPortrait> _cryChicPortraits(_Source source) =>
+    auditedCryChicPortraits(source.registry);
 
 List<LibrarySong> _songsOf(_Source source) {
   final bestdori = source.provider == 'bestdori';

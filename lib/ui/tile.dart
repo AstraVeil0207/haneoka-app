@@ -198,47 +198,57 @@ class Tile extends StatelessWidget {
                     SizedBox(height: compact ? 4 : 8),
                     SizedBox(
                       height: dense ? 18 : 20,
-                      child: Row(
-                        children: [
-                          // Several faces overlap as a stack
-                          // (`catalogPortraitStack`).
-                          for (final (index, emblem)
-                              in adornments.take(5).indexed)
-                            Align(
-                              widthFactor:
-                                  index >= adornmentPortraitStart &&
-                                      index + 1 < adornments.take(5).length
-                                  ? 0.7
-                                  : 1,
-                              child: index < adornmentPortraitStart
-                                  ? SizedBox.square(
-                                      dimension: 16,
-                                      child: AppImage(candidates: [emblem]),
-                                    )
-                                  : ClipOval(
-                                      child: SizedBox.square(
-                                        dimension: 16,
-                                        child: AppImage(candidates: [emblem]),
-                                      ),
-                                    ),
-                            ),
-                          if (adornments.isNotEmpty) const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              subtitle!,
-                              maxLines: 1,
-                              softWrap: false,
-                              overflow: TextOverflow.ellipsis,
-                              style:
-                                  (dense
-                                          ? theme.textTheme.bodySmall
-                                          : theme.textTheme.bodyMedium)
-                                      ?.copyWith(
-                                        color: scheme.onSurfaceVariant,
-                                      ),
-                            ),
-                          ),
-                        ],
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          final crowded =
+                              adornments.length - adornmentPortraitStart >= 4 &&
+                              constraints.maxWidth < 144;
+                          return Row(
+                            children: [
+                              // Several faces overlap as a stack
+                              // (`catalogPortraitStack`).
+                              for (final (index, emblem)
+                                  in adornments.take(5).indexed)
+                                Align(
+                                  widthFactor:
+                                      index >= adornmentPortraitStart &&
+                                          index + 1 < adornments.take(5).length
+                                      ? (crowded ? 0.6 : 0.7)
+                                      : 1,
+                                  child: index < adornmentPortraitStart
+                                      ? SizedBox.square(
+                                          dimension: 16,
+                                          child: AppImage(candidates: [emblem]),
+                                        )
+                                      : ClipOval(
+                                          child: SizedBox.square(
+                                            dimension: 16,
+                                            child: AppImage(
+                                              candidates: [emblem],
+                                            ),
+                                          ),
+                                        ),
+                                ),
+                              if (adornments.isNotEmpty)
+                                SizedBox(width: crowded ? 4 : 8),
+                              Expanded(
+                                child: Text(
+                                  subtitle!,
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  overflow: TextOverflow.ellipsis,
+                                  style:
+                                      ((dense || crowded)
+                                              ? theme.textTheme.bodySmall
+                                              : theme.textTheme.bodyMedium)
+                                          ?.copyWith(
+                                            color: scheme.onSurfaceVariant,
+                                          ),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ),
                   ],

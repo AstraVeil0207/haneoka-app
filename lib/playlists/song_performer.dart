@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 /// A port of the website's `lib/song-performer.ts`: who performs a song, as
-/// bands (with logos) and characters (with portraits), resolved from the
+/// bands (with authored icons) and characters (with portraits), resolved from the
 /// song's band ids, credited names and vocalists against one game's
 /// registry.
 
@@ -36,7 +36,7 @@ class PerformerRegistry {
     this.portraitFallbacks,
   });
 
-  /// `our-notes` or `gbp`.
+  /// `our-notes`, `gbp` or `sekai`.
   final String game;
   final String server;
   final String? sourceId;
@@ -103,6 +103,44 @@ List<String> _split(Object? value) => [
     ))
       if (part.trim().isNotEmpty) part.trim(),
 ];
+
+/// Display-only portraits for CRYCHIC members GBP does not have
+/// (`auditedCryChicPortraits`).
+List<PerformerPortrait> auditedCryChicPortraits(PerformerRegistry registry) {
+  if (registry.game != 'our-notes') return const [];
+  const names = {'若葉睦', '豊川祥子'};
+  List<String> identity(Row row) {
+    final raw = row['characterName'] is List
+        ? (row['characterName'] as List).firstOrNull
+        : row['characterName'];
+    return raw is String
+        ? raw
+              .split(RegExp('[／/]'))
+              .map((n) => n.replaceAll(RegExp(r'\s+'), ''))
+              .where(names.contains)
+              .toList()
+        : const [];
+  }
+
+  final characters = registry.characters;
+  return [
+    for (final MapEntry(key: id, value: row) in characters.entries)
+      if (identity(row) case [final name]
+          when characters.values
+                  .where((o) => identity(o).contains(name))
+                  .length ==
+              1)
+        PerformerPortrait(
+          key: 'our-notes:${registry.server}:${registry.sourceId ?? ''}:$id',
+          provider: 'our-notes',
+          server: registry.server,
+          sourceId: registry.sourceId,
+          id: id,
+          name: name,
+          image: '${row['faceImage'] ?? ''}',
+        ),
+  ];
+}
 
 // Official BanG Dream news2067 identifies these five CRYCHIC members.
 const _crychic = ['高松燈', '長崎そよ', '椎名立希', '若葉睦', '豊川祥子'];
@@ -180,7 +218,7 @@ SongPerformer resolveSongPerformer(Row song, PerformerRegistry registry) {
         in registry.characters.entries) {
       if ((character['bandId'] as num?)?.toInt() == id) roster.add(characterId);
     }
-    final image = '${row['logo'] ?? row['icon'] ?? ''}';
+    final image = '${row['icon'] ?? ''}';
     if (image.isNotEmpty) {
       logos.add((id: id, name: row['bandName'] ?? row['name'], image: image));
     }

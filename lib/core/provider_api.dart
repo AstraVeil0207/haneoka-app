@@ -33,6 +33,17 @@ class ProviderApi extends HaneokaApi {
   Future<Object?> catalog(String resource, [String? id]) => json(
     '$base/$resource${id == null ? '' : '/${Uri.encodeComponent(id)}'}'
     '?lang=${Uri.encodeQueryComponent(locale)}'
-    '${resource.startsWith('stories') || resource == 'cards' ? '&projection=v24-language-fallback' : ''}',
+    '${resource == 'bands' || resource == 'songs'
+        ? '&projection=round-performers-v1'
+        : resource.startsWith('stories') || resource == 'cards'
+        ? '&projection=v24-language-fallback'
+        : ''}',
   );
 }
+
+/// Canonical game identity for a catalogue source, distinct from its provider.
+String catalogGame(HaneokaApi api) => api is ProviderApi
+    ? api.provider == 'sekai'
+          ? 'sekai'
+          : 'gbp'
+    : 'our-notes';

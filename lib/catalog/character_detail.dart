@@ -19,6 +19,7 @@ import 'character_art.g.dart';
 import 'format.dart';
 import 'profiles.dart';
 import 'visuals.dart';
+import 'song_presentation.dart';
 
 List<Map> _values(Object? value, [String? key]) {
   final source = key != null && value is Map ? value[key] : value;
@@ -245,9 +246,16 @@ class _CharacterDetailState extends State<CharacterDetail> {
             .where((e) => _num(e['characterId']) == id)
             .toList()
           ..sort((a, b) => '${a['live2dKey']}'.compareTo('${b['live2dKey']}'));
-    final songs = _values(aux['songs']).where((e) {
-      final bands = e['bandIds'] is List ? e['bandIds'] as List : [e['bandId']];
-      return bands.contains(item['bandId']);
+    final songPresentation = SongPresentation(t, state.api, widget.visuals);
+    final songs = _values(aux['songs']).where((song) {
+      final performer = songPresentation.performer(
+        song.cast<String, Object?>(),
+      );
+      // The entity graph already selected this character's songs. Use the
+      // same participants when a registry is present; retain that selection
+      // when optional presentation resources are unavailable.
+      return performer == null ||
+          performer.participantCharacterIds.contains(id);
     }).toList()..sort(_by('musicId'));
     final friendships = _values(
       aux['friendships'],
@@ -575,28 +583,15 @@ class _CharacterDetailState extends State<CharacterDetail> {
 
   Widget _songGrid(List<Map> songs) {
     final kit = _kit('songs');
-    const categories = ['', 'original', 'virtual', 'jpop', 'anime', 'game'];
+    final presentation = SongPresentation(t, state.api, widget.visuals);
     return _grid([
       for (final song in songs.map((e) => e.cast<String, Object?>()))
         Tile(
           title: kit.title(song),
-          subtitle: kit.bandName(song['bandId']),
-          adornments: [?widget.visuals?.bandIcon(song['bandId'])],
+          subtitle: presentation.artist(song),
+          adornments: presentation.avatars(song),
           images: kit.images(song),
-          marks: [
-            if (widget.visuals?.musicTypeMark(song['musicType'])
-                case final mark?)
-              TileMark.image(MarkAt.start, mark),
-            if ([
-                  for (final category
-                      in (song['musicCategories'] as List? ?? const []))
-                    if (categories.elementAtOrNull(_num(category).toInt())
-                        case final name? when name.isNotEmpty)
-                      t.label(name, name),
-                ]
-                case final names when names.isNotEmpty)
-              TileMark.text(MarkAt.bottomStart, names.join(' / ')),
-          ],
+          marks: presentation.marks(song),
           onTap: () => openEntity(context, kit.profile, song),
         ),
     ], minWidth: kit.profile.minWidth);

@@ -14,6 +14,7 @@ import '../catalog/cross_server.dart';
 import '../catalog/detail_screen.dart';
 import '../catalog/profiles.dart';
 import '../catalog/visuals.dart';
+import '../catalog/song_presentation.dart';
 import '../community/community_time.dart';
 import '../core/api.dart';
 import '../core/net.dart';
@@ -733,10 +734,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
           final event =
               ongoing.firstOrNull ?? upcoming.firstOrNull ?? ended.firstOrNull;
-          String artist(Entry song) => [
-            for (final id in (song['bandIds'] as List? ?? const []))
-              t.text(data.visuals.bands[(id as num).toInt()]?['bandName']),
-          ].where((n) => n.isNotEmpty).join(', ');
+          final songPresentation = SongPresentation(t, state.api, data.visuals);
           final songKit = CatalogKit(
             _profile('songs'),
             t,
@@ -894,25 +892,19 @@ class _HomeScreenState extends State<HomeScreen> {
                                         Tile(
                                           rail: true,
                                           title: songKit.title(song),
-                                          subtitle: artist(song),
-                                          adornmentPortraitStart:
-                                              (song['bandIds'] as List? ??
-                                                      const [])
-                                                  .length,
-                                          adornments: [
-                                            for (final id
-                                                in (song['bandIds'] as List? ??
-                                                    const []))
-                                              ?data.visuals.bandLogo(id),
-                                          ],
+                                          subtitle: songPresentation.artist(
+                                            song,
+                                          ),
+                                          adornments: songPresentation.avatars(
+                                            song,
+                                          ),
                                           images: songKit.images(song),
                                           placeholder: Symbols.album_rounded,
                                           marks: [
-                                            if (data.visuals.musicTypeMark(
-                                                  song['musicType'],
-                                                )
-                                                case final m?)
-                                              TileMark.image(MarkAt.start, m),
+                                            ...songPresentation.marks(
+                                              song,
+                                              categoryAt: MarkAt.end,
+                                            ),
                                             if (t.release(song['publishedAt'])
                                                 case final r when r.isNotEmpty)
                                               TileMark.text(

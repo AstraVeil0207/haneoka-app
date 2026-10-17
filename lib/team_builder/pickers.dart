@@ -372,7 +372,12 @@ class _SongPickerState extends State<_SongPicker> {
   ];
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: widget.catalog,
+    builder: (context, _) => _content(context),
+  );
+
+  Widget _content(BuildContext context) {
     final catalog = widget.catalog;
     final t = catalog.t;
     String tb(
@@ -392,7 +397,7 @@ class _SongPickerState extends State<_SongPicker> {
               (_missions.isEmpty ||
                   _songMissions(id).any(_missions.contains)) &&
               (query.isEmpty ||
-                  '${catalog.songTitle(id)} ${catalog.songBands(id).map(catalog.bandName).join(' ')}'
+                  '${catalog.songTitle(id)} ${catalog.songPresentation.artist(catalog.displaySong(id))} ${catalog.songBands(id).map(catalog.bandName).join(' ')}'
                       .toLowerCase()
                       .contains(query)))
             id,
@@ -508,9 +513,16 @@ class _SongPickerState extends State<_SongPicker> {
       aspectRatio: 1,
       item: (context, index) {
         final id = ids[index];
+        final song = catalog.displaySong(id);
+        final presentation = catalog.songPresentation;
         return Tile(
           title: catalog.songTitle(id),
-          subtitle: catalog.difficultyLabel(id, _difficulty),
+          subtitle: presentation.artist(song),
+          adornments: presentation.avatars(song),
+          marks: presentation.marks(
+            song,
+            difficulty: catalog.difficultyLabel(id, _difficulty),
+          ),
           images: [catalog.songJacket(id)],
           fit: BoxFit.cover,
           selected: selected.contains(id),

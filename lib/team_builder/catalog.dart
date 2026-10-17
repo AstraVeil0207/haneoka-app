@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../catalog/catalog_screen.dart' show cardRarityName;
 import '../catalog/cross_server.dart' show serverMark;
 import '../catalog/visuals.dart';
+import '../catalog/song_presentation.dart';
 import '../core/app_state.dart';
 import '../core/i18n.dart';
 import '../ui/card_artwork.dart';
@@ -44,13 +45,21 @@ class TeamEventOption {
   final (String, String)? serverMark;
 }
 
-class TeamCatalog {
+class TeamCatalog extends ChangeNotifier {
   TeamCatalog(this.state, this.data, this.master, this.visuals, {this.server});
   final AppState state;
   final String? server;
   final Doc data;
   final EngineMaster master;
   final CatalogVisuals? visuals;
+  Map<int, Doc> _songVisuals = const {};
+  void updateSongVisuals(Map<int, Doc> value) {
+    _songVisuals = value;
+    _displaySongs.clear();
+    notifyListeners();
+  }
+
+  final _displaySongs = <int, Doc>{};
 
   SiteText get t => state.text;
   String text(Object? value) => t.text(value);
@@ -276,7 +285,16 @@ class TeamCatalog {
     return null;
   }
 
-  Doc song(int id) => _row('songs', id);
+  SongPresentation get songPresentation =>
+      SongPresentation(t, state.apiFor(server ?? state.server), visuals);
+  Doc song(int id) {
+    final row = objectRow(data['songs'])['$id'];
+    return row is Doc ? row : objectRow(row);
+  }
+
+  /// Full display identity never replaces the engine's slim calculation row.
+  Doc displaySong(int id) =>
+      _displaySongs.putIfAbsent(id, () => {...song(id), ...?_songVisuals[id]});
   String songTitle(int id) => state.songTitle(song(id)['musicTitle']);
   String songJacket(int id) =>
       asset(song(id)['jacketUrl'] ?? song(id)['jacketThumbUrl']);
