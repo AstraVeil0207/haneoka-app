@@ -471,10 +471,11 @@ packages:
   flutter_soloud:
     dependency: "direct main"
     description:
-      name: flutter_soloud
-      sha256: "1c297e52182c5e8fd447ae8430bf0b598445dc586e72863ceeef0416242b2ae8"
-      url: "https://pub.dev"
-    source: hosted
+      path: "."
+      ref: "421afc8897576929b3b4812d9e29c31f0a900adc"
+      resolved-ref: "421afc8897576929b3b4812d9e29c31f0a900adc"
+      url: "https://github.com/haneoka-gakuen/flutter_soloud.git"
+    source: git
     version: "5.2.1"
   flutter_svg:
     dependency: "direct main"

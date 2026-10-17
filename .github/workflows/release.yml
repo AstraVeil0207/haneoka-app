@@ -230,9 +230,6 @@ jobs:
         if: matrix.arch == 'x64'
         run: dart run scripts/provision_cubism_core.dart --platform windows --arch x64
       - run: flutter build windows --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ github.run_number }}"
-        env:
-          # PFFFT needs the CRT stack-allocation declarations on MSVC ARM64.
-          _CL_: ${{ matrix.arch == 'arm64' && '/FImalloc.h' || '' }}
       - name: Bundle Visual C++ runtime
         shell: pwsh
         run: |
