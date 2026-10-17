@@ -20,11 +20,13 @@ import 'package:render_kernel_flutter/render_kernel_flutter.dart'
 
 import '../core/api.dart';
 import '../core/app_state.dart';
+import '../core/render_preferences.dart';
 import '../core/resource_file_cache.dart';
 import '../shell/page.dart';
 import '../ui/playback_pane.dart';
 import '../ui/player_orientation.dart';
 import '../ui/player_settings_sheet.dart';
+import '../ui/render_quality_settings.dart';
 import 'native_chart_document.dart';
 import 'native_chart_playback.dart';
 import 'native_chart_preferences.dart';
@@ -52,6 +54,12 @@ class NativeChartPlayerScreen extends StatefulWidget {
 
 class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
     with SingleTickerProviderStateMixin {
+  RenderPreferences? _rendering;
+  void _renderQualityChanged() {
+    final value = _rendering!;
+    _player?.setRenderQuality(factor: value.factor, sharpness: value.sharpness);
+  }
+
   NativeChartPlayback? _player;
   NativeChartDocument? _document;
   Future<ChartOverviewSource>? _overviewFuture;
@@ -111,12 +119,18 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final rendering = AppScope.of(context).rendering;
+    if (!identical(_rendering, rendering)) {
+      _rendering?.removeListener(_renderQualityChanged);
+      _rendering = rendering..addListener(_renderQualityChanged);
+    }
     final locale = AppScope.of(context).text.locale;
     if (_player != null) {
       unawaited(_action(() => _player!.setLocale(locale)));
       return;
     }
     _player = NativeChartPlayback(locale, fetch: _fetch)..addListener(_changed);
+    _renderQualityChanged();
     _player!.audio.addListener(_changed);
     NativeChartPreferences.load()
         .then((preferences) {
@@ -303,8 +317,10 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
             actions: [
               IconButton(
                 tooltip: t('media.chartPlayer.reset', 'Reset'),
-                onPressed: () =>
-                    refresh(() => preferences = const NativeChartPreferences()),
+                onPressed: () {
+                  unawaited(AppScope.of(context).rendering.reset());
+                  refresh(() => preferences = const NativeChartPreferences());
+                },
                 icon: const Icon(Symbols.restart_alt_rounded),
               ),
             ],
@@ -680,6 +696,10 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
                         preferences = preferences.copyWith(musicVolume: volume),
                   ),
                 ),
+                RenderQualitySettings(
+                  preferences: AppScope.of(context).rendering,
+                  text: AppScope.of(context).text,
+                ),
                 SwitchListTile(
                   title: Text(
                     t('media.chartPlayer.continuationEffects', 'Combo effects'),
@@ -798,6 +818,7 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
 
   @override
   void dispose() {
+    _rendering?.removeListener(_renderQualityChanged);
     ++_load;
     ++_viewportRequest;
     _ticker.dispose();

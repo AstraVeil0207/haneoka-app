@@ -1376,6 +1376,15 @@
       "gekisouLive": "激奏Live",
       "vibration": "震动",
       "vibrationUnavailable": "此设备不支持震动"
+    },
+    "rendering": {
+      "title": "画质",
+      "resolution": "渲染分辨率",
+      "native": "原始",
+      "quality": "画质优先",
+      "balanced": "均衡",
+      "sharpness": "锐化",
+      "description": "FSR 1"
     }
   },
   "tools": {

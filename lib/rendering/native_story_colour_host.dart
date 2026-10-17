@@ -20,6 +20,7 @@ final class NativeStoryColourHost {
   final Future<Uint8List> Function(Uri) fetch;
   VegaRenderSession? _session;
   NativeStoryColourScene? _last;
+  RenderFrame? _lastGpuFrame;
   final _backgroundImages = <Uri, StoryBackgroundImage>{};
   final _pendingTextures = <String, Uri>{};
   bool _disposed = false, _presenting = false;
@@ -72,6 +73,7 @@ final class NativeStoryColourHost {
     required StoryBackgroundImage lower,
     required NativeStoryColourScene snapshot,
     required bool Function() current,
+    double spatialSharpness = .8705505632961241,
     Future<NativeStoryColourScene?> Function(
       GpuFrameRenderer,
       int,
@@ -109,6 +111,7 @@ final class NativeStoryColourHost {
     try {
       var session = _session;
       var finalSnapshot = snapshot;
+      var gpuSnapshot = _spatial(snapshot, spatialSharpness);
       var opened = false;
       final textures = {..._pendingTextures, ...snapshot.textures};
       if (session == null ||
@@ -122,7 +125,8 @@ final class NativeStoryColourHost {
         session ??= VegaRenderSession(
           renderer: GpuFrameRenderer(
             gpu.gpuContext,
-            programs: haneokaShaderPrograms,
+            programs: {...haneokaShaderPrograms, ...SpatialUpscaler.programs},
+            additionalShaderBundles: [await SpatialUpscaler.loadShaders()],
           ),
           fetch: verifiedFetch,
           textureDataFetch: loadHaneokaProfileTexture,
@@ -132,10 +136,10 @@ final class NativeStoryColourHost {
             handwrittenShaderBundle: await loadHaneokaProfileAsset(
               haneokaShaderBundle,
             ),
-            scene: toRenderScene(snapshot.scene),
+            scene: gpuSnapshot.scene,
             textures: textures,
             dataTextures: snapshot.dataTextures,
-            initialFrame: snapshot.frame,
+            initialFrame: gpuSnapshot.frame,
           );
           if (!active()) {
             if (created) await session.dispose();
@@ -165,6 +169,7 @@ final class NativeStoryColourHost {
         if (!active()) return;
         if (prepared != null) {
           finalSnapshot = prepared;
+          gpuSnapshot = _spatial(prepared, spatialSharpness);
           await session.ensureTextures(prepared.textures);
           if (!active()) return;
           await session.ensureDataTextures(prepared.dataTextures);
@@ -173,13 +178,14 @@ final class NativeStoryColourHost {
       }
       if (active() && (!opened || !identical(finalSnapshot, snapshot))) {
         await session.present(
-          finalSnapshot.frame,
-          resources: toRenderScene(finalSnapshot.scene),
+          gpuSnapshot.frame,
+          resources: gpuSnapshot.scene,
           stillCurrent: active,
         );
       }
       if (active()) {
         _last = finalSnapshot;
+        _lastGpuFrame = gpuSnapshot.frame;
         _frames++;
         finalSnapshot.onPresented?.call();
       }
@@ -192,11 +198,33 @@ final class NativeStoryColourHost {
     }
   }
 
+  ({RenderScene scene, RenderFrame frame}) _spatial(
+    NativeStoryColourScene value,
+    double sharpness,
+  ) {
+    final scene = toRenderScene(value.scene);
+    if (!scene.targets.containsKey('colour:world-input')) {
+      return (scene: scene, frame: value.frame);
+    }
+    final target = scene.targets[value.frame.outputTarget]!;
+    return SpatialUpscaler(sharpness: sharpness).append(
+      scene: scene,
+      frame: value.frame,
+      inputTarget: 'colour:world-input',
+      outputTarget: 'colour:main',
+      width: target.width,
+      height: target.height,
+    );
+  }
+
   Map<String, Object?> get observation => {
     'gpuFrames': _frames,
     'gpuStoryUs': _last?.frame.mediaMicroseconds,
-    'gpuPasses': _last?.frame.passes.length,
-    'gpuDraws': _last?.frame.passes.fold<int>(0, (n, p) => n + p.draws.length),
+    'gpuPasses': _lastGpuFrame?.passes.length,
+    'gpuDraws': _lastGpuFrame?.passes.fold<int>(
+      0,
+      (n, p) => n + p.draws.length,
+    ),
     'actualProof': _last?.proof,
     'workingTargets': _last?.scene.targets.length,
     'viewport': [_width, _height],

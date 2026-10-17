@@ -9,6 +9,7 @@ import 'audio.dart';
 import 'provider_api.dart';
 import 'i18n.dart';
 import 'page_data.dart';
+import 'render_preferences.dart';
 
 /// The reader's choices and what follows from them: release server, language,
 /// the API client and the site's text for that language.
@@ -28,6 +29,7 @@ class AppState extends ChangeNotifier {
     _pageUpdates = publicPageDataChanges.listen((_) => _publicDataChanged());
   }
   final SharedPreferences _prefs;
+  late final RenderPreferences rendering = RenderPreferences(_prefs);
   String server;
   SiteText text;
   HaneokaApi api;
@@ -164,6 +166,7 @@ class AppState extends ChangeNotifier {
       client.removeListener(_publicDataChanged);
       client.dispose();
     }
+    rendering.dispose();
     super.dispose();
   }
 }

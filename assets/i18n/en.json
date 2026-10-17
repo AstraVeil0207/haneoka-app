@@ -1376,6 +1376,15 @@
       "gekisouLive": "Gekisou Live",
       "vibration": "Vibration",
       "vibrationUnavailable": "Unavailable on this device"
+    },
+    "rendering": {
+      "title": "Graphics",
+      "resolution": "Render resolution",
+      "native": "Native",
+      "quality": "Quality",
+      "balanced": "Balanced",
+      "sharpness": "Sharpness",
+      "description": "FSR 1"
     }
   },
   "tools": {

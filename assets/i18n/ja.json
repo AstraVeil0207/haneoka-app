@@ -1376,6 +1376,15 @@
       "gekisouLive": "撃奏ライブ",
       "vibration": "振動",
       "vibrationUnavailable": "このデバイスでは利用できません"
+    },
+    "rendering": {
+      "title": "画質",
+      "resolution": "描画解像度",
+      "native": "ネイティブ",
+      "quality": "高画質",
+      "balanced": "バランス",
+      "sharpness": "シャープネス",
+      "description": "FSR 1"
     }
   },
   "tools": {

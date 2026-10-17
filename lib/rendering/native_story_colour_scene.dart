@@ -110,6 +110,7 @@ NativeStoryColourScene composeStoryColour({
   required List<NativeStoryColourLayer> layers,
   required Float32List backgroundClearColor,
   NativeStoryColourLayer? world,
+  (int, int)? worldViewport,
 }) {
   if (actualStamp.sourceEpoch != lower.epoch || width <= 0 || height <= 0) {
     throw StateError('native_story_colour_actual_viewport_epoch');
@@ -189,6 +190,11 @@ NativeStoryColourScene composeStoryColour({
   final worldPasses = <NativePass>[];
   final worldTargets = <String, NativeTarget>{};
   if (world != null) {
+    if (worldViewport != null &&
+        world.scene.targets[world.contentTarget]?.encoding !=
+            NativeColorEncoding.gammaSrgb) {
+      throw StateError('spatial_world_requires_postprocessed_gamma');
+    }
     dataTextures.addAll(world.dataTextures);
     if (world.replacesBackground) draws.clear();
     if (world.scene.epoch != lower.epoch ||
@@ -217,6 +223,54 @@ NativeStoryColourScene composeStoryColour({
         worldPasses.add(pass);
       }
     }
+  }
+  if (worldViewport != null) {
+    final (worldWidth, worldHeight) = worldViewport;
+    if (worldWidth <= 0 ||
+        worldHeight <= 0 ||
+        worldWidth > width ||
+        worldHeight > height) {
+      throw ArgumentError('Invalid world viewport');
+    }
+    // The world camera's post chain is complete here. Clamp its gamma RGB
+    // through an opaque RGBA8 transfer before spatial reconstruction.
+    meshes['colour:world-transfer'] = quad(0, 0, 1, 1);
+    materials['colour:world-tone-transfer'] = const NativeMaterial(
+      texture: 'colour:world-hdr',
+      textureAlpha: NativeTextureAlpha.independent,
+      recipe: NativeMaterialRecipe.opaqueColorTransfer,
+      blend: NativeBlend.opaque,
+    );
+    worldTargets['colour:world-hdr'] = NativeTarget(
+      width: worldWidth,
+      height: worldHeight,
+      format: NativeTargetFormat.rgba16f,
+      alpha: NativeTextureAlpha.independent,
+    );
+    worldTargets['colour:world-input'] = NativeTarget(
+      width: worldWidth,
+      height: worldHeight,
+      alpha: NativeTextureAlpha.independent,
+    );
+    worldPasses.add(
+      NativePass(
+        target: 'colour:world-hdr',
+        draws: List.of(draws),
+        clearColor: world?.clearColor ?? backgroundClearColor,
+      ),
+    );
+    worldPasses.add(
+      NativePass(
+        target: 'colour:world-input',
+        draws: [
+          const NativeDraw(
+            mesh: 'colour:world-transfer',
+            material: 'colour:world-tone-transfer',
+          ),
+        ],
+      ),
+    );
+    draws.clear();
   }
   var previousOrder = 300;
   for (final layer in layers) {
@@ -498,6 +552,7 @@ NativeStoryColourScene composeStoryColour({
         ...worldPasses,
         NativePass(
           target: 'colour:main',
+          clear: worldViewport == null,
           draws: draws,
           clearColor: world?.clearColor ?? backgroundClearColor,
         ),
@@ -517,6 +572,8 @@ NativeStoryColourScene composeStoryColour({
       'backgroundEncodedSHA256': lower.encodedSHA256,
       'backgroundPixels': [lower.width, lower.height],
       'actualPixelViewport': [width, height],
+      if (worldViewport != null)
+        'spatialWorldInput': [worldViewport.$1, worldViewport.$2],
       'coverUV': [
         (1 - visibleU) / 2,
         (1 - visibleV) / 2,

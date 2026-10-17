@@ -1,3 +1,5 @@
+import 'spatial_rendering.dart';
+
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
     show
         haneokaProfileAssetRoot,
@@ -28,6 +30,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../core/api.dart';
 import '../core/app_state.dart';
+import '../core/render_preferences.dart';
 import '../core/resource_file_cache.dart';
 import '../core/voice.dart';
 import '../shell/page.dart';
@@ -37,6 +40,7 @@ import '../ui/player_orientation.dart';
 import '../ui/story_player_menu.dart';
 import '../ui/player_preparation_indicator.dart';
 import '../ui/player_settings_sheet.dart';
+import '../ui/render_quality_settings.dart';
 import 'native_story_document.dart';
 import 'native_story_world.dart';
 import 'native_story_colour_host.dart';
@@ -96,6 +100,14 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
   Future<void>? _seekReady;
   VegaSaveEnvelope? _storedSave;
   StorySaveStore? _saveStore;
+  RenderPreferences? _rendering;
+  double get _spatialFactor => _rendering?.factor ?? 1;
+  void _renderQualityChanged() {
+    _sceneRevision++;
+    _pausedColourKey = null;
+    if (_started && !_ticker.isActive) _ticker.start();
+  }
+
   bool _seekBusy = false;
   bool _scrubResume = false;
   int? _restoredTextIndex;
@@ -196,6 +208,11 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final rendering = AppScope.of(context).rendering;
+    if (!identical(_rendering, rendering)) {
+      _rendering?.removeListener(_renderQualityChanged);
+      _rendering = rendering..addListener(_renderQualityChanged);
+    }
     if (_document == null && _epoch == 0) {
       unawaited(_load());
     } else if (_document != null) {
@@ -2601,9 +2618,30 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
     final snapshot = composeStoryColour(
       lower: lower,
       backgroundClearColor: _world!.cameraClearColor,
+      worldViewport: spatialWorldViewport(
+        _viewport!.$1,
+        _viewport!.$2,
+        _spatialFactor,
+      ),
       actualStamp: stamp,
       world: _world?.active == true
-          ? _world!.snapshot(stamp, _viewport!.$1, _viewport!.$2)
+          ? _world!.snapshot(
+              stamp,
+              (spatialWorldViewport(
+                        _viewport!.$1,
+                        _viewport!.$2,
+                        _spatialFactor,
+                      ) ??
+                      _viewport!)
+                  .$1,
+              (spatialWorldViewport(
+                        _viewport!.$1,
+                        _viewport!.$2,
+                        _spatialFactor,
+                      ) ??
+                      _viewport!)
+                  .$2,
+            )
           : null,
       width: _viewport!.$1,
       height: _viewport!.$2,
@@ -2641,6 +2679,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
       await owner.present(
         lower: lower,
         snapshot: snapshot,
+        spatialSharpness: _rendering?.sharpness ?? .8705505632961241,
         current: current,
         prepareDecodedVideo: movie == null
             ? null
@@ -2687,9 +2726,30 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
                 return composeStoryColour(
                   lower: lower,
                   backgroundClearColor: _world!.cameraClearColor,
+                  worldViewport: spatialWorldViewport(
+                    _viewport!.$1,
+                    _viewport!.$2,
+                    _spatialFactor,
+                  ),
                   actualStamp: stamp,
                   world: _world?.active == true
-                      ? _world!.snapshot(stamp, _viewport!.$1, _viewport!.$2)
+                      ? _world!.snapshot(
+                          stamp,
+                          (spatialWorldViewport(
+                                    _viewport!.$1,
+                                    _viewport!.$2,
+                                    _spatialFactor,
+                                  ) ??
+                                  _viewport!)
+                              .$1,
+                          (spatialWorldViewport(
+                                    _viewport!.$1,
+                                    _viewport!.$2,
+                                    _spatialFactor,
+                                  ) ??
+                                  _viewport!)
+                              .$2,
+                        )
                       : null,
                   width: _viewport!.$1,
                   height: _viewport!.$2,
@@ -3077,6 +3137,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
 
   @override
   void dispose() {
+    _rendering?.removeListener(_renderQualityChanged);
     _seek?.dispose();
     _logVoice?.dispose();
     ++_epoch;
@@ -3386,6 +3447,10 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
                   preferences.autoDelay,
                   30,
                   preferences.setAutoDelay,
+                ),
+                RenderQualitySettings(
+                  preferences: AppScope.of(context).rendering,
+                  text: t,
                 ),
                 range(
                   t('story.labels.textSize', 'Text size'),

@@ -1,3 +1,5 @@
+import 'spatial_rendering.dart';
+
 import 'package:haneoka_render_profile_flutter/haneoka_render_profile_flutter.dart'
     show
         HaneokaProfileAssets,
@@ -72,6 +74,14 @@ final class NativeChartPlayback extends ChangeNotifier {
   }
 
   late final PageAudio audio;
+  double _spatialFactor = 1, _spatialSharpness = .8705505632961241;
+  void setRenderQuality({required double factor, required double sharpness}) {
+    if (factor == _spatialFactor && sharpness == _spatialSharpness) return;
+    _spatialFactor = factor;
+    _spatialSharpness = sharpness;
+    if (session != null) unawaited(requestFrame(force: true));
+  }
+
   final _presentationClock = Stopwatch()..start();
   String _locale;
   String? _introPreparedLocale;
@@ -790,10 +800,12 @@ final class NativeChartPlayback extends ChangeNotifier {
       );
       if (_disposed || generation != _generation) return;
       final snapshot = _build(mediaUs, generation, 0);
+      final gpuSnapshot = _spatial(snapshot);
       final current = CassiopeiaRenderSession(
         renderer: GpuFrameRenderer(
           gpu.gpuContext,
-          programs: haneokaShaderPrograms,
+          programs: {...haneokaShaderPrograms, ...SpatialUpscaler.programs},
+          additionalShaderBundles: [await SpatialUpscaler.loadShaders()],
         ),
         fetch: fetch,
         textureDataFetch: loadHaneokaProfileTexture,
@@ -803,12 +815,12 @@ final class NativeChartPlayback extends ChangeNotifier {
         handwrittenShaderBundle: await loadHaneokaProfileAsset(
           haneokaShaderBundle,
         ),
-        scene: toRenderScene(snapshot.scene),
+        scene: gpuSnapshot.scene,
         textures: {
           for (final entry in snapshot.texturePaths.entries)
             entry.key: resourceUri(entry.value, selected),
         },
-        initialFrame: snapshot.frame,
+        initialFrame: gpuSnapshot.frame,
         dataTextures: snapshot.dataTextures,
       );
       if (_disposed || generation != _generation) {
@@ -1004,6 +1016,22 @@ final class NativeChartPlayback extends ChangeNotifier {
     );
   }
 
+  ({RenderScene scene, RenderFrame frame}) _spatial(ChartGpuSnapshot snapshot) {
+    final scene = toRenderScene(snapshot.scene);
+    if (!scene.targets.containsKey('chart-world-input')) {
+      return (scene: scene, frame: snapshot.frame);
+    }
+    final target = scene.targets[snapshot.frame.outputTarget]!;
+    return SpatialUpscaler(sharpness: _spatialSharpness).append(
+      scene: scene,
+      frame: snapshot.frame,
+      inputTarget: 'chart-world-input',
+      outputTarget: 'chart-main',
+      width: target.width,
+      height: target.height,
+    );
+  }
+
   ChartGpuSnapshot _build(int positionUs, int epoch, int outputBuffer) {
     final projection = NativeChartProjection(
       pixelWidth,
@@ -1042,6 +1070,11 @@ final class NativeChartPlayback extends ChangeNotifier {
       backgroundData: _backgroundImage,
       width: pixelWidth,
       height: pixelHeight,
+      worldViewport: spatialWorldViewport(
+        pixelWidth,
+        pixelHeight,
+        _spatialFactor,
+      ),
       logicalWidth: logicalWidth,
       logicalHeight: logicalHeight,
       mediaUs: positionUs,
@@ -1155,6 +1188,7 @@ final class NativeChartPlayback extends ChangeNotifier {
           : null;
       final ChartGpuSnapshot snapshot;
       final RenderScene resources;
+      final RenderFrame renderFrame;
       final OurNotesWatchObservation? observation;
       try {
         observation = _introPresenting
@@ -1174,12 +1208,14 @@ final class NativeChartPlayback extends ChangeNotifier {
           return;
         }
         snapshot = _build(position, generation, _frames % 2);
-        resources = toRenderScene(snapshot.scene);
+        final gpuSnapshot = _spatial(snapshot);
+        resources = gpuSnapshot.scene;
+        renderFrame = gpuSnapshot.frame;
       } finally {
         buildTrace?.finish();
       }
       await current.present(
-        snapshot.frame,
+        renderFrame,
         resources: resources,
         stillCurrent: () =>
             !_disposed &&

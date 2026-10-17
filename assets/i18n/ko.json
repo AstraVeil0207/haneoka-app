@@ -1376,6 +1376,15 @@
       "gekisouLive": "격주 라이브",
       "vibration": "진동",
       "vibrationUnavailable": "이 기기에서는 사용할 수 없습니다"
+    },
+    "rendering": {
+      "title": "그래픽",
+      "resolution": "렌더링 해상도",
+      "native": "원본",
+      "quality": "화질 우선",
+      "balanced": "균형",
+      "sharpness": "선명도",
+      "description": "FSR 1"
     }
   },
   "tools": {

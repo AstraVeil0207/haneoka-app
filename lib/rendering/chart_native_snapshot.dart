@@ -39,6 +39,7 @@ ChartGpuSnapshot buildChartSnapshot(
   required int textureHeight,
   required int width,
   required int height,
+  (int, int)? worldViewport,
   required int mediaUs,
   NativeChartProjection? stageProjection,
   int epoch = 2,
@@ -859,7 +860,11 @@ ChartGpuSnapshot buildChartSnapshot(
   }
   gameDraws.addAll([...noteBodyDraws, ...noteArrowDraws, ...noteMarkDraws]);
   final targets = <String, NativeTarget>{
-    'chart-game': NativeTarget(width: width, height: height, depth: true),
+    'chart-game': NativeTarget(
+      width: worldViewport?.$1 ?? width,
+      height: worldViewport?.$2 ?? height,
+      depth: true,
+    ),
     'chart-main': NativeTarget(
       width: width,
       height: height,
@@ -891,11 +896,15 @@ ChartGpuSnapshot buildChartSnapshot(
     final quality = effectQuality;
     final effectWidth = math.max(
           1,
-          (width * NativeEffectPostprocessing.effectScales[quality]).floor(),
+          ((worldViewport?.$1 ?? width) *
+                  NativeEffectPostprocessing.effectScales[quality])
+              .floor(),
         ),
         effectHeight = math.max(
           1,
-          (height * NativeEffectPostprocessing.effectScales[quality]).floor(),
+          ((worldViewport?.$2 ?? height) *
+                  NativeEffectPostprocessing.effectScales[quality])
+              .floor(),
         );
     targets['chart-effect'] = NativeTarget(
       width: effectWidth,
@@ -998,6 +1007,47 @@ ChartGpuSnapshot buildChartSnapshot(
     backgroundDraws.add(
       const NativeDraw(mesh: 'effect-composite', material: 'effect-composite'),
     );
+  }
+  final worldPasses = <NativePass>[];
+  if (worldViewport != null) {
+    final (worldWidth, worldHeight) = worldViewport;
+    targets['chart-world-hdr'] = NativeTarget(
+      width: worldWidth,
+      height: worldHeight,
+      format: NativeTargetFormat.rgba16f,
+      alpha: NativeTextureAlpha.independent,
+    );
+    targets['chart-world-input'] = NativeTarget(
+      width: worldWidth,
+      height: worldHeight,
+      alpha: NativeTextureAlpha.independent,
+    );
+    meshes['chart-world-transfer'] = projectSprite(
+      quad(0, 0, 2, 2),
+      fullClip,
+      Float32List.fromList([1, 1, 1, 1]),
+    );
+    materials['chart-world-transfer'] = const NativeMaterial(
+      texture: 'chart-world-hdr',
+      textureAlpha: NativeTextureAlpha.independent,
+      recipe: NativeMaterialRecipe.opaqueColorTransfer,
+      blend: NativeBlend.opaque,
+    );
+    worldPasses.add(
+      NativePass(target: 'chart-world-hdr', draws: List.of(backgroundDraws)),
+    );
+    worldPasses.add(
+      NativePass(
+        target: 'chart-world-input',
+        draws: [
+          const NativeDraw(
+            mesh: 'chart-world-transfer',
+            material: 'chart-world-transfer',
+          ),
+        ],
+      ),
+    );
+    backgroundDraws.clear();
   }
   if (hud == null) {
     unsupported.add({'role': 'hud', 'reason': 'native HUD source unavailable'});
@@ -1125,7 +1175,12 @@ ChartGpuSnapshot buildChartSnapshot(
             if (!introActive || intro.gameLaneVisible) ...gameDraws,
           ],
         ),
-        NativePass(target: 'chart-main', draws: backgroundDraws),
+        ...worldPasses,
+        NativePass(
+          target: 'chart-main',
+          draws: backgroundDraws,
+          clear: worldViewport == null,
+        ),
         NativePass(target: outputTarget, draws: outputDraws),
       ],
     ),
