@@ -33,6 +33,8 @@ NativeStoryResolvedSdfMaterial nativeStoryFallbackSdfMaterial({
   required String sourcePath,
   required String sourceHash,
   required bool matchMaterialPreset,
+  String? targetSourcePath,
+  String? targetSourceHash,
 }) {
   if (!matchMaterialPreset ||
       primaryFont.id == actualFont.id ||
@@ -53,8 +55,8 @@ NativeStoryResolvedSdfMaterial nativeStoryFallbackSdfMaterial({
     targetDefaultMaterial,
     actualFont: actualFont,
     sourceMaterialKey: targetDefaultMaterialKey,
-    sourcePath: sourcePath,
-    sourceHash: sourceHash,
+    sourcePath: targetSourcePath ?? sourcePath,
+    sourceHash: targetSourceHash ?? sourceHash,
   );
   if (!primary.usable || !target.usable) {
     throw UnsupportedError(

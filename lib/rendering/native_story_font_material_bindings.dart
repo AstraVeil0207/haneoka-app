@@ -35,6 +35,8 @@ final class NativeStoryFontMaterialBinding {
     required this.matchMaterialPreset,
     required this.primaryProvenance,
     required this.targetProvenance,
+    this.targetSourcePath,
+    this.targetSourceHash,
   });
   final String primaryMaterialKey,
       targetDefaultMaterialKey,
@@ -44,6 +46,7 @@ final class NativeStoryFontMaterialBinding {
   final Map<String, Object?> primaryMaterial, targetDefaultMaterial;
   final Map<String, Object?> primaryProvenance, targetProvenance;
   final bool matchMaterialPreset;
+  final String? targetSourcePath, targetSourceHash;
 }
 
 /// Immutable original font/preset bindings. Font IDs identify compact assets;
@@ -263,6 +266,156 @@ final class NativeStoryFontMaterialBindings {
       output[name] = binding;
     }
     return Map.unmodifiable(output);
+  }
+
+  /// Localized presets and native font fallback PPtrs share one source packet.
+  NativeStoryFontMaterialBinding resolveLocalized({
+    required String primaryFontId,
+    required String selectedFontId,
+    required String primaryMaterialName,
+    required Map<String, Object?> packet,
+    required String localizedPacketHash,
+    required String localizedSourcePath,
+    required Map<String, StoryFontData> fontData,
+    required Iterable<NativeStoryFontMaterialBindings> donorBindings,
+  }) {
+    final key = '$primaryFontId\u0000$selectedFontId\u0000$primaryMaterialName';
+    if (_resolved[key] case final cached?) return cached;
+    final sources = _map(packet['sources']);
+    final primary = _map(sources[primaryFontId]);
+    final primaryIdentity = _map(primary['fontIdentity']);
+    final nativeFonts = _map(raw['fonts']);
+    final target = _map(nativeFonts[selectedFontId]);
+    final targetFields = _map(target['fields']);
+    if (packet['schema'] != 'haneoka-localized-font-materials-v1' ||
+        primary['compactSHA256'] != fontData[primaryFontId]?.sourceHash ||
+        target['compactSHA256'] != fontData[selectedFontId]?.sourceHash) {
+      throw const FormatException('native_localized_fallback_font_source');
+    }
+    final identities = <String, Map<String, Object?>>{
+      for (final entry in nativeFonts.entries)
+        entry.key: {
+          'serializedFile': _map(entry.value)['serializedFile'],
+          'pathId': _map(entry.value)['pathId'],
+          'atlasTextures': _map(_map(entry.value)['fields'])['m_AtlasTextures'],
+          'fallbackFonts': _map(
+            _map(entry.value)['fields'],
+          )['m_FallbackFontAssetTable'],
+        },
+      for (final entry in sources.entries)
+        entry.key: _map(_map(entry.value)['fontIdentity']),
+    };
+    List<Object?>? pathTo(String id, Set<String> visited) {
+      if (id == selectedFontId) return const [];
+      if (!visited.add(id)) return null;
+      final identity = identities[id]!;
+      for (final pointer in identity['fallbackFonts'] as List) {
+        final next = _pointer(pointer, identity['serializedFile'] as String);
+        for (final entry in identities.entries) {
+          if ('${entry.value['serializedFile']}:${entry.value['pathId']}' !=
+              next) {
+            continue;
+          }
+          final path = pathTo(entry.key, {...visited});
+          if (path != null) return [pointer, ...path];
+        }
+      }
+      return null;
+    }
+
+    final fallbackPath = pathTo(primaryFontId, {});
+    if (fallbackPath == null || fallbackPath.isEmpty) {
+      throw UnsupportedError('native_localized_fallback_edge:$key');
+    }
+    final selected = _map(
+      _map(packet['presets'])[primaryMaterialName],
+    )[primaryFontId];
+    if (selected is! String) {
+      throw UnsupportedError('native_localized_fallback_preset:$key');
+    }
+    final preset = _map(_map(primary['materials'])[selected]);
+    final donorIdentity = _pointer(
+      targetFields['m_Material'],
+      target['serializedFile'] as String,
+    );
+    final donors =
+        [
+              _map(_map(raw['materials'])['targetDefault']),
+              for (final binding in donorBindings)
+                _map(_map(binding.raw['materials'])['primaryPreset']),
+            ]
+            .where(
+              (record) =>
+                  '${record['serializedFile']}:${record['pathId']}' ==
+                  donorIdentity,
+            )
+            .toList();
+    if (donors.length != 1 || selected != '$primaryFontId:${preset['name']}') {
+      throw const FormatException('native_localized_fallback_material_source');
+    }
+    final donor = donors.single;
+    void atlas(Map<String, Object?> identity, List textures, String owner) {
+      final main = textures.cast<List>().singleWhere(
+        (entry) => entry[0] == '_MainTex',
+      );
+      final texture = _pointer(_map(main[1])['m_Texture'], owner);
+      if (!(identity['atlasTextures'] as List).any(
+        (pointer) =>
+            _pointer(pointer, identity['serializedFile'] as String) == texture,
+      )) {
+        throw const FormatException('native_localized_fallback_atlas');
+      }
+    }
+
+    atlas(
+      primaryIdentity,
+      preset['textures'] as List,
+      preset['serializedFile'] as String,
+    );
+    atlas(
+      identities[selectedFontId]!,
+      _map(_map(donor['fields'])['m_SavedProperties'])['m_TexEnvs'] as List,
+      donor['serializedFile'] as String,
+    );
+    final donorKey = donor['compactKey'] as String;
+    final primaryMaterial = materials[selected],
+        targetMaterial = materials[donorKey];
+    if (primaryMaterial is! Map<String, Object?> ||
+        targetMaterial is! Map<String, Object?>) {
+      throw const FormatException('native_localized_fallback_compact_material');
+    }
+    final result = NativeStoryFontMaterialBinding._(
+      primaryMaterialKey: selected,
+      primaryMaterial: primaryMaterial,
+      targetDefaultMaterialKey: donorKey,
+      targetDefaultMaterial: targetMaterial,
+      fallbackAssetName: target['assetName'] as String,
+      sourcePath: localizedSourcePath,
+      sourceHash: localizedPacketHash,
+      targetSourcePath: sourcePath,
+      targetSourceHash: sourceHash,
+      matchMaterialPreset: matchMaterialPreset,
+      primaryProvenance: _freeze({
+        'sourceId': primary['sourceId'],
+        'bindingPacketSHA256': localizedPacketHash,
+        'materialPacketSHA256': localizedPacketHash,
+        'font': primary,
+        'material': preset,
+        'fallbackPath': fallbackPath,
+        'settings': raw['settings'],
+      }) as Map<String, Object?>,
+      targetProvenance: _freeze({
+        'sourceId': raw['sourceId'],
+        'bindingPacketSHA256': packetSHA256,
+        'materialPacketSHA256': sourceHash,
+        'font': target,
+        'material': donor,
+        'fallbackPath': fallbackPath,
+        'settings': raw['settings'],
+      }) as Map<String, Object?>,
+    );
+    _resolved[key] = result;
+    return result;
   }
 
   NativeStoryFontMaterialBinding resolve(

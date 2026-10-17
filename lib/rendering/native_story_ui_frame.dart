@@ -337,6 +337,8 @@ NativeStoryUiSnapshot buildNativeStoryUiFrame({
           targetProvenance: binding.targetProvenance,
           sourcePath: binding.sourcePath,
           sourceHash: binding.sourceHash,
+          targetSourcePath: binding.targetSourcePath,
+          targetSourceHash: binding.targetSourceHash,
           matchMaterialPreset: binding.matchMaterialPreset,
         );
         fallbackMaterialSources[cacheKey] = resolved;

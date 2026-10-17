@@ -295,11 +295,27 @@ final class NativeStoryUiSource {
     String primaryFontId,
     String selectedFontId,
     String primaryMaterialName,
-  ) => fontMaterialBindings.resolve(
-    primaryFontId,
-    selectedFontId,
-    primaryMaterialName,
-  );
+  ) {
+    if ((localizedFontMaterials['sources'] as Map).containsKey(primaryFontId)) {
+      return fontMaterialBindings.resolveLocalized(
+        primaryFontId: primaryFontId,
+        selectedFontId: selectedFontId,
+        primaryMaterialName: primaryMaterialName,
+        packet: localizedFontMaterials,
+        localizedPacketHash:
+            sourceHashes['source-bindings/localized-font-materials.json']!,
+        localizedSourcePath:
+            '${base}source-bindings/localized-font-materials.json',
+        fontData: fonts,
+        donorBindings: frontFontPresets.values,
+      );
+    }
+    return fontMaterialBindings.resolve(
+      primaryFontId,
+      selectedFontId,
+      primaryMaterialName,
+    );
+  }
 
   bool fontMaterialExtraPadding(String mode, String nodePath) {
     final key = '$mode\u0000$nodePath';

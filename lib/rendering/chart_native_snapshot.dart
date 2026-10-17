@@ -82,6 +82,7 @@ ChartGpuSnapshot buildChartSnapshot(
   required int bandId,
   required (int, int) backgroundSize,
   NativeTextureData? backgroundData,
+  bool geometryObservations = false,
 }) {
   final projection =
           stageProjection ??
@@ -329,11 +330,13 @@ ChartGpuSnapshot buildChartSnapshot(
     0,
     1,
   ]);
-  anchors['logicalOrthographicClip'] = pixelClip.toList();
-  anchors['backgroundCrop'] = {
-    'offset': [ou, ov],
-    'repeat': [ru, rv],
-  };
+  if (geometryObservations) {
+    anchors['logicalOrthographicClip'] = pixelClip.toList();
+    anchors['backgroundCrop'] = {
+      'offset': [ou, ov],
+      'repeat': [ru, rv],
+    };
+  }
   add(
     'lane-screen',
     'lane',
@@ -439,18 +442,20 @@ ChartGpuSnapshot buildChartSnapshot(
     uv: tapTextureUv,
     indices: Uint16List.fromList(tapIndices),
   );
-  anchors['tapCorners'] = [
-    for (final vertex in [0, 3, 12, 15])
-      {
-        'vertex': vertex,
-        ...actualAnchor(
-          projection.worldClip,
-          tap.positions[vertex * 3].toDouble(),
-          tap.positions[vertex * 3 + 1].toDouble(),
-          tap.positions[vertex * 3 + 2].toDouble(),
-        ),
-      },
-  ];
+  if (geometryObservations) {
+    anchors['tapCorners'] = [
+      for (final vertex in [0, 3, 12, 15])
+        {
+          'vertex': vertex,
+          ...actualAnchor(
+            projection.worldClip,
+            tap.positions[vertex * 3].toDouble(),
+            tap.positions[vertex * 3 + 1].toDouble(),
+            tap.positions[vertex * 3 + 2].toDouble(),
+          ),
+        },
+    ];
+  }
   add(
     'tap-area',
     'tap',
@@ -519,11 +524,20 @@ ChartGpuSnapshot buildChartSnapshot(
   final visible = _sortedNotes[chart] ??= [
     for (final i in chart.visualTimeSortedIndices) chart.visualNotes[i],
   ];
-  for (final note in visible) {
-    if (note.timeMicroseconds / 1000 < timeMs - viewMs * .16 ||
-        note.timeMicroseconds / 1000 > timeMs + viewMs * 1.1) {
-      continue;
+  final firstVisibleMs = timeMs - viewMs * .16;
+  final lastVisibleMs = timeMs + viewMs * 1.1;
+  var first = 0, upper = visible.length;
+  while (first < upper) {
+    final middle = first + ((upper - first) >> 1);
+    if (visible[middle].timeMicroseconds / 1000 < firstVisibleMs) {
+      first = middle + 1;
+    } else {
+      upper = middle;
     }
+  }
+  for (var index = first; index < visible.length; index++) {
+    final note = visible[index];
+    if (note.timeMicroseconds / 1000 > lastVisibleMs) break;
     if (note.visible == null) {
       unsupported.add({
         'role': 'sprite',
@@ -555,23 +569,25 @@ ChartGpuSnapshot buildChartSnapshot(
     final approach = (note.timeMicroseconds / 1000 - timeMs) / viewMs;
     final alpha = approach < 0 ? math.max(0.0, 1 + approach / .16) : 1.0;
     final progress = projection.progress(approach);
-    noteAnchors.add({
-      'id': note.id,
-      'timeUs': note.timeMicroseconds,
-      'lane': note.lane,
-      'width': note.width,
-      'visualLane': note.visualLane,
-      'visualWidth': note.visualWidth,
-      'kind': noteKind,
-      'approach': approach,
-      'viewProgress': progress,
-      ...actualAnchor(
-        projection.screenClip,
-        projection.laneX(lane + note.visualWidth / 2) * progress,
-        projection.y(progress),
-        10.6077995,
-      ),
-    });
+    if (geometryObservations) {
+      noteAnchors.add({
+        'id': note.id,
+        'timeUs': note.timeMicroseconds,
+        'lane': note.lane,
+        'width': note.width,
+        'visualLane': note.visualLane,
+        'visualWidth': note.visualWidth,
+        'kind': noteKind,
+        'approach': approach,
+        'viewProgress': progress,
+        ...actualAnchor(
+          projection.screenClip,
+          projection.laneX(lane + note.visualWidth / 2) * progress,
+          projection.y(progress),
+          10.6077995,
+        ),
+      });
+    }
     try {
       final parts = skin.note(
         kind: noteKind,
@@ -601,25 +617,27 @@ ChartGpuSnapshot buildChartSnapshot(
               : noteBodyDraws,
           depth: true,
         );
-        roles.add({
-          'role': entry.key,
-          'nativeId': note.id,
-          'sourceOrdinal': note.sourceOrdinal,
-          'timeMicroseconds': note.timeMicroseconds,
-          'kind': noteKind,
-          'lane': note.lane,
-          'width': note.width,
-          'visualLane': note.visualLane,
-          'visualWidth': note.visualWidth,
-          'direction': note.direction,
-          'displayLane': lane,
-          'displayDirection': direction,
-          'approach': approach,
-          'viewProgress': projection.progress(approach),
-          'alpha': alpha,
-          'scale': noteSize,
-          'critical': note.critical,
-        });
+        if (geometryObservations) {
+          roles.add({
+            'role': entry.key,
+            'nativeId': note.id,
+            'sourceOrdinal': note.sourceOrdinal,
+            'timeMicroseconds': note.timeMicroseconds,
+            'kind': noteKind,
+            'lane': note.lane,
+            'width': note.width,
+            'visualLane': note.visualLane,
+            'visualWidth': note.visualWidth,
+            'direction': note.direction,
+            'displayLane': lane,
+            'displayDirection': direction,
+            'approach': approach,
+            'viewProgress': projection.progress(approach),
+            'alpha': alpha,
+            'scale': noteSize,
+            'critical': note.critical,
+          });
+        }
       }
     } on UnsupportedError catch (error) {
       unsupported.add({
@@ -683,43 +701,45 @@ ChartGpuSnapshot buildChartSnapshot(
         'reason': error.message.toString(),
       });
     }
-    holds.add({
-      'nativeLineId': line.nativeLineId,
-      'family': line.family.name,
-      'watchActive': active,
-      'span': [start, end],
-      'pointNativeIds': line.pointNativeIds,
-      'points': [
-        for (final p in points)
-          {
-            'id': p.id,
-            'timeUs': p.timeMicroseconds,
-            'lane': p.lane,
-            'width': p.width,
-            'easeLeft': p.ease,
-            'easeRight': p.easeR,
-            'slideAlong': p.slideAlong,
-          },
-      ],
-      if (prepared != null) ...{
-        'minimumAuthoredWidth': prepared.minimumWidth,
-        'geometrySourcePointIds': prepared.sourcePointIds,
-        'sampledVisiblePoints': [
-          for (final p in prepared.visiblePoints)
+    if (geometryObservations) {
+      holds.add({
+        'nativeLineId': line.nativeLineId,
+        'family': line.family.name,
+        'watchActive': active,
+        'span': [start, end],
+        'pointNativeIds': line.pointNativeIds,
+        'points': [
+          for (final p in points)
             {
-              'timeUs': p.timeUs,
+              'id': p.id,
+              'timeUs': p.timeMicroseconds,
               'lane': p.lane,
               'width': p.width,
-              'lineProgress': p.lineProgress,
+              'easeLeft': p.ease,
+              'easeRight': p.easeR,
+              'slideAlong': p.slideAlong,
             },
         ],
-        'ribbonScreenPositionsXYZ': prepared.screenPositions.toList(),
-      },
-      'visibleClipUs': [
-        math.max(start, mediaUs),
-        math.min(end, mediaUs + (viewMs * 1100).round()),
-      ],
-    });
+        if (prepared != null) ...{
+          'minimumAuthoredWidth': prepared.minimumWidth,
+          'geometrySourcePointIds': prepared.sourcePointIds,
+          'sampledVisiblePoints': [
+            for (final p in prepared.visiblePoints)
+              {
+                'timeUs': p.timeUs,
+                'lane': p.lane,
+                'width': p.width,
+                'lineProgress': p.lineProgress,
+              },
+          ],
+          'ribbonScreenPositionsXYZ': prepared.screenPositions.toList(),
+        },
+        'visibleClipUs': [
+          math.max(start, mediaUs),
+          math.min(end, mediaUs + (viewMs * 1100).round()),
+        ],
+      });
+    }
     if (holdStyle != null &&
         prepared != null &&
         prepared.visiblePoints.length >= 2) {

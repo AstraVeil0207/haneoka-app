@@ -108,10 +108,18 @@ final class NativeStoryMediaCue {
     this.loopStartUs = 0,
     this.loopEndUs,
     NativeStoryPreparedMedia? prepared,
-  }) : player = prepared?.player ?? _newStoryMediaPlayer() {
+    bool metadataOnly = false,
+  }) : _metadataOnly = metadataOnly,
+       _player = metadataOnly
+           ? null
+           : prepared?.player ?? _newStoryMediaPlayer() {
+    unawaited(_completion.future.catchError((Object _) {}));
+    if (!metadataOnly) _attachDecoder(prepared);
+  }
+
+  void _attachDecoder(NativeStoryPreparedMedia? prepared) {
     _fileLease = prepared?.claim();
     _prepared = prepared != null;
-    unawaited(_completion.future.catchError((Object _) {}));
     if (kind == StoryMediaKind.movie) video = VideoController(player);
     _subscriptions.addAll([
       player.stream.position.listen((_) => _publish()),
@@ -138,6 +146,7 @@ final class NativeStoryMediaCue {
       }),
     ]);
   }
+
   final String id;
   final StoryMediaKind kind;
   final Uri uri;
@@ -148,13 +157,23 @@ final class NativeStoryMediaCue {
   final int loopStartUs;
   int? get durationUs =>
       sourceDurationUs ??
-      (player.state.duration > Duration.zero
+      (_player != null && player.state.duration > Duration.zero
           ? player.state.duration.inMicroseconds
           : null);
   bool looping = false;
   final int sourceEpoch;
   final VoidCallback changed;
-  final media.Player player;
+  media.Player? _player;
+  media.Player get player =>
+      _player ?? (throw StateError('story_media_decoder_not_materialized'));
+  bool _metadataOnly;
+  int _metadataPositionUs = 0;
+  double _metadataVolume = 100, _metadataRate = 1;
+  bool _metadataCompleted = false;
+  double get volume => _metadataOnly ? _metadataVolume : player.state.volume;
+  double get rate => _metadataOnly ? _metadataRate : player.state.rate;
+  bool get isCompleted =>
+      _metadataOnly ? _metadataCompleted : player.state.completed;
   VideoController? video;
   final _subscriptions = <StreamSubscription>[];
   final _completion = Completer<void>();
@@ -248,6 +267,7 @@ final class NativeStoryMediaCue {
   }
 
   bool get _ready {
+    if (_metadataOnly) return false;
     final playlist = player.state.playlist;
     return !_disposed &&
         _accept &&
@@ -288,6 +308,12 @@ final class NativeStoryMediaCue {
     if (_opened || _disposed) throw StateError('story_media_cue_single_load');
     _opened = true;
     this.looping = looping;
+    if (_metadataOnly) {
+      _metadataPositionUs = positionUs ?? 0;
+      _metadataVolume = volume.clamp(0.0, 100.0);
+      _metadataRate = playbackRate;
+      return;
+    }
     final generation = ++_generation;
     final preparation = Stopwatch()..start();
     if (_fileLease == null) {
@@ -347,6 +373,19 @@ final class NativeStoryMediaCue {
 
   Future<StoryMediaObservation?> sample() => _track(_sample());
   Future<StoryMediaObservation?> _sample() async {
+    if (_metadataOnly) {
+      if (_disposed || !_opened) return null;
+      return StoryMediaObservation(
+        cueId: id,
+        kind: kind,
+        positionUs: _metadataPositionUs,
+        durationUs: sourceDurationUs,
+        playing: false,
+        completed: _metadataCompleted,
+        error: error,
+        sourceEpoch: sourceEpoch,
+      );
+    }
     if (!_ready) return null;
     final generation = _generation;
     final backend = player.platform;
@@ -381,13 +420,18 @@ final class NativeStoryMediaCue {
     );
   }
 
-  Future<void> pause() => _disposed ? Future.value() : _track(player.pause());
-  Future<void> resume() => _disposed || player.state.completed
+  Future<void> pause() =>
+      _disposed || _metadataOnly ? Future.value() : _track(player.pause());
+  Future<void> resume() => _disposed || _metadataOnly || player.state.completed
       ? Future.value()
       : _track(player.play());
   Future<void> seek(int atUs) =>
       _disposed ? Future.value() : _track(_seek(atUs));
   Future<void> _seek(int atUs) async {
+    if (_metadataOnly) {
+      _metadataPositionUs = atUs;
+      return;
+    }
     if (kind == StoryMediaKind.movie) _videoRespeedOperations++;
     try {
       await player.seek(Duration(microseconds: atUs));
@@ -398,12 +442,20 @@ final class NativeStoryMediaCue {
 
   Future<void> setVolume(double value) => _track(_setVolume(value));
   Future<void> _setVolume(double value) async {
+    if (_metadataOnly) {
+      _metadataVolume = value.clamp(0.0, 100.0);
+      return;
+    }
     if (!_ready) return;
     await player.setVolume(value.clamp(0.0, 100.0));
   }
 
   Future<void> setRate(double value) => _track(_setRate(value));
   Future<void> _setRate(double value) async {
+    if (_metadataOnly) {
+      _metadataRate = value;
+      return;
+    }
     if (!_ready) return;
     if (kind == StoryMediaKind.movie) _videoRespeedOperations++;
     try {
@@ -411,6 +463,28 @@ final class NativeStoryMediaCue {
     } finally {
       if (kind == StoryMediaKind.movie) _videoRespeedOperations--;
     }
+  }
+
+  void _projectReplay(StoryMediaObservation observation) {
+    if (!_metadataOnly || _disposed) return;
+    _metadataPositionUs = observation.positionUs;
+    _metadataCompleted = observation.completed;
+    if (_metadataCompleted && !_completion.isCompleted) _completion.complete();
+  }
+
+  Future<void> _materialize(int positionUs) async {
+    if (!_metadataOnly || _disposed) return;
+    _metadataOnly = false;
+    _opened = false;
+    _player = _newStoryMediaPlayer();
+    _attachDecoder(null);
+    await open(
+      looping: looping,
+      volume: _metadataVolume,
+      playbackRate: _metadataRate,
+      positionUs: positionUs,
+      play: false,
+    );
   }
 
   Future<void> restorePaused({
@@ -451,7 +525,7 @@ final class NativeStoryMediaCue {
       while (_io.isNotEmpty) {
         await Future.wait(_io.toList());
       }
-      await player.dispose();
+      await _player?.dispose();
     } finally {
       _encoded = null;
       await _fileLease?.release();
@@ -733,7 +807,7 @@ final class NativeStoryMediaHost extends ChangeNotifier {
       _cues.remove(entry.key);
       if (retainPreviousBgm &&
           event.kind == StoryMediaKind.bgm &&
-          entry.value.ready) {
+          (entry.value.ready || entry.value._metadataOnly)) {
         _retiring.add(entry.value);
       } else {
         await entry.value.dispose();
@@ -750,7 +824,12 @@ final class NativeStoryMediaHost extends ChangeNotifier {
       throw StateError('story_actual_resource_ref_missing:${event.cueId}');
     }
     final uri = resolve(reference, event.kind);
-    final prepared = await _takePrepared(event.kind, uri);
+    final metadataOnly =
+        _replayAtUs != null &&
+        event.kind != StoryMediaKind.movie &&
+        durationUs != null &&
+        durationUs >= 0;
+    final prepared = metadataOnly ? null : await _takePrepared(event.kind, uri);
     if (!current()) {
       await prepared?.dispose();
       return null;
@@ -761,6 +840,7 @@ final class NativeStoryMediaHost extends ChangeNotifier {
       kind: event.kind,
       uri: uri,
       prepared: prepared,
+      metadataOnly: metadataOnly,
       resourceRef: reference,
       instanceId: intent,
       commandIndex: event.commandIndex,
@@ -812,7 +892,10 @@ final class NativeStoryMediaHost extends ChangeNotifier {
   Future<List<StoryMediaObservation>> sample() async {
     final generation = _generation;
     final sampled = _cues.values.toList();
-    final values = await Future.wait([for (final cue in sampled) cue.sample()]);
+    final values = await Future.wait([
+      for (final cue in sampled)
+        (() async => _projected(cue) ?? await cue.sample())(),
+    ]);
     if (_disposed || generation != _generation) return const [];
     return [
       for (final (index, value) in values.indexed)
@@ -833,7 +916,7 @@ final class NativeStoryMediaHost extends ChangeNotifier {
     _suspended = false;
     await Future.wait([
       for (final cue in cues)
-        if (!cue.player.state.completed) cue.resume(),
+        if (!cue.isCompleted) cue.resume(),
     ]);
   }
 
@@ -855,7 +938,7 @@ final class NativeStoryMediaHost extends ChangeNotifier {
       _replayClocks[cue] = _StoryMediaReplayClock(
         atUs,
         observation.positionUs,
-        cue.player.state.rate,
+        cue.rate,
       );
     }
   }
@@ -865,6 +948,9 @@ final class NativeStoryMediaHost extends ChangeNotifier {
     if (previous == null) return;
     if (atUs < previous) throw StateError('story_media_replay_backwards');
     _replayAtUs = atUs;
+    for (final cue in cues) {
+      _projected(cue);
+    }
   }
 
   StoryMediaObservation? _projected(NativeStoryMediaCue cue) {
@@ -879,7 +965,7 @@ final class NativeStoryMediaHost extends ChangeNotifier {
         cue.looping && loopEnd != null && loopLength > 0 && unwrapped >= loopEnd
         ? cue.loopStartUs + (unwrapped - cue.loopStartUs) % loopLength
         : unwrapped;
-    return StoryMediaObservation(
+    final observation = StoryMediaObservation(
       cueId: cue.id,
       kind: cue.kind,
       positionUs: position,
@@ -889,6 +975,8 @@ final class NativeStoryMediaHost extends ChangeNotifier {
       error: cue.error,
       sourceEpoch: sourceEpoch,
     );
+    cue._projectReplay(observation);
+    return observation;
   }
 
   Future<void> finishReplay() async {
@@ -901,6 +989,8 @@ final class NativeStoryMediaHost extends ChangeNotifier {
         if (entry.value case final observation?)
           observation.completed
               ? releaseCue(entry.key)
+              : entry.key._metadataOnly
+              ? entry.key._materialize(observation.positionUs)
               : entry.key.seek(observation.positionUs),
     ]);
   }
@@ -923,9 +1013,9 @@ final class NativeStoryMediaHost extends ChangeNotifier {
           positionUs: observation.positionUs,
           looping: cue.looping,
           volume: _replayAtUs == null
-              ? cue.player.state.volume
-              : projectedVolume?.call(cue) ?? cue.player.state.volume,
-          rate: cue.player.state.rate,
+              ? cue.volume
+              : projectedVolume?.call(cue) ?? cue.volume,
+          rate: cue.rate,
           retiring: _retiring.contains(cue),
           instanceId: cue.instanceId,
           commandIndex: cue.commandIndex,

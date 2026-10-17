@@ -259,14 +259,15 @@ final class NativeStoryFrameHost {
   }
 
   StoryFrameRenderSnapshot snapshotForColour(NativeStoryUpdateStamp stamp) {
-    if (_disposed ||
-        stamp.sourceEpoch != epoch ||
-        stamp.updateIndex != playback.frame.actualUpdateIndex ||
-        stamp.storyUs != playback.frame.actualStoryUs ||
-        _metrics == null) {
+    if (_disposed || stamp.sourceEpoch != epoch || _metrics == null) {
       throw StateError('native_frame_colour_actual_update_pair');
     }
-    return _snapshot(sharedColour: true);
+    final frame = playback.frame;
+    if (stamp.updateIndex != frame.actualUpdateIndex ||
+        stamp.storyUs != frame.actualStoryUs) {
+      throw StateError('native_frame_colour_actual_update_pair');
+    }
+    return _snapshot(sharedColour: true, playbackFrame: frame);
   }
 
   Future<void> retireSurfaceForColour() async {
@@ -294,9 +295,12 @@ final class NativeStoryFrameHost {
     _frames++;
   }
 
-  StoryFrameRenderSnapshot _snapshot({bool sharedColour = false}) {
+  StoryFrameRenderSnapshot _snapshot({
+    bool sharedColour = false,
+    StoryFramePlaybackFrame? playbackFrame,
+  }) {
     final snapshot = compileStoryFrame(
-      playback: playback.frame,
+      playback: playbackFrame ?? playback.frame,
       metrics: _metrics!,
       actualViewPivot: data.viewPivot,
       actualPlanarClip: resolvePlanarClip(_metrics!),
@@ -384,7 +388,8 @@ final class NativeStoryFrameHost {
   Future<void> _present(bool Function() current) async {
     final session = _session;
     if (_disposed || !current() || session == null || _presenting) return;
-    final visible = playback.frame.visibleInstances.any((i) => i.alpha > 0);
+    final playbackFrame = playback.frame;
+    final visible = playbackFrame.visibleInstances.any((i) => i.alpha > 0);
     if (!visible && !_renderedVisible) return;
     _presenting = true;
     final intent = _intent;
@@ -394,7 +399,7 @@ final class NativeStoryFrameHost {
         intent == _intent &&
         identical(session, _session);
     try {
-      final frame = _snapshot();
+      final frame = _snapshot(playbackFrame: playbackFrame);
       await session.ensureTextures(frame.textures);
       await session.ensureDataTextures(_dataTextures);
       if (!active()) return;
