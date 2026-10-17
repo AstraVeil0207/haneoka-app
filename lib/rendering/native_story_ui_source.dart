@@ -327,12 +327,28 @@ final class NativeStoryUiSource {
     final proof = (bindings['sources'] as List).cast<Map>().singleWhere(
       (row) => row['mode'] == mode,
     );
+    final window = controls.windows[mode]!;
+    final reference =
+        (window.visibility.original['references'] as Map)[textKey] as Map;
+    final endpoint = reference['endpoint'] as Map;
+    final wrapper = (endpoint['object'] as Map)['data'] as Map;
+    final localize = wrapper['_localizeText'] as Map;
+    final localizeComponent = (endpoint['components'] as List)
+        .cast<Map>()
+        .singleWhere(
+          (record) =>
+              record['pathId'] == localize['m_PathID'] &&
+              record['serializedFile'] == window.serializedFile,
+        );
     return StoryTextSourceBinding.fromRaw(
       sourceHash: proof['archiveSHA256'] as String,
       component: Map<String, Object?>.from(component),
       uiRubyComponent: components?[rubyKey] is Map
           ? Map<String, Object?>.from(components![rubyKey] as Map)
           : null,
+      localizeComponent: Map<String, Object?>.from(
+        localizeComponent['data'] as Map,
+      ),
     );
   }
 

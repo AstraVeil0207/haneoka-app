@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 
 import '../core/media_lifecycle.dart';
 import '../core/media_kit_transport.dart';
+import '../core/system_proxy.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:vega_plugin_haneoka/render_profile.dart';
@@ -23,7 +25,14 @@ final class NativeStoryMediaCue {
     this.sourceDurationUs,
     this.loopStartUs = 0,
     this.loopEndUs,
-  }) : player = media.Player() {
+  }) : player = media.Player(
+         configuration: media.PlayerConfiguration(
+           protocolWhitelist: [
+             ...const media.PlayerConfiguration().protocolWhitelist,
+             if (Platform.isAndroid) 'httpproxy',
+           ],
+         ),
+       ) {
     unawaited(_completion.future.catchError((Object _) {}));
     if (kind == StoryMediaKind.movie) video = VideoController(player);
     _subscriptions.addAll([
@@ -199,6 +208,15 @@ final class NativeStoryMediaCue {
       looping ? media.PlaylistMode.single : media.PlaylistMode.none,
     );
     final backend = player.platform;
+    if (Platform.isAndroid && backend is media.NativePlayer) {
+      final proxy = systemProxyFor(uri);
+      // FFmpeg passes http_proxy through TLS to CONNECT for HTTPS media too.
+      // Preserve the source URI, decoder timing and native range seeking.
+      await backend.setProperty(
+        'stream-lavf-o',
+        proxy.httpProxy == null ? '' : 'http_proxy=${proxy.httpProxy}',
+      );
+    }
     if (looping && loopEndUs != null && backend is media.NativePlayer) {
       await backend.setProperty('ab-loop-a', '${loopStartUs / 1000000}');
       await backend.setProperty('ab-loop-b', '${loopEndUs! / 1000000}');
@@ -236,10 +254,11 @@ final class NativeStoryMediaCue {
     if (backend is! media.NativePlayer) {
       throw UnsupportedError('story_native_decoder_required');
     }
-    double? seconds, duration;
+    double? seconds;
     try {
-      seconds = double.tryParse(await backend.getProperty('time-pos'));
-      duration = double.tryParse(await backend.getProperty('duration'));
+      seconds = kind == StoryMediaKind.movie
+          ? double.tryParse(await backend.getProperty('time-pos'))
+          : await sampleMediaKitAudioPosition(player);
     } catch (_) {
       if (!_ready || generation != _generation) return null;
       rethrow;
@@ -255,11 +274,7 @@ final class NativeStoryMediaCue {
       cueId: id,
       kind: kind,
       positionUs: (seconds * Duration.microsecondsPerSecond).round(),
-      durationUs: duration != null && duration.isFinite && duration > 0
-          ? (duration * Duration.microsecondsPerSecond).round()
-          : player.state.duration.inMicroseconds > 0
-          ? player.state.duration.inMicroseconds
-          : null,
+      durationUs: durationUs,
       playing: player.state.playing,
       completed: player.state.completed,
       error: error,

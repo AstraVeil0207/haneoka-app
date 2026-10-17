@@ -412,6 +412,7 @@ NativeStoryUiSnapshot buildNativeStoryUiFrame({
         lineBreakRules: ui.lineBreakRules,
         paddingResolver: (font, bold) => paddingFor(n, font, bold),
         fontScale: textSize,
+        uiLanguageMode: storyUiLanguageMode(locale),
       ),
     );
   }

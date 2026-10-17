@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:collection';
 import 'dart:io';
 
 import 'package:cronet_http/cronet_http.dart';
@@ -5,6 +7,8 @@ import 'package:cupertino_http/cupertino_http.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/io_client.dart';
+
+import 'system_proxy.dart';
 
 /// The platform's own HTTP stack, as a browser uses it: Cronet on Android and
 /// NSURLSession on Apple platforms speak HTTP/2 and HTTP/3 with Brotli, so
@@ -22,7 +26,9 @@ http.Client _client() {
       enableQuic: true,
       userAgent: 'haneoka-app',
     );
-    return CronetClient.fromCronetEngine(engine, closeEngine: true);
+    return _AndroidSystemProxyClient(
+      CronetClient.fromCronetEngine(engine, closeEngine: true),
+    );
   }
   if (Platform.isIOS || Platform.isMacOS) {
     final config = URLSessionConfiguration.defaultSessionConfiguration()
@@ -36,6 +42,127 @@ http.Client _client() {
       ..idleTimeout = const Duration(seconds: 30)
       ..userAgent = 'haneoka-app',
   );
+}
+
+/// Keep the multiplexed native stack for DIRECT and pool proxy connections.
+final class _AndroidSystemProxyClient extends http.BaseClient {
+  _AndroidSystemProxyClient(this._direct);
+
+  final http.Client _direct;
+  final _waiting = Queue<Completer<void>>();
+  int _active = 0;
+  bool _closed = false;
+  final http.Client _proxied = IOClient(
+    HttpClient()
+      ..idleTimeout = const Duration(seconds: 30)
+      ..userAgent = 'haneoka-app'
+      ..findProxy = (uri) => systemProxyFor(uri).directive,
+  );
+
+  Future<void> _acquire(Uri uri) {
+    if (_closed) {
+      return Future.error(http.ClientException('Client is closed', uri));
+    }
+    if (_active < 12) {
+      _active++;
+      return Future.value();
+    }
+    final waiting = Completer<void>();
+    _waiting.addLast(waiting);
+    return waiting.future;
+  }
+
+  void _release() {
+    if (_closed) return;
+    if (_waiting.isNotEmpty) {
+      _waiting.removeFirst().complete();
+    } else {
+      _active--;
+    }
+  }
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    if (_closed) throw http.ClientException('Client is closed', request.url);
+    if (systemProxyFor(request.url).isDirect) return _direct.send(request);
+    await _acquire(request.url);
+    var released = false;
+    void release() {
+      if (released) return;
+      released = true;
+      _release();
+    }
+
+    try {
+      final response = await _proxied.send(request);
+      StreamSubscription<List<int>>? subscription;
+      late final StreamController<List<int>> body;
+      body = StreamController<List<int>>(
+        sync: true,
+        onListen: () {
+          subscription = response.stream.listen(
+            body.add,
+            onError: (Object error, StackTrace stack) {
+              release();
+              body.addError(error, stack);
+            },
+            onDone: () {
+              release();
+              unawaited(body.close());
+            },
+          );
+        },
+        onPause: () => subscription?.pause(),
+        onResume: () => subscription?.resume(),
+        onCancel: () async {
+          try {
+            await subscription?.cancel();
+          } finally {
+            release();
+          }
+        },
+      );
+      return _ProxyStreamedResponse(body.stream, response);
+    } catch (_) {
+      release();
+      rethrow;
+    }
+  }
+
+  @override
+  void close() {
+    if (_closed) return;
+    _closed = true;
+    for (final waiting in _waiting) {
+      waiting.completeError(http.ClientException('Client is closed'));
+    }
+    _waiting.clear();
+    _active = 0;
+    _direct.close();
+    _proxied.close();
+    super.close();
+  }
+}
+
+final class _ProxyStreamedResponse extends http.StreamedResponse
+    implements http.BaseResponseWithUrl {
+  _ProxyStreamedResponse(Stream<List<int>> body, http.StreamedResponse source)
+    : url = source is http.BaseResponseWithUrl
+          ? (source as http.BaseResponseWithUrl).url
+          : source.request!.url,
+      super(
+        body,
+        source.statusCode,
+        contentLength: source.contentLength,
+        request: source.request,
+        headers: source.headers,
+        isRedirect: source.isRedirect,
+        persistentConnection: source.persistentConnection,
+        reasonPhrase: source.reasonPhrase,
+      );
+
+  @override
+  final Uri url;
 }
 
 /// Artwork on disk for a month, fetched through [netClient].
