@@ -3499,8 +3499,10 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
   }
 
   @override
-  Widget build(BuildContext context) =>
-      PlayerOrientationScope(landscape: true, child: _buildPlayer(context));
+  Widget build(BuildContext context) => DisplayFrameRateScope(
+    targetHz: 60,
+    child: PlayerOrientationScope(landscape: true, child: _buildPlayer(context)),
+  );
 
   Widget _buildPlayer(BuildContext context) {
     final state = AppScope.of(context), t = state.text;

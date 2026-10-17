@@ -15,6 +15,8 @@ import 'package:flutter/services.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:cassiopeia_plugin_our_notes/chart_ui_profile.dart';
 import 'package:cassiopeia_renderer_flutter/overview.dart';
+import 'package:render_kernel_flutter/render_kernel_flutter.dart'
+    show DisplayFrameRateScope;
 
 import '../core/api.dart';
 import '../core/app_state.dart';
@@ -808,9 +810,12 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
   }
 
   @override
-  Widget build(BuildContext context) => PlayerOrientationScope(
-    landscape: _watchMode,
-    child: _buildPlayer(context),
+  Widget build(BuildContext context) => DisplayFrameRateScope(
+    targetHz: _watchMode ? 120 : null,
+    child: PlayerOrientationScope(
+      landscape: _watchMode,
+      child: _buildPlayer(context),
+    ),
   );
 
   Widget _watchStage(NativeChartPlayback player, {required bool ready}) =>

@@ -198,8 +198,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "03a19412403c79d7033526ef9ba63755ee4f4bc7"
-      resolved-ref: "03a19412403c79d7033526ef9ba63755ee4f4bc7"
+      ref: aa75101946c75da4bd8319c8ac817ad131d25722
+      resolved-ref: aa75101946c75da4bd8319c8ac817ad131d25722
       url: "https://github.com/haneoka-gakuen/cassiopeia-renderer-flutter.git"
     source: git
     version: "0.1.0"
@@ -945,8 +945,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "025284f2f17c5f804b4afe05033ba0c3e08090bc"
-      resolved-ref: "025284f2f17c5f804b4afe05033ba0c3e08090bc"
+      ref: "5fa68077ba232b72850f7ae725d9b68e0715eabc"
+      resolved-ref: "5fa68077ba232b72850f7ae725d9b68e0715eabc"
       url: "https://github.com/haneoka-gakuen/render-kernel-flutter.git"
     source: git
     version: "0.1.0"
@@ -1322,8 +1322,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "0de80264ff0ddb454ef762362048fde92cd0ce99"
-      resolved-ref: "0de80264ff0ddb454ef762362048fde92cd0ce99"
+      ref: "8faff06de04e3aa64a780b775e9eadec53d55bdc"
+      resolved-ref: "8faff06de04e3aa64a780b775e9eadec53d55bdc"
       url: "https://github.com/haneoka-gakuen/vega-renderer-flutter.git"
     source: git
     version: "0.1.0"
