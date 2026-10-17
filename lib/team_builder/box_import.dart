@@ -18,6 +18,8 @@ import 'engine/master.dart';
 import 'engine/num.dart';
 import 'engine/power.dart';
 
+import 'package:game_data_exporter/game_data_exporter.dart' as exporter;
+
 class BoxImportError implements Exception {
   const BoxImportError(this.code);
   final String code;
@@ -101,6 +103,8 @@ class BoxCandidate {
 
   /// (band item id, level).
   final List<(int, int?)> bandItems = [];
+  int? vipRank;
+  final List<BoxImportNotice> notices = [];
 
   /// A declared foreign server is rejected; a missing one binds on confirm.
   final String? declaredServer;
@@ -127,6 +131,42 @@ int? _cardId(Object? value) {
 /// `projectInventoryDocument`: Haneoka inventory documents and the
 /// reference profile; never account envelopes.
 BoxCandidate? _projectInventory(Map root) {
+  final exporter.InventoryCandidate? thirdParty;
+  try {
+    thirdParty = exporter.projectThirdPartyInventory(root);
+  } on exporter.InventoryImportError catch (error) {
+    throw BoxImportError(error.code);
+  }
+  if (thirdParty != null) {
+    final candidate = BoxCandidate(
+      id: _candidateId(),
+      format: 'inventory-json',
+      declaredServer: thirdParty.declaredServer,
+    )..vipRank = thirdParty.vipRank;
+    candidate.members.addAll([
+      for (final row in thirdParty.members)
+        BoxMember(
+          row.cardId,
+          level: row.level,
+          rank: row.rank,
+          awakeCount: row.awakeCount,
+          liveSkillLevel: row.liveSkillLevel,
+          performanceSkillLevel: row.performanceSkillLevel,
+        ),
+    ]);
+    candidate.snaps.addAll([
+      for (final row in thirdParty.snapshots)
+        BoxSnap(row.cardId, level: row.level, rank: row.rank),
+    ]);
+    candidate.characters.addAll([
+      for (final (id, rank) in thirdParty.characters) (id, null, rank),
+    ]);
+    candidate.bandItems.addAll(thirdParty.bandItems);
+    candidate.notices.addAll([
+      for (final row in thirdParty.notices) BoxImportNotice(row.code, row.path),
+    ]);
+    return candidate;
+  }
   final legacy = _object(root['profile']) as Map? ?? root;
   final inventory = _object(legacy['inventory']) as Map?;
   final canonical =
@@ -553,22 +593,42 @@ class BoxCardProposal {
   List<String> get fields => members ? memberFields : snapFields;
 }
 
-class BoxMapProposal {
+sealed class BoxAccountProposal {
+  BoxAccountProposal(this.key, this.exists, this.existing);
+  final String key;
+  final bool exists;
+  final int? existing;
+  final List<int> values = [];
+  String get boxKey;
+}
+
+class BoxMapProposal extends BoxAccountProposal {
   BoxMapProposal(
-    this.key,
+    super.key,
     this.characters,
     this.id,
-    this.exists,
-    this.existing,
+    super.exists,
+    super.existing,
   );
-  final String key;
 
   /// Character ranks, or band item levels.
   final bool characters;
   final int id;
-  final bool exists;
-  final int? existing;
-  final List<int> values = [];
+  @override
+  String get boxKey => '${characters ? 'cr' : 'bi'}.$id';
+}
+
+class BoxScalarProposal extends BoxAccountProposal {
+  BoxScalarProposal(super.key, super.exists, super.existing, this.blocked);
+  final bool blocked;
+  @override
+  String get boxKey => 'p.vip';
+}
+
+class BoxImportNotice {
+  const BoxImportNotice(this.code, this.path);
+  final String code;
+  final String path;
 }
 
 /// `kind` is `members`, `snapshots`, `bandItems`, `characterRanks` or
@@ -582,7 +642,15 @@ class BoxIssue {
 }
 
 class BoxPreview {
-  BoxPreview(this.server, this.original, this.cards, this.maps, this.issues);
+  BoxPreview(
+    this.server,
+    this.original,
+    this.cards,
+    this.maps,
+    this.issues, {
+    this.scalars = const [],
+    this.notices = const [],
+  });
   final String server;
 
   /// The box this preview was read against; a changed box reopens it.
@@ -590,6 +658,13 @@ class BoxPreview {
   final List<BoxCardProposal> cards;
   final List<BoxMapProposal> maps;
   final List<BoxIssue> issues;
+  final List<BoxScalarProposal> scalars;
+  final List<BoxImportNotice> notices;
+  Iterable<BoxAccountProposal> get accounts sync* {
+    yield* maps;
+    yield* scalars;
+  }
+
   bool blocked(BoxCardProposal card) => issues.any(
     (i) =>
         i.kind == (card.members ? 'members' : 'snapshots') &&
@@ -600,6 +675,10 @@ class BoxPreview {
         i.kind == (map.characters ? 'characterRanks' : 'bandItems') &&
         i.id == map.id,
   );
+  bool accountBlocked(BoxAccountProposal account) => switch (account) {
+    BoxMapProposal() => mapBlocked(account),
+    BoxScalarProposal() => account.blocked,
+  };
 }
 
 /// What the import may change of the box, as one comparable string.
@@ -609,6 +688,7 @@ String boxSignature(BoxView view) => jsonEncode([
   for (final row in view.snaps.values) [row.cardId, row.level, row.rank],
   view.player.characterRanks,
   view.player.bandItems,
+  view.player.vipRank,
 ]);
 
 /// The highest value whose experience threshold the save's experience reaches.
@@ -780,12 +860,31 @@ BoxPreview previewBoxImport(
           _fromExp(dataRows(progression['characterRanks']), exp, null, 'rank'),
     );
   }
+  final runtime = objectRow(data['runtimeRules']);
+  final vipTable = objectRow(objectRow(runtime['tables'])['vipRanks']);
+  final vipRanks = runtime['status'] == 'ready' && vipTable['status'] == 'ready'
+      ? {
+          for (final row in dataRows(vipTable['rows']))
+            ?boxInteger(nativeRow(row)['vipRank']),
+        }
+      : const <int>{};
   return BoxPreview(
     server,
     boxSignature(view),
     cards.values.toList(),
     maps.values.toList(),
     issues,
+    scalars: candidate.vipRank == null
+        ? const []
+        : [
+            BoxScalarProposal(
+              'vipRank',
+              true,
+              view.player.vipRank,
+              !vipRanks.contains(candidate.vipRank),
+            )..values.add(candidate.vipRank!),
+          ],
+    notices: candidate.notices,
   );
 }
 
@@ -1092,7 +1191,8 @@ class BoxConfirmation {
         {for (final card in preview.cards) card.key: CardChoice(include: true)},
         {
           if (maps)
-            for (final map in preview.maps) map.key: MapChoice(include: true),
+            for (final account in preview.accounts)
+              account.key: MapChoice(include: !preview.accountBlocked(account)),
         },
       );
   ExistingPolicy policy;
@@ -1115,8 +1215,8 @@ class BoxConfirmation {
     for (final card in preview.cards) {
       this.card(card.key).include = include && !preview.blocked(card);
     }
-    for (final map in preview.maps) {
-      this.map(map.key).include = include && !preview.mapBlocked(map);
+    for (final account in preview.accounts) {
+      map(account.key).include = include && !preview.accountBlocked(account);
     }
   }
 }
@@ -1213,7 +1313,7 @@ List<ReviewField> reviewCard(
   ];
 }
 
-ReviewMap reviewMap(BoxMapProposal proposal, MapChoice choice) {
+ReviewMap reviewMap(BoxAccountProposal proposal, MapChoice choice) {
   final defaultValue = proposal.values.length == 1
       ? proposal.values.first
       : null;
@@ -1250,11 +1350,11 @@ bool canConfirmReview(BoxPreview preview, BoxConfirmation confirmation) {
       return false;
     }
   }
-  for (final map in preview.maps) {
+  for (final map in preview.accounts) {
     final choice = confirmation.map(map.key);
     if (!choice.include) continue;
     included++;
-    if (preview.mapBlocked(map) || reviewMap(map, choice).requiresChoice) {
+    if (preview.accountBlocked(map) || reviewMap(map, choice).requiresChoice) {
       return false;
     }
   }
@@ -1340,10 +1440,12 @@ List<(String, Object?)> applyBoxImport(
       out.add(('$p.${card.cardId}.${_boxField[field]}', value));
     }
   }
-  for (final map in preview.maps) {
+  for (final map in preview.accounts) {
     final choice = confirmation.map(map.key);
     if (!choice.include) continue;
-    final prefix = map.characters ? 'cr' : 'bi';
+    if (preview.accountBlocked(map)) {
+      throw const BoxImportError('box_unresolved_values');
+    }
     switch (choice.value) {
       case KeepChoice():
         if (!map.exists) throw const BoxImportError('box_unconfirmed_value');
@@ -1357,7 +1459,7 @@ List<(String, Object?)> applyBoxImport(
     if (selected == null || !map.values.contains(selected)) {
       throw const BoxImportError('box_conflict_required');
     }
-    out.add(('$prefix.${map.id}', selected));
+    out.add((map.boxKey, selected));
   }
   return out;
 }

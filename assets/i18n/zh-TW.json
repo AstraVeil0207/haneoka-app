@@ -1761,7 +1761,7 @@
         "keep": "保留已儲存數值",
         "chooseValue": "選擇數值",
         "review": "待確認",
-        "maps": "角色與道具等級",
+        "maps": "帳號加成",
         "saved": "已儲存",
         "issues": "待確認項目",
         "confirm": "確認匯入",
@@ -1785,7 +1785,21 @@
         "devicePermission": "請在手機上允許 USB 偵錯。",
         "deviceBusy": "其他 ADB 程式正在使用手機。",
         "deviceEmpty": "手機上沒有找到遊戲資料。",
-        "deviceFailed": "無法讀取手機。"
+        "deviceFailed": "無法讀取手機。",
+        "notImported": "未匯入的項目",
+        "cardIdentity": "卡牌",
+        "memory": "回憶加成",
+        "itemTotals": "樂器加成彙總",
+        "accountGrowth": "帳號加成",
+        "linkedSave": "此備份關聯了獨立存檔，請匯入該存檔檔案。",
+        "notice": {
+          "unknown": "未記錄",
+          "conflict": "資料衝突",
+          "needs_review": "待核對",
+          "unsupported_summary": "由角色評級彙總",
+          "unsupported_field": "暫不支援",
+          "inactive_band_item": "未生效"
+        }
       },
       "resourceResultsChanged": "養成或條件已變更，請重新計算以更新結果。",
       "localDraftChanged": "另一個分頁已修改卡庫。請先匯出目前輸入，再重新讀取已儲存的卡庫。",

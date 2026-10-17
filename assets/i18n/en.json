@@ -1761,7 +1761,7 @@
         "keep": "Keep saved value",
         "chooseValue": "Choose a value",
         "review": "Needs review",
-        "maps": "Character and item levels",
+        "maps": "Account growth",
         "saved": "Saved",
         "issues": "Entries needing review",
         "confirm": "Confirm import",
@@ -1785,7 +1785,21 @@
         "devicePermission": "Allow USB debugging on the phone.",
         "deviceBusy": "Another ADB program is using the phone.",
         "deviceEmpty": "No game data found on the phone.",
-        "deviceFailed": "Could not read the phone."
+        "deviceFailed": "Could not read the phone.",
+        "notImported": "Fields not imported",
+        "cardIdentity": "Card",
+        "memory": "Memory bonuses",
+        "itemTotals": "Combined instrument bonuses",
+        "accountGrowth": "Account growth",
+        "linkedSave": "This backup uses a separate game save. Import that save file.",
+        "notice": {
+          "unknown": "Unknown",
+          "conflict": "Conflicting values",
+          "needs_review": "Needs review",
+          "unsupported_summary": "Calculated from character ranks",
+          "unsupported_field": "Unsupported",
+          "inactive_band_item": "Inactive"
+        }
       },
       "resourceResultsChanged": "Training or conditions changed. Calculate again to update the results.",
       "localDraftChanged": "Your card library changed in another tab. Export your current inputs, then reload the saved library.",

@@ -65,7 +65,7 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
   String? _error;
   int _generation = 0;
   List<GameSave> _saves = const [];
-  bool _mapsOpen = false, _issuesOpen = false;
+  bool _mapsOpen = false, _issuesOpen = false, _noticesOpen = false;
 
   String _t(String key, String fallback, [Map<String, Object?> v = const {}]) {
     final t = c.state.text;
@@ -116,6 +116,12 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
   }
 
   String _errorText(String code) {
+    if (code == 'box_linked_save_required') {
+      return _t(
+        'linkedSave',
+        'This backup uses a separate game save. Import that save file.',
+      );
+    }
     if (code == 'box_review_changed') {
       return _t(
         'changed',
@@ -499,11 +505,11 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
     );
   }
 
-  Widget _mapRow(BoxMapProposal map) {
+  Widget _mapRow(BoxAccountProposal map) {
     final theme = Theme.of(context);
     final preview = _preview!, confirmation = _confirmation!;
     final choice = confirmation.map(map.key);
-    final blocked = preview.mapBlocked(map);
+    final blocked = preview.accountBlocked(map);
     final review = reviewMap(map, choice);
     final current = switch (choice.value) {
       KeepChoice() => 'keep',
@@ -530,7 +536,10 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
                       choice.include = value ?? false;
                       _recheck();
                     }),
-              title: Text(_mapName(map.characters, map.id)),
+              title: Text(switch (map) {
+                BoxMapProposal() => _mapName(map.characters, map.id),
+                BoxScalarProposal() => _fieldName(map.key),
+              }),
             ),
           ),
           Text(
@@ -599,6 +608,54 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
           )
         : '${_fieldName(issue.field)} · ${_t('review', 'Needs review')}';
     return '$subject · $detail';
+  }
+
+  String _noticeText(BoxImportNotice notice) {
+    final path = notice.path, field = notice.path.split('.').last;
+    final fieldLabel = field == 'identity'
+        ? _t('cardIdentity', 'Card')
+        : _fieldName(switch (field) {
+            'awake' => 'training',
+            'rank' => 'awakening',
+            'skillLevel' => 'liveSkillLevel',
+            'gekisouSkillLevel' => 'gekisoSkillLevel',
+            _ => field,
+          });
+    String subject;
+    final card = RegExp(r'^inventory\.growth\.(member|support)-card-(\d+)\.')
+        .firstMatch(path);
+    final row = RegExp(r'^cards\[(\d+)\]').firstMatch(path);
+    final entity = RegExp(
+      r'^player\.(characterRanks|bandItems|bandItemStates)\.(\d+)',
+    ).firstMatch(path);
+    if (card != null) {
+      final members = card.group(1) == 'member', id = int.parse(card.group(2)!);
+      final name = c.catalog!.has(members, id)
+          ? c.catalog!.cardName(members, id)
+          : '${_t(members ? 'members' : 'snapshots', 'Card')} #$id';
+      subject = '$name · $fieldLabel';
+    } else if (row != null) {
+      subject =
+          '${_t('listRow', 'Row {row}', {'row': int.parse(row.group(1)!) + 1})} · $fieldLabel';
+    } else if (entity != null) {
+      subject = _mapName(
+        entity.group(1) == 'characterRanks',
+        int.parse(entity.group(2)!),
+      );
+    } else {
+      subject = switch (path) {
+        'player.vipRank' || 'account.tgwCardRank' => _fieldName('vipRank'),
+        'player.characterTotalRank' => _fieldName('totalRank'),
+        'player.memory' => _t('memory', 'Memory bonuses'),
+        'player.eventIds' => c.state.text('navigation.events', 'Events'),
+        'account.bandItemTotals' => _t(
+          'itemTotals',
+          'Combined instrument bonuses',
+        ),
+        _ => _t('accountGrowth', 'Account growth'),
+      };
+    }
+    return '$subject · ${_t('notice.${notice.code}', 'Needs review')}';
   }
 
   Widget _selectBody(ThemeData theme) => Column(
@@ -799,7 +856,7 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
             itemBuilder: (context, index) => _cardRow(preview.cards[index]),
           ),
         ),
-        if (preview.maps.isNotEmpty)
+        if (preview.accounts.isNotEmpty)
           SliverPadding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
             sliver: SliverToBoxAdapter(
@@ -807,8 +864,33 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
                 initiallyExpanded: _mapsOpen,
                 onExpansionChanged: (value) => _mapsOpen = value,
                 tilePadding: EdgeInsets.zero,
-                title: Text(_t('maps', 'Character and item levels')),
-                children: [for (final map in preview.maps) _mapRow(map)],
+                title: Text(_t('maps', 'Account growth')),
+                children: [for (final map in preview.accounts) _mapRow(map)],
+              ),
+            ),
+          ),
+        if (preview.notices.isNotEmpty)
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            sliver: SliverToBoxAdapter(
+              child: ExpansionTile(
+                initiallyExpanded: _noticesOpen,
+                onExpansionChanged: (value) =>
+                    setState(() => _noticesOpen = value),
+                tilePadding: EdgeInsets.zero,
+                title: Text(_t('notImported', 'Fields not imported')),
+                expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_noticesOpen)
+                    for (final notice in {
+                      for (final row in preview.notices)
+                        '${row.code}:${row.path}': row,
+                    }.values)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Text(_noticeText(notice)),
+                      ),
+                ],
               ),
             ),
           ),
