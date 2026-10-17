@@ -237,10 +237,11 @@ NativeStoryFrontUiSnapshot buildNativeStoryFrontUiFrame({
           'native_front_font_preset:${n.text!.materialName}',
         );
       }
-      final binding = bindings.resolve(
+      final binding = ui.fontMaterialBinding(
         primary.id,
         font.id,
         n.text!.materialName,
+        originalBindings: bindings,
       );
       return nativeStoryFallbackSdfMaterial(
         primaryFont: primary,
@@ -255,6 +256,8 @@ NativeStoryFrontUiSnapshot buildNativeStoryFrontUiFrame({
         targetProvenance: binding.targetProvenance,
         sourcePath: binding.sourcePath,
         sourceHash: binding.sourceHash,
+        targetSourcePath: binding.targetSourcePath,
+        targetSourceHash: binding.targetSourceHash,
         matchMaterialPreset: binding.matchMaterialPreset,
       ).material;
     });

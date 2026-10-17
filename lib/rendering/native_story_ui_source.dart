@@ -294,10 +294,12 @@ final class NativeStoryUiSource {
   NativeStoryFontMaterialBinding fontMaterialBinding(
     String primaryFontId,
     String selectedFontId,
-    String primaryMaterialName,
-  ) {
+    String primaryMaterialName, {
+    NativeStoryFontMaterialBindings? originalBindings,
+  }) {
+    final bindings = originalBindings ?? fontMaterialBindings;
     if ((localizedFontMaterials['sources'] as Map).containsKey(primaryFontId)) {
-      return fontMaterialBindings.resolveLocalized(
+      return bindings.resolveLocalized(
         primaryFontId: primaryFontId,
         selectedFontId: selectedFontId,
         primaryMaterialName: primaryMaterialName,
@@ -310,7 +312,7 @@ final class NativeStoryUiSource {
         donorBindings: frontFontPresets.values,
       );
     }
-    return fontMaterialBindings.resolve(
+    return bindings.resolve(
       primaryFontId,
       selectedFontId,
       primaryMaterialName,
