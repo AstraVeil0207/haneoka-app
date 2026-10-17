@@ -195,7 +195,7 @@ jobs:
           targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
       - uses: subosito/flutter-action@v2
         if: matrix.arch == 'x64'
         with:
@@ -404,16 +404,37 @@ jobs:
         run: |
           current=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_REF_NAME" --jq .sha)
           [[ "$current" == "$(git rev-parse HEAD)" ]] || { echo "::error::Release tag changed during this build"; exit 1; }
-          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber
-            # Remove superseded package names only after the new files uploaded.
-            gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' > /tmp/haneoka-release-assets
-            while IFS= read -r name; do
-              if [[ ! -f "dist/$name" ]]; then
-                gh release delete-asset "$GITHUB_REF_NAME" "$name" --repo "$GITHUB_REPOSITORY" --yes
-              fi
-            done < /tmp/haneoka-release-assets
+          if draft=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null); then
+            [[ "$draft" == true ]] || { echo "::error::Published releases are immutable; prepare a new version."; exit 1; }
           else
-            gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft --verify-tag \
               --title "haneoka ${GITHUB_REF_NAME#v}" --generate-notes
           fi
+          gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' > /tmp/haneoka-release-assets
+          while IFS= read -r name; do
+            if [[ ! -f "dist/$name" ]]; then
+              gh release delete-asset "$GITHUB_REF_NAME" "$name" --repo "$GITHUB_REPOSITORY" --yes
+            fi
+          done < /tmp/haneoka-release-assets
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$GITHUB_REF_NAME" > /tmp/haneoka-release-metadata.json
+          node <<'NODE'
+          const fs = require('node:fs');
+          const { createHash } = require('node:crypto');
+          const sums = fs.readFileSync('dist/SHA256SUMS');
+          const expected = new Map(sums.toString('utf8').trim().split('\n').map(line => {
+            const match = /^([a-f0-9]{64})  (.+)$/.exec(line);
+            if (!match) throw new Error('Invalid SHA256SUMS entry');
+            return [match[2], match[1]];
+          }));
+          expected.set('SHA256SUMS', createHash('sha256').update(sums).digest('hex'));
+          const release = JSON.parse(fs.readFileSync('/tmp/haneoka-release-metadata.json', 'utf8'));
+          if (release.assets.length !== expected.size) throw new Error('Release asset count differs');
+          for (const asset of release.assets) {
+            const digest = expected.get(asset.name);
+            if (!digest || asset.state !== 'uploaded' || asset.digest !== `sha256:${digest}`) {
+              throw new Error(`Release asset mismatch: ${asset.name}`);
+            }
+          }
+          NODE
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest
