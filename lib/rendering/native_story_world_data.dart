@@ -17,6 +17,15 @@ extension NativeStoryWorldPortable on NativeStoryWorld {
       if (value.descriptor != null) 'movement': value.descriptor,
     };
     final projection = _scene!.projection;
+    final motions = _motionQueue.snapshot();
+    final registeredActors = _assets.values
+        .expand((values) => values.values)
+        .toSet();
+    final savedActors = {
+      for (final motion in motions)
+        if (!registeredActors.contains(motion.controller)) motion.controller,
+      ...registeredActors,
+    };
     return {
       'version': 1,
       'source': storySourceData(document.chapter.sourceIdentity),
@@ -37,7 +46,7 @@ extension NativeStoryWorldPortable on NativeStoryWorld {
         ],
       },
       'actors': [
-        for (final actor in _assets.values.expand((values) => values.values))
+        for (final actor in savedActors)
           {
             'name': actor.name,
             'key': actor.key,
@@ -67,6 +76,22 @@ extension NativeStoryWorldPortable on NativeStoryWorld {
               actor.originalLookY,
               actor.lookStopPending,
             ],
+          },
+      ],
+      'motionWaits': [
+        for (final entry in motions)
+          {
+            'target': entry.target,
+            'name': entry.controller.name,
+            'key': entry.controller.key,
+            'assetIndex': entry.controller.assetIndex,
+            'fingerprint': entry.controller.sourceFingerprint,
+            'remainingSeconds': entry.remainingSeconds,
+            'commandIndex': entry.request.commandIndex,
+            'motion': entry.request.motionName,
+            'expression': entry.request.expressionName,
+            'fade': entry.request.fade,
+            'waitSeconds': entry.request.waitSeconds,
           },
       ],
       'selectedActors': {
@@ -144,6 +169,7 @@ extension NativeStoryWorldPortable on NativeStoryWorld {
     _cameraTweens.clear();
     _movementTweens.clear();
     _shakeWaits.clear();
+    _motionQueue.clear();
     for (final actor in _ownedActors) {
       actor.model.show(false);
     }
@@ -207,6 +233,10 @@ extension NativeStoryWorldPortable on NativeStoryWorld {
         for (final entry in (data['selectedActors'] as Map).entries)
           entry.key as String: _assets[entry.key]![entry.value as int]!,
       });
+    _motionQueue.restore([
+      for (final raw in data['motionWaits'] as List? ?? const [])
+        _restoreMotionWait(raw as Map),
+    ]);
     Float32List vector(Object? raw) => Float32List.fromList([
       for (final v in raw as List) (v as num).toDouble(),
     ]);
@@ -386,5 +416,30 @@ extension NativeStoryWorldPortable on NativeStoryWorld {
       };
     }
     throw FormatException('story_world_data_tween:$key');
+  }
+
+  StoryCharacterMotionEntry<_WorldActor> _restoreMotionWait(Map data) {
+    final actor =
+        _actorResources[(
+              data['name'] as String,
+              data['assetIndex'] as int,
+              data['key'] as String,
+            )]
+            ?.actor;
+    if (actor == null || actor.sourceFingerprint != data['fingerprint']) {
+      throw const FormatException('story_world_data_motion_controller');
+    }
+    return StoryCharacterMotionEntry(
+      target: data['target'] as String,
+      controller: actor,
+      request: StoryCharacterMotionRequest(
+        commandIndex: data['commandIndex'] as int,
+        motionName: data['motion'] as String,
+        expressionName: data['expression'] as String,
+        fade: (data['fade'] as num).toDouble(),
+        waitSeconds: (data['waitSeconds'] as num).toDouble(),
+      ),
+      remainingSeconds: (data['remainingSeconds'] as num).toDouble(),
+    );
   }
 }

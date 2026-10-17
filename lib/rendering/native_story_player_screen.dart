@@ -135,7 +135,8 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
   int _epoch = 0, _update = 0, _uiFrames = 0, _textIndex = -1;
   int _lastFrontRevision = -1;
   int _uiIntent = 0;
-  int _lastTickerUs = 0;
+  int _lastTickerUs = 0, _lastMotionTickerUs = 0;
+  final _motionClock = Stopwatch()..start();
   int? _lastPresentedVisible;
   int? _lastPresentedUiRevision;
   int? _lastStillCaptureUs;
@@ -410,6 +411,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
         epoch: epoch,
         current: () => mounted && epoch == _epoch,
         currentStamp: () => _player!.actualUpdateStamp,
+        motionClockUs: () => _motionClock.elapsedMicroseconds,
         timing: () => _player!.visualTiming,
         fetch: _fetch,
       );
@@ -582,6 +584,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
       );
       _player!.media.addListener(_changed);
       _lastTickerUs = 0;
+      _lastMotionTickerUs = 0;
       _ticker.start();
       setState(() {});
     } catch (error, stack) {
@@ -2058,6 +2061,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
     _error = null;
     _completionPresented = false;
     _lastTickerUs = 0;
+    _lastMotionTickerUs = 0;
     _lastPresentedVisible = null;
     _lastPresentedUiRevision = null;
     _lastFrontRevision = -1;
@@ -2129,6 +2133,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
     _error = null;
     _completionPresented = false;
     _lastTickerUs = 0;
+    _lastMotionTickerUs = 0;
     _lastPresentedVisible = null;
     _lastPresentedUiRevision = null;
     _lastFrontRevision = -1;
@@ -2509,6 +2514,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
       _starting = true;
     });
     _lastTickerUs = 0;
+    _lastMotionTickerUs = 0;
     if (!_ticker.isActive) _ticker.start();
     final epoch = _epoch;
     unawaited(
@@ -2779,16 +2785,33 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
   }
 
   void _tick(Duration elapsed) async {
-    final player = _player;
-    if (_busy ||
-        player == null ||
+    final player = _player, now = elapsed.inMicroseconds;
+    final motionNow = _motionClock.elapsedMicroseconds;
+    final motionDelta = _lastMotionTickerUs == 0
+        ? 0.0
+        : (motionNow - _lastMotionTickerUs) / 1000000;
+    _lastMotionTickerUs = motionNow;
+    if (player == null ||
         _error != null ||
         _seek?.seeking == true ||
         _seekBusy) {
+      _lastMotionTickerUs = 0;
       return;
     }
+    try {
+      _world?.advanceMotionFrame(
+        deltaSeconds: motionDelta,
+        atUs: motionNow,
+        speed: player.speed,
+        transportPaused: player.paused,
+      );
+    } catch (error, stack) {
+      _fail(error, stack, _epoch);
+      return;
+    }
+    if (_busy) return;
     _busy = true;
-    final epoch = _epoch, now = elapsed.inMicroseconds;
+    final epoch = _epoch;
     final delta = _lastTickerUs == 0 ? 0.0 : (now - _lastTickerUs) / 1000000;
     _lastTickerUs = now;
     try {

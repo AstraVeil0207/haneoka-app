@@ -34,6 +34,7 @@ final class NativeStoryWorld {
     required this.epoch,
     required this.current,
     required this.currentStamp,
+    required this.motionClockUs,
     required this.timing,
     required this.fetch,
   });
@@ -42,6 +43,7 @@ final class NativeStoryWorld {
   final int epoch;
   final bool Function() current;
   final NativeStoryUpdateStamp Function() currentStamp;
+  final int Function() motionClockUs;
   final StoryPresentationTiming Function() timing;
   int _durationUs(StoryDecodedCommand command, {int? overrideUs}) =>
       timing().durationUs(overrideUs ?? command.durationUs);
@@ -256,6 +258,7 @@ final class NativeStoryWorld {
   StoryPostVolumeState? _postVolume;
   final _postPasses = StoryPostPasses();
   final _characterPresentation = StoryCharacterPresentation();
+  final _motionQueue = StoryCharacterMotionQueue<_WorldActor>();
   final _postWeights = <String, double>{};
   final _postEnabled = <String, bool>{};
   int _postEnvironment = 0, _lightEnvironment = 0;
@@ -411,6 +414,13 @@ final class NativeStoryWorld {
           : wait.untilUs;
       deadline = math.max(deadline ?? stamp.storyUs, end);
     }
+    final motionWait = _motionQueue.nextWaitSeconds(
+      showing: _motionControllerShowing,
+    );
+    if (motionWait != null && stamp.speed > 0) {
+      final atUs = stamp.storyUs + (motionWait * 1000000 / stamp.speed).ceil();
+      deadline = math.min(deadline ?? atUs, atUs);
+    }
     return deadline;
   }
 
@@ -426,8 +436,12 @@ final class NativeStoryWorld {
         entry.key: Map<int, _WorldActor>.of(entry.value),
     };
     final actors = Map<String, _WorldActor>.of(_actors);
+    final motions = _motionQueue.snapshot();
     final actorStates = {
-      for (final actor in assets.values.expand((values) => values.values))
+      for (final actor in {
+        ...assets.values.expand((values) => values.values),
+        for (final motion in motions) motion.controller,
+      })
         actor: actor.captureCheckpoint(),
     };
     final post = _postVolume!.snapshot();
@@ -515,6 +529,7 @@ final class NativeStoryWorld {
         _characterPresentation.placements.restore(placements);
         _characterPresentation.controls.restore(characterControls);
         _characterPresentation.order.restore(order);
+        _motionQueue.restore(motions);
         _focusCamera.setAll(0, focus);
         _baseCamera = cameraBase == null
             ? null
@@ -1081,19 +1096,71 @@ final class NativeStoryWorld {
   void reorder(StoryDecodedCommand command) =>
       _characterPresentation.reorder(command);
 
+  /// AdvMotionController observes Unity frame time independently of transport.
+  /// Source replay supplies its accepted clock through update instead.
+  void advanceMotionFrame({
+    required double deltaSeconds,
+    required int atUs,
+    required double speed,
+    required bool transportPaused,
+  }) {
+    if (!_alive() || timing().shortcut || _motionQueue.isEmpty) return;
+    if (transportPaused) {
+      final stamp = currentStamp();
+      update(
+        NativeStoryUpdateStamp(
+          sourceEpoch: stamp.sourceEpoch,
+          updateIndex: stamp.updateIndex,
+          storyUs: stamp.storyUs,
+          speed: speed,
+          paused: true,
+        ),
+      );
+    }
+    _motionQueue.advance(
+      deltaSeconds * speed,
+      atUs: atUs,
+      speed: speed,
+      showing: _motionControllerShowing,
+      play: _playCharacterMotion,
+    );
+  }
+
+  bool _motionControllerShowing(String _, _WorldActor actor) =>
+      actor.model.visible;
+
+  void _playCharacterMotion(
+    _WorldActor actor,
+    StoryCharacterMotionRequest request,
+  ) {
+    if (request.motionName.isNotEmpty) {
+      actor.model.playMotion(request.motionName, fade: request.fade);
+    }
+    if (request.expressionName.isNotEmpty) {
+      actor.model.playExpression(request.expressionName, fade: request.fade);
+    }
+  }
+
   void motion(StoryDecodedCommand command) {
     update(currentStamp());
+    final request = StoryCharacterMotionRequest.fromCommand(
+      command,
+      shortcut: timing().shortcut,
+    );
+    final atUs = command.opcode == 21 ? motionClockUs() : 0;
     for (final name in command.targets) {
       final actor = _actors[name];
-      if (actor == null) throw StateError('story_actor_not_loaded:$name');
-      final motion = command.payload['motionName'] as String? ?? '';
-      final expression = command.payload['expressionName'] as String? ?? '';
-      final fade = (command.payload['motionFadeIn'] as num?)?.toDouble() ?? -1;
-      if (motion.isNotEmpty) {
-        actor.model.playMotion(motion, fade: fade);
-      }
-      if (expression.isNotEmpty) {
-        actor.model.playExpression(expression, fade: fade);
+      if (actor == null) continue;
+      if (command.opcode == 21) {
+        _motionQueue.dispatch(
+          target: name,
+          controller: actor,
+          request: request,
+          atUs: atUs,
+          play: _playCharacterMotion,
+        );
+      } else {
+        _playCharacterMotion(actor, request);
       }
     }
   }
@@ -1393,6 +1460,7 @@ final class NativeStoryWorld {
   void update(NativeStoryUpdateStamp stamp) {
     if (_disposed) return;
     final previousStamp = _lastStamp;
+    final previousSceneUs = _sceneUs;
     if (previousStamp != null &&
         stamp.updateIndex != previousStamp.updateIndex &&
         !stamp.paused) {
@@ -1414,6 +1482,17 @@ final class NativeStoryWorld {
         paused: stamp.paused,
       );
       actor.lastUs = sceneUs;
+    }
+    if (previousStamp != null &&
+        stamp.updateIndex != previousStamp.updateIndex &&
+        !stamp.paused &&
+        timing().shortcut &&
+        !_motionQueue.isEmpty) {
+      _motionQueue.advance(
+        (_sceneUs - previousSceneUs) / 1000000,
+        showing: _motionControllerShowing,
+        play: _playCharacterMotion,
+      );
     }
     if (!stamp.paused) {
       _backgroundShake.update(_shakeUs);
@@ -2292,6 +2371,18 @@ final class NativeStoryWorld {
         if (actor.model.visible) actor.name,
     ],
     'activeMovements': _movementTweens.length,
+    'motionWaits': [
+      for (final entry in _motionQueue.snapshot())
+        {
+          'commandIndex': entry.request.commandIndex,
+          'target': entry.target,
+          'key': entry.controller.key,
+          'assetIndex': entry.controller.assetIndex,
+          'remainingSeconds': entry.remainingSeconds,
+          'motion': entry.request.motionName,
+          'expression': entry.request.expressionName,
+        },
+    ],
     'fieldBlur': {'background': _backgroundBlur, 'radiusMax': _blurRadiusMax},
     'post': {
       'environment': _postEnvironment,
@@ -2363,6 +2454,7 @@ final class NativeStoryWorld {
     _actorSources.clear();
     _assets.clear();
     _actors.clear();
+    _motionQueue.clear();
   }
 }
 
