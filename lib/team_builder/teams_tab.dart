@@ -574,7 +574,7 @@ class _TeamsTabState extends State<TeamsTab> {
                               Text(
                                 row.event == null
                                     ? ''
-                                    : '${formatNumber(locale, row.event!.points, 1)} (+${formatNumber(locale, row.event!.bonusPercent)}%)',
+                                    : '${formatNumber(locale, row.event!.points, 1)} (+${formatNumber(locale, row.event!.bonusPercent.floor())}%)',
                               ),
                             ),
                             DataCell(

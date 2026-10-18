@@ -9,6 +9,7 @@ import '../ui/app_image.dart';
 import '../ui/theme.dart';
 import '../ui/tile.dart';
 import 'visuals.dart';
+import 'catalog_query.dart';
 
 /// One value of a facet, as the filter sheet lists it.
 class FacetOption {
@@ -193,8 +194,10 @@ class BrowseScreen extends StatefulWidget {
     this.rail,
     this.heading,
     this.switches = const [],
+    this.queryEngine,
   });
   final String title;
+  final CatalogQueryEngine? queryEngine;
   final void Function(BuildContext context, Entry item)? onOpen;
 
   /// Switches in the filter sheet; a switch that is on counts as a filter.
@@ -272,7 +275,10 @@ class _BrowseScreenState extends State<BrowseScreen> {
   }
 
   bool _matches(Entry item, [String? except]) {
-    if (_query.isNotEmpty && !(_search[item] ?? '').contains(_query)) {
+    final plan = widget.queryEngine?.parse(_query);
+    final text = plan?.text ?? _query;
+    if (plan != null && !widget.queryEngine!.matches(item, plan)) return false;
+    if (text.isNotEmpty && !(_search[item] ?? '').contains(text)) {
       return false;
     }
     for (final MapEntry(:key, :value) in _selected.entries) {

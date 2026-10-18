@@ -9,6 +9,7 @@ import 'core/app_media_lifetime.dart';
 import 'core/music_background.dart';
 import 'l10n/app_localizations.dart';
 import 'shell/shell.dart';
+import 'ui/fonts.dart';
 import 'ui/theme.dart';
 import 'team_builder/engine_client.dart'
     show runTeamEngineHost, runTeamEngineProcess;
@@ -29,6 +30,7 @@ Future<void> main(List<String> arguments) async {
     return;
   }
   WidgetsFlutterBinding.ensureInitialized();
+  registerAppFontLicenses();
   MediaKit.ensureInitialized();
   final state = await AppState.load(
     WidgetsBinding.instance.platformDispatcher.locale,
@@ -72,11 +74,13 @@ class HaneokaApp extends StatelessWidget {
         Brightness.light,
         seed: state.seed,
         compact: state.compact,
+        locale: state.locale,
       ),
       darkTheme: haneokaTheme(
         Brightness.dark,
         seed: state.seed,
         compact: state.compact,
+        locale: state.locale,
       ),
       themeMode: state.themeMode,
       localizationsDelegates: const [

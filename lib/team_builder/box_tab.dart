@@ -49,8 +49,9 @@ class _BoxTabState extends State<BoxTab> {
   void _bulk(String label, List<(String, Object?)> changes) {
     final store = c.store;
     if (changes.isEmpty || store == null) return;
+    final owner = store.owner;
     final previous = [for (final (key, _) in changes) (key, store.value(key))];
-    c.write(changes);
+    if (!c.write(changes)) return;
     final messenger = ScaffoldMessenger.of(context);
     messenger
       ..hideCurrentSnackBar()
@@ -59,10 +60,64 @@ class _BoxTabState extends State<BoxTab> {
           content: Text(label),
           action: SnackBarAction(
             label: c.tb('undo', 'Undo'),
-            onPressed: () => c.write(previous),
+            onPressed: () {
+              if (c.store == store && store.owner == owner) c.write(previous);
+            },
           ),
         ),
       );
+  }
+
+  Future<void> _clearOwnership() async {
+    final store = c.store;
+    if (store == null) return;
+    final owner = store.owner;
+    final changes = [
+      for (final entry in store.entries.entries)
+        if (RegExp(r'^[ms]\.[1-9]\d*\.own$').hasMatch(entry.key) &&
+            entry.value.v == true)
+          (entry.key, false),
+    ];
+    if (changes.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          c.tb('clearOwnership', 'Mark all members and snapshots not owned'),
+        ),
+        content: Text(
+          c.tb(
+            'clearOwnershipScope',
+            '{count} owned cards. Training values, account bonuses, teams and preferences stay saved.',
+            {'count': changes.length},
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(c.state.text('common.actions.cancel', 'Cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(c.tb('clearOwnershipConfirm', 'Mark all not owned')),
+          ),
+        ],
+      ),
+    );
+    if (!mounted ||
+        confirmed != true ||
+        c.store != store ||
+        store.owner != owner) {
+      return;
+    }
+    _bulk(
+      c.tb(
+        'clearedOwnership',
+        'Marked {count} members and snapshots not owned',
+        {'count': changes.length},
+      ),
+      changes,
+    );
   }
 
   List<(String, Object?)> _maxChanges(bool members, int id) {
@@ -272,6 +327,17 @@ class _BoxTabState extends State<BoxTab> {
                   ),
             icon: const Icon(Symbols.upgrade_rounded),
             label: Text(c.tb('bulkMax', 'Full growth')),
+          ),
+          TextButton(
+            onPressed: c.view!.members.isEmpty && c.view!.snaps.isEmpty
+                ? null
+                : _clearOwnership,
+            child: Text(
+              c.tb(
+                'clearOwnership',
+                'Mark all members and snapshots not owned',
+              ),
+            ),
           ),
           FilledButton.tonalIcon(
             onPressed: () => openBoxImport(context, c, members: _members),

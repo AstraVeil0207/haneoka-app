@@ -1,6 +1,7 @@
 import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
+import 'fonts.dart';
 import 'schemes.g.dart';
 
 /// Material 3 shape scale, as the website's tokens define it.
@@ -23,23 +24,11 @@ abstract final class ShellMetrics {
   static const expanded = 1200.0;
 }
 
-/// The website's `--app-font`: Roboto, then the platform's Japanese face.
-const appFont = 'Roboto';
-const appFontFallback = [
-  'Noto Sans JP',
-  'Noto Sans CJK JP',
-  'Hiragino Kaku Gothic ProN',
-  'Hiragino Sans',
-  'Yu Gothic UI',
-  'Meiryo',
-  'sans-serif',
-];
-
 /// The website's type scale (`--md-sys-typescale-*`): M3 sizes, no tracking.
-TextTheme _typescale(Color color) {
+TextTheme _typescale(Color color, List<String> fontFallback) {
   TextStyle style(double size, double height, FontWeight weight) => TextStyle(
     fontFamily: appFont,
-    fontFamilyFallback: appFontFallback,
+    fontFamilyFallback: fontFallback,
     fontSize: size,
     height: height / size,
     fontWeight: weight,
@@ -70,16 +59,18 @@ ThemeData haneokaTheme(
   Brightness brightness, {
   String seed = 'haneoka',
   bool compact = false,
+  Locale locale = const Locale('ja'),
 }) {
   final (light, dark) = haneokaSchemes[seed] ?? haneokaSchemes['haneoka']!;
   final scheme = brightness == Brightness.dark ? dark : light;
+  final fontFallback = appFontFallback(locale);
   return ThemeData(
     colorScheme: scheme,
     useMaterial3: true,
     visualDensity: compact ? VisualDensity.compact : VisualDensity.standard,
     fontFamily: appFont,
-    fontFamilyFallback: appFontFallback,
-    textTheme: _typescale(scheme.onSurface),
+    fontFamilyFallback: fontFallback,
+    textTheme: _typescale(scheme.onSurface, fontFallback),
     pageTransitionsTheme: const PageTransitionsTheme(
       builders: {
         TargetPlatform.android: PredictiveBackPageTransitionsBuilder(),

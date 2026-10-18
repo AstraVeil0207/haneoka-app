@@ -12,6 +12,7 @@ import '../shell/page.dart';
 import '../ui/app_image.dart';
 import '../ui/tile.dart';
 import 'browse.dart';
+import 'catalog_query.dart';
 import 'cross_server.dart';
 import 'visuals.dart';
 import 'song_presentation.dart';
@@ -95,6 +96,7 @@ class _SongsScreenState extends State<SongsScreen> {
 
   Future<(List<Entry>, CatalogVisuals, PerformerRegistry?)> _load() async {
     final state = AppScope.of(context);
+    await CatalogQueryEngine.loadAliases();
     if (widget.api case final api?) {
       final (document, visuals, formal) = await (
         api.catalog('songs'),
@@ -159,6 +161,13 @@ class _SongsScreenState extends State<SongsScreen> {
           title: widget.title ?? t('navigation.songs', 'Songs'),
           items: items,
           onOpen: widget.onOpen,
+          queryEngine: visuals == null
+              ? null
+              : CatalogQueryEngine(
+                  visuals: visuals,
+                  game: catalogGame(api),
+                  kind: 'song',
+                ),
           itemId: (item) => '${item['musicId'] ?? item['_key'] ?? ''}',
           error: snapshot.error,
           onRetry: () => setState(() => _data = _load()),

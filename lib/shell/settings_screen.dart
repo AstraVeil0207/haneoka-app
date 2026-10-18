@@ -28,8 +28,7 @@ class _Option {
 
 /// The website's settings page (`SettingsDocument.astro`): appearance, theme
 /// colour and density in one card; language with Japanese song titles and
-/// difficulty estimates in the next; the release server with spoiler content
-/// in the last. Then what the app is.
+/// difficulty estimates in the next; the release server in the last.
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
 
@@ -210,15 +209,6 @@ class SettingsScreen extends StatelessWidget {
                               ),
                             ],
                             onSelected: state.setServer,
-                          ),
-                          _Switch(
-                            icon: Symbols.visibility_rounded,
-                            label: t(
-                              'settings.labels.showSpoilerContent',
-                              'Show spoiler content',
-                            ),
-                            value: state.spoilers,
-                            onChanged: (v) => state.setFlag('spoilers', v),
                           ),
                         ],
                       ),

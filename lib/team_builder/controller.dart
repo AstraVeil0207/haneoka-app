@@ -9,6 +9,7 @@ import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 
 import '../catalog/visuals.dart';
+import '../catalog/catalog_query.dart';
 import '../core/app_state.dart';
 import 'box.dart';
 import 'catalog.dart';
@@ -129,6 +130,7 @@ class TeamBuilderController extends ChangeNotifier {
   ]) => state.text('tools.teamBuilder.$key', fallback, values);
 
   Future<void> load() async {
+    await CatalogQueryEngine.loadAliases();
     if (_disposed) return;
     final server = this.server;
     if (_server == server && catalog != null) return;

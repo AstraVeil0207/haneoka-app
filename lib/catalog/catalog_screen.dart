@@ -9,6 +9,7 @@ import '../ui/app_image.dart';
 import '../ui/card_artwork.dart';
 import '../ui/tile.dart';
 import 'browse.dart';
+import 'catalog_query.dart';
 import 'cross_server.dart';
 import 'profiles.dart';
 import 'shop_price.dart';
@@ -64,6 +65,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
 
   Future<(List<Entry>, CatalogVisuals)> _load() async {
     final state = AppScope.of(context);
+    await CatalogQueryEngine.loadAliases();
     final api = state.api;
     final profile = widget.profile;
     if (crossCatalogIds.containsKey(profile.resource)) {
@@ -177,6 +179,18 @@ class _CatalogScreenState extends State<CatalogScreen> {
           rail: rail,
           heading: heading,
           searchText: kit.searchText,
+          queryEngine:
+              visuals != null &&
+                  {
+                    Presentation.member,
+                    Presentation.support,
+                  }.contains(profile.presentation)
+              ? CatalogQueryEngine(
+                  visuals: visuals,
+                  game: 'our-notes',
+                  kind: 'card',
+                )
+              : null,
           grid: GridSpec(
             minWidth: profile.minWidth,
             aspectRatio: profile.aspectRatio,

@@ -132,6 +132,7 @@ flutter:
     - assets/brand/
     - assets/brand/oauth/
     - assets/settings/
+    - assets/fonts/OFL.txt
   fonts:
     - family: Roboto
       fonts:
@@ -140,6 +141,19 @@ flutter:
           weight: 500
         - asset: assets/fonts/Roboto-Bold.ttf
           weight: 700
+    # One variable font per writing system, with the complete upstream glyph set.
+    - family: Noto Sans SC
+      fonts:
+        - asset: assets/fonts/NotoSansSC-Variable.ttf
+    - family: Noto Sans TC
+      fonts:
+        - asset: assets/fonts/NotoSansTC-Variable.ttf
+    - family: Noto Sans JP
+      fonts:
+        - asset: assets/fonts/NotoSansJP-Variable.ttf
+    - family: Noto Sans KR
+      fonts:
+        - asset: assets/fonts/NotoSansKR-Variable.ttf
     # The stamp maker's pinned faces (`stamp-maker-font-sources.json`),
     # converted from the website's WOFF2 mirrors.
     - family: YurukaStd

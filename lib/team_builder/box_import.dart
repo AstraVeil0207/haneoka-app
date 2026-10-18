@@ -1196,6 +1196,7 @@ class BoxConfirmation {
         },
       );
   ExistingPolicy policy;
+  bool replaceOwnership = false;
   final Map<String, CardChoice> cards;
   final Map<String, MapChoice> maps;
 
@@ -1361,8 +1362,7 @@ bool canConfirmReview(BoxPreview preview, BoxConfirmation confirmation) {
   return included > 0;
 }
 
-/// `applyConfirmedBoxImport` as box writes. An import never removes a card
-/// and never changes a value the reader did not confirm.
+/// `applyConfirmedBoxImport` as one set of box writes.
 List<(String, Object?)> applyBoxImport(
   BoxView view,
   BoxPreview preview,
@@ -1373,6 +1373,26 @@ List<(String, Object?)> applyBoxImport(
     throw const BoxImportError('box_review_changed');
   }
   final out = <(String, Object?)>[];
+  if (confirmation.replaceOwnership) {
+    final selected = preview.cards.where(
+      (card) => confirmation.card(card.key).include,
+    );
+    if (selected.isEmpty) throw const BoxImportError('box_unresolved_values');
+    final members = selected
+        .where((card) => card.members)
+        .map((card) => card.cardId)
+        .toSet();
+    final snaps = selected
+        .where((card) => !card.members)
+        .map((card) => card.cardId)
+        .toSet();
+    out.addAll([
+      for (final id in view.members.keys)
+        if (!members.contains(id)) ('m.$id.own', false),
+      for (final id in view.snaps.keys)
+        if (!snaps.contains(id)) ('s.$id.own', false),
+    ]);
+  }
   final policy = confirmation.policy;
   for (final card in preview.cards) {
     final choice = confirmation.card(card.key);

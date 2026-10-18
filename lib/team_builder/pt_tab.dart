@@ -778,7 +778,7 @@ class _PtTabState extends State<PtTab> {
             hit,
             badge(Text('${position + 1}'), position == 0),
             '${catalog.difficultyLabel(hit.song!.songId, hit.song!.difficulty)} · '
-                '${c.tb('eventBonus', 'Event bonus')} +${number(hit.event!.bonusPercent)}%',
+                '${c.tb('eventBonus', 'Event bonus')} +${number(hit.event!.bonusPercent.floor())}%',
             '${number(hit.event!.mean)} $currency',
             best: position == 0,
             breakdown: t('breakdown', 'Live {direct} + CP {converted}', {

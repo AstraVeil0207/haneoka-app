@@ -272,29 +272,10 @@ class _EventTrackerScreenState extends State<EventTrackerScreen> {
                                       return Tile(
                                         selected: active,
                                         title: songKit.title(song),
-                                        subtitle: [
-                                          for (final id
-                                              in (song['bandIds'] as List? ??
-                                                  const []))
-                                            t.text(
-                                              visuals.bands[(id as num)
-                                                  .toInt()]?['bandName'],
-                                            ),
-                                        ].join(', '),
+                                        subtitle: songKit.subtitle(song),
+                                        adornments: songKit.adornments(song),
                                         images: songKit.images(song),
-                                        marks: [
-                                          if (visuals.musicTypeMark(
-                                                song['musicType'],
-                                              )
-                                              case final m?)
-                                            TileMark.image(MarkAt.start, m),
-                                          if (_category(t, song) case final c
-                                              when c.isNotEmpty)
-                                            TileMark.text(
-                                              MarkAt.bottomStart,
-                                              c,
-                                            ),
-                                        ],
+                                        marks: songKit.marks(song),
                                         onTap: () => setState(
                                           () =>
                                               _challenge = '${challenge['id']}',
@@ -345,10 +326,3 @@ class _EventTrackerScreenState extends State<EventTrackerScreen> {
     );
   }
 }
-
-const _categoryKeys = ['', 'original', 'virtual', 'jpop', 'anime', 'game'];
-String _category(SiteText t, Map song) => [
-  for (final id in (song['musicCategories'] as List? ?? const []))
-    if (id is num && id > 0 && id < _categoryKeys.length)
-      t.label(_categoryKeys[id.toInt()]),
-].join(', ');

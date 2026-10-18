@@ -329,7 +329,7 @@ class _ResultsViewState extends State<ResultsView> {
           c.tb('eventBonus', 'Event bonus'),
           (hit) => hit.event == null
               ? '—'
-              : '+${formatNumber(locale, hit.event!.bonusPercent)}%',
+              : '+${formatNumber(locale, hit.event!.bonusPercent.floor())}%',
         ),
       ],
       (
@@ -487,7 +487,7 @@ class _HitCardState extends State<_HitCard> {
         ValueChip(
           icon: Symbols.trending_up_rounded,
           label: c.tb('eventBonus', 'Event bonus'),
-          value: '+${formatNumber(locale, event.bonusPercent)}%',
+          value: '+${formatNumber(locale, event.bonusPercent.floor())}%',
         ),
         if (event.challengePoints != 0 && s.measure != 'challenge-points')
           ValueChip(

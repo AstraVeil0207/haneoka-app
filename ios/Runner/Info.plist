@@ -4,6 +4,9 @@
 	<dict>
 	<key>FLTEnableFlutterGPU</key>
 	<true/>
+	<!-- app_links handles navigation and OAuth callbacks. -->
+	<key>FlutterDeepLinkingEnabled</key>
+	<false/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

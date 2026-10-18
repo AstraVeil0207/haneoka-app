@@ -64,6 +64,9 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
   BoxConfirmation? _confirmation;
   String? _error;
   int _generation = 0;
+  String? _reviewOwnership;
+  Object? _reviewStore;
+  String? _reviewOwner;
   List<GameSave> _saves = const [];
   bool _mapsOpen = false, _issuesOpen = false, _noticesOpen = false;
 
@@ -168,6 +171,12 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
 
   void _review(BoxPreview preview, {bool maps = true}) {
     _preview = preview;
+    _reviewStore = c.store;
+    _reviewOwner = c.store?.owner;
+    _reviewOwnership = jsonEncode([
+      c.view?.members.keys.toList(),
+      c.view?.snaps.keys.toList(),
+    ]);
     _confirmation = BoxConfirmation.all(preview, maps: maps);
     if (widget.initialSave != null) {
       _confirmation!.setPolicy(preview, ExistingPolicy.updates);
@@ -326,7 +335,17 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
     if (preview == null || confirmation == null) return;
     try {
       final view = c.view;
-      if (view == null) throw const BoxImportError('box_review_changed');
+      if (view == null ||
+          c.store != _reviewStore ||
+          c.store?.owner != _reviewOwner ||
+          (confirmation.replaceOwnership &&
+              jsonEncode([
+                    view.members.keys.toList(),
+                    view.snaps.keys.toList(),
+                  ]) !=
+                  _reviewOwnership)) {
+        throw const BoxImportError('box_review_changed');
+      }
       final changes = [
         for (final change in applyBoxImport(
           view,
@@ -795,6 +814,57 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (preview.cards.isNotEmpty) ...[
+                  Segmented<bool>(
+                    grow: false,
+                    value: confirmation.replaceOwnership,
+                    options: [
+                      Choice(false, _t('mergeOwnership', 'Merge ownership')),
+                      Choice(
+                        true,
+                        _t(
+                          'replaceOwnership',
+                          'Replace member and snapshot ownership',
+                        ),
+                      ),
+                    ],
+                    onSelected: (value) => setState(() {
+                      confirmation.replaceOwnership = value;
+                      _recheck();
+                    }),
+                  ),
+                  if (confirmation.replaceOwnership)
+                    Text(
+                      _t(
+                        'replaceScope',
+                        'Replace all member and snapshot ownership with selected cards · {count} marked not owned. Account bonuses, teams and preferences stay saved.',
+                        {
+                          'count':
+                              (c.view!.members.keys
+                                  .where(
+                                    (id) => !preview.cards.any(
+                                      (card) =>
+                                          card.members &&
+                                          card.cardId == id &&
+                                          confirmation.card(card.key).include,
+                                    ),
+                                  )
+                                  .length +
+                              c.view!.snaps.keys
+                                  .where(
+                                    (id) => !preview.cards.any(
+                                      (card) =>
+                                          !card.members &&
+                                          card.cardId == id &&
+                                          confirmation.card(card.key).include,
+                                    ),
+                                  )
+                                  .length),
+                        },
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                ],
                 Text(
                   _t('existingPolicy', 'Existing cards'),
                   style: theme.textTheme.labelLarge,

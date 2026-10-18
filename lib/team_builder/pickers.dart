@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../catalog/catalog_screen.dart' show cardRarityName;
+import '../catalog/catalog_query.dart';
 import '../ui/tile.dart';
 import 'catalog.dart';
 import 'engine/api.dart';
@@ -63,7 +64,16 @@ class CardFilters {
         !rarities.contains(catalog.rarity(members, id))) {
       return false;
     }
-    final q = query.trim().toLowerCase();
+    final plan = catalog.cardQueryEngine.parse(query);
+    if (!catalog.cardQueryEngine.matches({
+      ...catalog.card(members, id),
+      'characterIds': characters,
+      'cardType': catalog.attribute(members, id),
+      'rarity': catalog.rarity(members, id),
+    }, plan)) {
+      return false;
+    }
+    final q = plan.text.trim().toLowerCase();
     if (q.isEmpty) return true;
     return '${catalog.cardName(members, id)} ${catalog.cardSubtitle(members, id)} $id'
         .toLowerCase()
@@ -353,23 +363,7 @@ class _SongPickerState extends State<_SongPicker> {
   final _bands = <int>{};
   final _attributes = <int>{};
   final _missions = <String>{};
-
-  List<String> _songMissions(int id) => [
-    for (final value
-        in objectRow(widget.catalog.song(id)['gekisou'])['missionTypes']
-                as List? ??
-            const [])
-      if (value is num)
-        const [
-              '',
-              'Combo',
-              'Luck',
-              'JustCount',
-            ].elementAtOrNull(value.toInt()) ??
-            ''
-      else
-        '$value',
-  ];
+  bool _containsMissions = false;
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
@@ -385,7 +379,14 @@ class _SongPickerState extends State<_SongPicker> {
       String fallback, [
       Map<String, Object?> v = const {},
     ]) => t('tools.teamBuilder.$key', fallback, v);
-    final query = _query.trim().toLowerCase();
+    final plan = catalog.songQueryEngine
+        .parse(_query)
+        .withMissionMode(_containsMissions ? 'contains' : 'only');
+    final query = plan.text.trim().toLowerCase();
+    final missionPlan = CatalogQuery('', {
+      'gekisouType': _missions.toList(),
+      'gekisouMatch': plan.facets['gekisouMatch']!,
+    });
     final ids = [
       for (final key in objectRow(catalog.data['songs']).keys)
         if (int.tryParse(key) case final id?)
@@ -394,8 +395,11 @@ class _SongPickerState extends State<_SongPicker> {
               (_bands.isEmpty || catalog.songBands(id).any(_bands.contains)) &&
               (_attributes.isEmpty ||
                   _attributes.contains(intOf(catalog.song(id)['musicType']))) &&
-              (_missions.isEmpty ||
-                  _songMissions(id).any(_missions.contains)) &&
+              catalog.songQueryEngine.matches(catalog.song(id), missionPlan) &&
+              catalog.songQueryEngine.matches({
+                ...catalog.song(id),
+                'difficulty': [catalog.difficultyRow(id, _difficulty)],
+              }, plan) &&
               (query.isEmpty ||
                   '${catalog.songTitle(id)} ${catalog.songPresentation.artist(catalog.displaySong(id))} ${catalog.songBands(id).map(catalog.bandName).join(' ')}'
                       .toLowerCase()
@@ -473,11 +477,35 @@ class _SongPickerState extends State<_SongPicker> {
                   t('catalog.songs.gekisou.gekisouMissionJustCount', 'JUST'),
                   null,
                 ),
+                ('Mix', t('catalog.songs.gekisou.mixed', 'Mixed'), null),
               ],
               _missions,
               (v) => _missions.contains(v)
                   ? _missions.remove(v)
                   : _missions.add(v),
+            ),
+            const SizedBox(height: 12),
+            SegmentedButton<bool>(
+              segments: [
+                ButtonSegment(
+                  value: false,
+                  label: Text(
+                    t('catalog.songs.gekisou.only', 'Only selected types'),
+                  ),
+                ),
+                ButtonSegment(
+                  value: true,
+                  label: Text(
+                    t(
+                      'catalog.songs.gekisou.contains',
+                      'Contains a selected type',
+                    ),
+                  ),
+                ),
+              ],
+              selected: {_containsMissions},
+              onSelectionChanged: (value) =>
+                  setState(() => _containsMissions = value.first),
             ),
             const SizedBox(height: 12),
             facet(

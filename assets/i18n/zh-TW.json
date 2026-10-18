@@ -430,7 +430,11 @@
         "gekisouMissionLuck": "LUCK",
         "gekisouMissionJustCount": "JUST",
         "gekisouMissionAll": "全部",
-        "gekisouMissionNone": "無"
+        "gekisouMissionNone": "無",
+        "mixed": "混合",
+        "matchMode": "比對方式",
+        "only": "僅限所選類型",
+        "contains": "包含所選類型"
       },
       "skillPoints": "技能點位"
     },
@@ -1816,7 +1820,11 @@
           "unsupported_summary": "由角色評級彙總",
           "unsupported_field": "暫不支援",
           "inactive_band_item": "未生效"
-        }
+        },
+        "ownershipMode": "成員和留影",
+        "mergeOwnership": "合併擁有狀態",
+        "replaceOwnership": "替換成員和留影擁有狀態",
+        "replaceScope": "以所選卡片替換全部成員和留影的擁有狀態 · {count}張將標記為未擁有。保留帳號加成、隊伍和偏好。"
       },
       "resourceResultsChanged": "養成或條件已變更，請重新計算以更新結果。",
       "localDraftChanged": "另一個分頁已修改卡庫。請先匯出目前輸入，再重新讀取已儲存的卡庫。",
@@ -2321,7 +2329,11 @@
       "noCandidate": "尚無推薦結果",
       "cpCycle": "長期 CP 換算",
       "fullRanking": "完整獎勵排序",
-      "syncSignIn": "登入後雲端同步"
+      "syncSignIn": "登入後雲端同步",
+      "clearOwnership": "全部成員和留影標記未擁有",
+      "clearOwnershipScope": "已擁有{count}張。保留培育值、帳號加成、隊伍和偏好。",
+      "clearOwnershipConfirm": "全部標記未擁有",
+      "clearedOwnership": "已將{count}張成員和留影標記為未擁有"
     },
     "calendar": {
       "title": "日曆",

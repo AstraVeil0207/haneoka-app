@@ -679,11 +679,19 @@ EngineMaster compileTeamData(Doc data) {
   }
   final timings = _rowsOf(liveTools['judgementTiming']);
 
+  final nonPlayable = {
+    for (final row in dataRows(
+      objectRow(data['masterCharacterRoster'])['rows'],
+    ).map(nativeRow))
+      if (row['isNonPlayable'] == true) intOf(row['characterId'] ?? row['id']),
+  };
   final characters = <int, int>{
     for (final row in characterRows.values.map(objectRow))
-      intOf(row['characterId'] ?? row['id']): intOf(
-        row['bandId'] ?? row['bandID'],
-      ),
+      if (row['isNonPlayable'] != true &&
+          !nonPlayable.contains(intOf(row['characterId'] ?? row['id'])))
+        intOf(row['characterId'] ?? row['id']): intOf(
+          row['bandId'] ?? row['bandID'],
+        ),
   };
 
   final members = <int, MemberCard>{};

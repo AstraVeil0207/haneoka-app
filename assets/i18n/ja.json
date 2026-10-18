@@ -430,7 +430,11 @@
         "gekisouMissionLuck": "LUCK",
         "gekisouMissionJustCount": "JUST",
         "gekisouMissionAll": "すべて",
-        "gekisouMissionNone": "なし"
+        "gekisouMissionNone": "なし",
+        "mixed": "ミックス",
+        "matchMode": "一致方法",
+        "only": "選択した種類のみ",
+        "contains": "選択した種類を含む"
       },
       "skillPoints": "スキル発動位置"
     },
@@ -1816,7 +1820,11 @@
           "unsupported_summary": "キャラクターランクから集計",
           "unsupported_field": "未対応",
           "inactive_band_item": "効果なし"
-        }
+        },
+        "ownershipMode": "メンバーとスナップ",
+        "mergeOwnership": "所持状況を統合",
+        "replaceOwnership": "メンバーとスナップの所持状況を置き換え",
+        "replaceScope": "選択したカードで全メンバーとスナップの所持状況を置き換え・未所持に変更：{count}枚。アカウントボーナス・編成・設定は保持。"
       },
       "resourceResultsChanged": "育成値や条件が変わりました。結果を更新するには再計算してください。",
       "localDraftChanged": "別のタブでカード一覧が変更されました。現在の入力をエクスポートしてから、保存済みの一覧を読み直してください。",
@@ -2321,7 +2329,11 @@
       "noCandidate": "候補はまだありません",
       "cpCycle": "CP の長期換算",
       "fullRanking": "報酬の詳細順位",
-      "syncSignIn": "ログインして同期"
+      "syncSignIn": "ログインして同期",
+      "clearOwnership": "全メンバーとスナップを未所持にする",
+      "clearOwnershipScope": "所持カード{count}枚。育成値・アカウントボーナス・編成・設定は保持。",
+      "clearOwnershipConfirm": "すべて未所持にする",
+      "clearedOwnership": "メンバーとスナップ{count}枚を未所持に変更しました"
     },
     "calendar": {
       "title": "カレンダー",

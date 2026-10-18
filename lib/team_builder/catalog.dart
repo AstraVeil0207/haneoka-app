@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../catalog/catalog_screen.dart' show cardRarityName;
 import '../catalog/cross_server.dart' show serverMark;
 import '../catalog/visuals.dart';
+import '../catalog/catalog_query.dart';
 import '../catalog/song_presentation.dart';
 import '../core/app_state.dart';
 import '../core/i18n.dart';
@@ -52,6 +53,28 @@ class TeamCatalog extends ChangeNotifier {
   final Doc data;
   final EngineMaster master;
   final CatalogVisuals? visuals;
+  late final cardQueryEngine = CatalogQueryEngine(
+    visuals: visuals,
+    game: 'our-notes',
+    kind: 'card',
+    characters: {
+      for (final entry in objectRow(data['characters']).entries)
+        if (int.tryParse(entry.key) case final int id)
+          id: objectRow(entry.value),
+    },
+    bands: {
+      for (final entry in objectRow(data['bands']).entries)
+        if (int.tryParse(entry.key) case final int id)
+          id: objectRow(entry.value),
+    },
+  );
+  late final songQueryEngine = CatalogQueryEngine(
+    visuals: visuals,
+    game: 'our-notes',
+    kind: 'song',
+    characters: cardQueryEngine.characters,
+    bands: cardQueryEngine.bands,
+  );
   Map<int, Doc> _songVisuals = const {};
   void updateSongVisuals(Map<int, Doc> value) {
     _songVisuals = value;

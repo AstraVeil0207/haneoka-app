@@ -22,8 +22,7 @@ class AppState extends ChangeNotifier {
       seed = _prefs.getString('seed') ?? 'haneoka',
       compact = _prefs.getBool('compact') ?? false,
       japaneseTitles = _prefs.getBool('japaneseTitles') ?? true,
-      difficultyEstimates = _prefs.getBool('difficultyEstimates') ?? false,
-      spoilers = _prefs.getBool('spoilers') ?? false {
+      difficultyEstimates = _prefs.getBool('difficultyEstimates') ?? false {
     _apis[server] = api;
     api.addListener(_publicDataChanged);
     _pageUpdates = publicPageDataChanges.listen((_) => _publicDataChanged());
@@ -83,7 +82,6 @@ class AppState extends ChangeNotifier {
   bool compact;
   bool japaneseTitles;
   bool difficultyEstimates;
-  bool spoilers;
 
   Future<void> setFlag(String key, bool value) async {
     switch (key) {
@@ -93,8 +91,6 @@ class AppState extends ChangeNotifier {
         japaneseTitles = value;
       case 'difficultyEstimates':
         difficultyEstimates = value;
-      case 'spoilers':
-        spoilers = value;
     }
     await _prefs.setBool(key, value);
     notifyListeners();
