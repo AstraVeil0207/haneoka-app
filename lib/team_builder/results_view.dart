@@ -12,6 +12,7 @@ import '../catalog/catalog_screen.dart' show cardRarityName;
 
 import '../ui/app_image.dart';
 import '../ui/card_artwork.dart';
+import '../ui/scrollable_choice_chips.dart';
 import '../ui/theme.dart';
 import 'box.dart';
 import 'build_tab.dart';
@@ -98,6 +99,9 @@ class _ResultsViewState extends State<ResultsView> {
     }
     final settings = c.resultSettings ?? c.settings;
     final catalog = c.catalog!;
+    if (_tab != 'overall' && !results.results.any((r) => r.song?.key == _tab)) {
+      _tab = 'overall';
+    }
     final multi = results.results.length > 1 && settings.goal != GoalKind.plan;
     final tab = multi ? _tab : 'all';
     final shown = tab == 'overall' || !multi
@@ -231,29 +235,20 @@ class _ResultsViewState extends State<ResultsView> {
         ],
         if (multi) ...[
           const SizedBox(height: 12),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final (id, label) in [
-                  ('overall', c.tb('overall', 'Overall')),
-                  for (final r in results.results)
-                    (
-                      r.song!.key,
-                      '${catalog.songTitle(r.song!.songId)} ${catalog.difficultyLabel(r.song!.songId, r.song!.difficulty)}',
-                    ),
-                ])
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      showCheckmark: false,
-                      label: Text(label),
-                      selected: tab == id,
-                      onSelected: (_) => setState(() => _tab = id),
-                    ),
-                  ),
-              ],
-            ),
+          ScrollableChoiceChips(
+            label: c.tb('songs', 'Songs'),
+            previousLabel: c.state.text('common.actions.previous', 'Previous'),
+            nextLabel: c.state.text('common.actions.next', 'Next'),
+            value: tab,
+            items: [
+              ('overall', c.tb('overall', 'Overall')),
+              for (final r in results.results)
+                (
+                  r.song!.key,
+                  '${catalog.songTitle(r.song!.songId)} ${catalog.difficultyLabel(r.song!.songId, r.song!.difficulty)}',
+                ),
+            ],
+            onSelected: (id) => setState(() => _tab = id),
           ),
         ],
         if (_compareTable(context, shown) case final table?) ...[
