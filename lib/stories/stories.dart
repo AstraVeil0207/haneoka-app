@@ -19,6 +19,7 @@ import '../rendering/native_story_player_screen.dart';
 import '../ui/app_image.dart';
 import '../ui/detail.dart';
 import '../ui/tile.dart';
+import 'story_artwork.dart';
 import 'transcript.dart';
 import 'transcript_view.dart';
 
@@ -1356,7 +1357,13 @@ class _EpisodeTile extends StatelessWidget {
                   case final String face)
                 api.asset(face).toString(),
             ]
-          : [?data.visuals.bandIcon(episode['bandId'])],
+          : [
+              ?episodeIdentityArtwork(
+                episode,
+                data.visuals,
+                normalArtwork: data.visuals.bandIcon(episode['bandId']),
+              ),
+            ],
       images: [
         for (final path in _episodeImages(episode, data, mode))
           api.asset(path).toString(),

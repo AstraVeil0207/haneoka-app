@@ -5,6 +5,7 @@ import '../catalog/cross_server.dart';
 import '../catalog/profiles.dart';
 import '../catalog/missions.dart';
 import '../core/app_state.dart';
+import '../home/announcements.dart';
 import '../stories/stories.dart';
 import 'page.dart';
 import 'routes.dart';
@@ -170,6 +171,33 @@ Future<bool> openLink(
       ),
     );
     return true;
+  }
+  if (parts.length == 2 &&
+      parts.first == 'announcements' &&
+      RegExp(r'^[1-9]\d*$').hasMatch(parts[1])) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        settings: RouteSettings(name: '/announcements/${parts[1]}'),
+        builder: (_) => AnnouncementScreen(
+          entry: {'id': int.parse(parts[1])},
+          server: server ?? AppScope.of(context).server,
+        ),
+      ),
+    );
+    return true;
+  }
+  if (const {'song-meta', 'catalog/song-meta'}.contains(parts.join('/'))) {
+    navigate?.call(
+      Uri(
+        path: '/catalog/song-meta',
+        queryParameters: {
+          ...uri.queryParametersAll,
+          if (server != null) 'server': [server],
+        },
+        fragment: uri.hasFragment ? uri.fragment : null,
+      ).toString(),
+    );
+    return navigate != null;
   }
   final resource = _kindResources[parts.first];
   if (resource != null) {

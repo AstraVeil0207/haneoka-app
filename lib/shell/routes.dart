@@ -126,7 +126,13 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/announcements') return const AnnouncementsScreen();
   if (route == '/calendar') return const CalendarScreen();
   if (route == '/join') return const JoinScreen();
-  if (route == '/catalog/song-meta') return const SongMetaScreen();
+  if (route == '/catalog/song-meta') {
+    return SongMetaScreen(
+      initialQuery: uri.queryParameters,
+      initialQueryAll: uri.queryParametersAll,
+      server: uri.queryParameters['server'],
+    );
+  }
   if (route == '/catalog/skills') return const SkillsScreen();
   if (route == '/catalog/missions') return const MissionsScreen();
   if (route == '/catalog/tgw-card') return const TgwCardScreen();

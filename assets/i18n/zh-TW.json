@@ -148,8 +148,10 @@
         "privacy": "了解 haneoka 如何處理帳戶資料、Cookie、社群內容、上傳檔案與訪問紀錄，查看資料使用、儲存、安全和使用者權利的說明，以及隱私設定與聯絡管道。",
         "general": "探索 haneoka 的{title}內容，瀏覽 BanG Dream! Our Notes 遊戲資料、預覽工具和社群分享，透過關聯條目繼續了解樂曲、角色、卡片與故事。",
         "announcements": "查看 BanG Dream! Our Notes 遊戲公告、活動消息、招募通知、維護安排與已知問題，閱讀完整內容、相關圖片和發布時間，依目前語言瀏覽對應伺服器的最新消息。",
-        "stampMaker": "使用 BanG Dream! Our Notes 角色圖片與文字製作自訂表情。在瀏覽器中調整圖片並匯出 PNG。",
-        "chartEditor": "使用瀏覽器譜面編輯器編輯音符與連接線，預覽節奏遊戲譜面並管理本機專案。"
+        "stampMaker": "使用遊戲表情或自選圖片製作表情，編輯文字、字型、描邊與版面，匯出透明 PNG。",
+        "chartEditor": "使用瀏覽器譜面編輯器編輯音符與連接線，預覽節奏遊戲譜面並管理本機專案。",
+        "teamBuilder": "依成員卡、留影、角色評級與樂團道具等級計算隊伍分數，比較普通、激奏與活動獎勵配隊。支援卡庫管理與遊戲存檔匯入。",
+        "songPuzzle": "使用 Our Notes 歌曲封面玩華容道，選擇歌曲與棋盤大小、打亂方塊、查看提示，並記錄步數與時間。"
       },
       "resources": {
         "songs": "BanG Dream! Our Notes 樂曲的製作名單、譜面難度、音符數與發布資訊。",
@@ -703,7 +705,46 @@
         "gekisouPhase2": "激奏階段2",
         "gekisouPhase3": "激奏階段3",
         "gekisouType": "激奏類型",
-        "scatter": "散佈圖"
+        "scatter": "散佈圖",
+        "metaDeckScore": "平均分",
+        "metaDeckPower": "所需綜合力",
+        "metaDeckReach": "達成率",
+        "deck": "編隊",
+        "deckPower": "綜合力",
+        "deckSkills": "分數技能（%）",
+        "deckRank": "目標評級",
+        "deckRoom": "房間人數",
+        "gekisouRoomScores": "擊奏房間分數",
+        "roomPlayer": "1 人",
+        "roomPlayers": "{count} 人",
+        "metaDeckPerMinute": "每分鐘分數",
+        "metaDeckSkip": "跳過分數",
+        "metaRankScore": "{rank} 分數線",
+        "deckPlay": "遊玩",
+        "deckGreat": "GREAT（%）",
+        "deckOverhead": "兩局間隔（秒）",
+        "roomScores": "成員分數",
+        "roomTotal": "房間總分",
+        "roomRank": "房間評級",
+        "roomNext": "下一評級",
+        "metaEventPoints": "每局活動 pt",
+        "metaEventPointsHour": "每小時活動 pt",
+        "metaEventItemsHour": "每小時活動道具",
+        "deckEvent": "活動",
+        "deckBoosts": "每場 Live Boost 消耗",
+        "deckPointBonus": "活動 pt 加成（%）",
+        "deckItemBonus": "活動道具加成（%）",
+        "frontier": "譜面",
+        "frontierOnly": "無上位替代的譜面",
+        "scatterX": "橫軸",
+        "deckExtension": "留影技能延長（秒）",
+        "metaDeckPowerEvery": "任意技能順序所需綜合力",
+        "rankScore": "分數",
+        "averageOrder": "技能順序平均",
+        "everyOrder": "任意技能順序",
+        "bestOrder": "最佳技能順序",
+        "powerNeeded": "所需綜合力",
+        "allCharts": "對比所有譜面"
       }
     },
     "characters": {
@@ -1768,7 +1809,7 @@
       "resourceUnknownItems": "商店收益未確定",
       "boxImport": {
         "title": "匯入卡庫資料",
-        "chooseFiles": "選擇檔案",
+        "chooseFiles": "選擇檔案 / ZIP / iMazing",
         "paste": "貼上名單或Box文字",
         "parse": "讀取資料",
         "parsing": "正在此裝置讀取資料",
@@ -1824,7 +1865,24 @@
         "ownershipMode": "成員和留影",
         "mergeOwnership": "合併擁有狀態",
         "replaceOwnership": "替換成員和留影擁有狀態",
-        "replaceScope": "以所選卡片替換全部成員和留影的擁有狀態 · {count}張將標記為未擁有。保留帳號加成、隊伍和偏好。"
+        "replaceScope": "以所選卡片替換全部成員和留影的擁有狀態 · {count}張將標記為未擁有。保留帳號加成、隊伍和偏好。",
+        "localSources": "檔案、備份與備份密碼均在本機處理。",
+        "saveFolder": "選擇存檔資料夾",
+        "iosBackup": "iPhone / iPad 本機備份",
+        "backupHint": "選擇 Finder、Apple Devices 或 iTunes 建立的單一備份資料夾，其中應包含 Manifest.db。",
+        "backupPassword": "備份密碼（加密備份）",
+        "chooseBackup": "選擇備份資料夾",
+        "readingBackup": "正在本機讀取 iPhone 備份",
+        "readingFolder": "正在讀取本機存檔",
+        "backupInvalid": "備份不完整或格式暫不支援。",
+        "backupWrongPassword": "備份密碼錯誤，請重新輸入並選擇備份。",
+        "backupPasswordRequired": "這是加密備份，請輸入密碼後重新選擇。",
+        "backupSelectRoot": "請選擇包含 Manifest.db 和 Manifest.plist 的單一備份資料夾，不要選擇上一層目錄。",
+        "backupNoGame": "此備份中沒有可匯入的 Our Notes 存檔。",
+        "sourceTooLarge": "所選來源超出支援的檔案大小、記錄數或記憶體限制。",
+        "sourceTimeout": "讀取逾時，請選擇單一備份或較小的存檔資料夾重試。",
+        "folderAccess": "瀏覽器無法讀取此資料夾，請檢查存取權限。",
+        "originalJson": "請選擇原始卡庫 JSON 檔案。"
       },
       "resourceResultsChanged": "養成或條件已變更，請重新計算以更新結果。",
       "localDraftChanged": "另一個分頁已修改卡庫。請先匯出目前輸入，再重新讀取已儲存的卡庫。",
@@ -2333,7 +2391,44 @@
       "clearOwnership": "全部成員和留影標記未擁有",
       "clearOwnershipScope": "已擁有{count}張。保留培育值、帳號加成、隊伍和偏好。",
       "clearOwnershipConfirm": "全部標記未擁有",
-      "clearedOwnership": "已將{count}張成員和留影標記為未擁有"
+      "clearedOwnership": "已將{count}張成員和留影標記為未擁有",
+      "syncOfflineShort": "離線",
+      "appDownload": {
+        "title": "用 Haneoka App 一鍵匯入存檔",
+        "description": "在 App 中讀取 Our Notes 存檔，將卡片匯入配隊，或匯出檔案後在這裡匯入。",
+        "action": "下載用戶端"
+      },
+      "credit": "組隊演算法來自 Haneoka",
+      "creditSource": "原始碼",
+      "criterionReach": "達標率",
+      "criterionReachHelp": "依 120 種技能順序中達到目標分數的比例排序。",
+      "reachRate": "達到目標的技能順序",
+      "provenReach": "目前卡池及條件下，達標率已證明最優",
+      "unprovenReach": "達標率：目前找到的最佳結果",
+      "criterionCapped": "封頂平均分",
+      "criterionCappedHelp": "每種技能順序的分數最多計到目標分數，依平均分排序。",
+      "cappedScore": "封頂平均分",
+      "provenCapped": "目前卡池及條件下，封頂平均分已證明最優",
+      "unprovenCapped": "封頂平均分：目前找到的最佳結果",
+      "targetScore": "目標分數",
+      "measureWeighted": "加權獎勵",
+      "weightPoints": "每活動點數權重",
+      "weightItems": "每個商店道具權重",
+      "weightCp": "每挑戰點數權重",
+      "weightedTotal": "每次加權合計",
+      "growthTitle": "養成優先順序",
+      "growthRun": "找出最值得養成的卡牌",
+      "growthProgress": "正在檢查卡牌 {done}/{total}",
+      "growthNone": "單獨養成任何一張卡都無法提升最佳隊伍。",
+      "gekisoOpponents": "各區間對手分數",
+      "gekisoRange": "區間 {n}",
+      "gekisoPlacements": "名次",
+      "songMetaWithTeam": "用此編隊進行樂曲分析",
+      "powerNeeded": "所需綜合力",
+      "averageOrder": "技能順序平均",
+      "everyOrder": "任意技能順序",
+      "roomPlayer": "1 人",
+      "roomPlayers": "{count} 人"
     },
     "calendar": {
       "title": "日曆",
@@ -3046,6 +3141,16 @@
       "reportUser": "檢舉使用者",
       "relationshipActions": "使用者關係操作",
       "relationshipFailed": "無法更新使用者關係"
+    },
+    "app": {
+      "title": "登入 App",
+      "signedInAs": "目前帳號",
+      "continue": "在 App 中繼續",
+      "useAnother": "使用其他帳號",
+      "cancel": "取消",
+      "returned": "已返回 App",
+      "invalid": "請從 App 中開啟此頁面",
+      "failed": "無法登入 App"
     }
   },
   "community": {
@@ -3576,7 +3681,10 @@
           "mysekai": "世界計畫我的世界對話",
           "live": "世界計畫虛擬演唱會對話"
         }
-      }
+      },
+      "gameAccountPlayerId": "玩家 ID {id}",
+      "gameAccountRank": "玩家等級 {value}",
+      "gameAccountRating": "高分評級 {value}"
     }
   },
   "legal": {
@@ -4490,5 +4598,29 @@
       "copySource": "複製 AltStore / SideStore 來源網址",
       "sourceCopied": "來源網址已複製。0.1.0 發布後，在 AltStore Classic 或 SideStore 中新增此來源。"
     }
+  },
+  "download": {
+    "title": "下載 App",
+    "hero": "一鍵匯入存檔。",
+    "intro": "匯入 Our Notes 卡片、成績與進度，一鍵將卡片同步至配隊工具。",
+    "all": "選擇你的平台",
+    "release": "版本說明",
+    "source": "原始碼",
+    "packages": "下載 Haneoka",
+    "download": "下載",
+    "universal": "通用版",
+    "installer": "安裝程式",
+    "portable": "可攜版",
+    "bundle": "應用程式套件",
+    "iosNote": "iOS 15+ · IPA 需使用 AltStore Classic、SideStore 或 Sideloadly 簽署安裝。TIPA 適用於已安裝 TrollStore 的相容裝置。",
+    "windowsNote": "Windows 10+ · 首次安裝 MSIX 或 App Installer 前，請將下方憑證匯入「本機電腦 → 受信任的人」。EXE / MSI 可能顯示未簽署提示。",
+    "macosNote": "macOS 12+ · Apple Silicon 選 ARM64，Intel 選 x64。安裝套件尚未公證，系統可能要求確認開發者。",
+    "linuxNote": "Linux · x64 基於 Ubuntu 22.04，ARM64 基於 Ubuntu 24.04。需要 GTK 3、libsecret 和 MPV；AppImage、Snap、Flatpak 已包含媒體庫。",
+    "androidNote": "Android 8+ · 提供 ARM64 和 x86-64 獨立 APK。AAB 用於散布。",
+    "extras": "安裝資源",
+    "checksums": "SHA-256 校驗檔案",
+    "saveTitle": "存檔匯入方式",
+    "saveBody": "Android 可透過 Shizuku 或支援的資料夾存取方式讀取存檔；電腦連接並授權 Android 手機後即可匯入，也支援 iPhone / iPad 本機備份。標準 iOS 版可匯入從電腦匯出的存檔。",
+    "saveGuide": "瞭解存檔匯入"
   }
 }

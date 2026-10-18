@@ -41,12 +41,18 @@ class CatalogHubScreen extends StatefulWidget {
 
 class _CatalogHubScreenState extends State<CatalogHubScreen> {
   Future<Object?>? _summary;
+  Object? _dataKey;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _summary ??= AppScope.of(context).api
-        .json('/api/v1/servers/${AppScope.of(context).server}/catalog/summary');
+    final state = AppScope.of(context);
+    if (_dataKey != state.publicDataKey) {
+      _dataKey = state.publicDataKey;
+      _summary = state.api.json(
+        '/api/v1/servers/${state.server}/catalog/summary',
+      );
+    }
   }
 
   @override

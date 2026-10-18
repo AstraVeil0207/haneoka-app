@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -64,6 +65,12 @@ class _Entry {
   final void Function(BuildContext context) open;
 }
 
+class _CommunityResults {
+  const _CommunityResults(this.posts, this.nextCursor);
+  final List<Map> posts;
+  final String? nextCursor;
+}
+
 String _all(Object? value) => switch (value) {
   List() => value.whereType<String>().join(' '),
   String() => value,
@@ -82,12 +89,28 @@ class _SearchScreenState extends State<SearchScreen> {
   Future<List<_Entry>>? _index;
   String _query = '';
   String _scope = 'all';
-  Future<List<Map>>? _posts;
+  Future<_CommunityResults>? _posts;
+  Object? _dataKey;
+  Timer? _searchTimer;
+  int _visiblePerGroup = 24;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _index ??= _build();
+    final key = AppScope.of(context).publicDataKey;
+    if (_dataKey != key) {
+      _dataKey = key;
+      _index = _build();
+      _posts = _query.isEmpty || _query.length > 100
+          ? null
+          : _community(_query);
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchTimer?.cancel();
+    super.dispose();
   }
 
   Future<List<_Entry>> _build() async {
@@ -234,30 +257,67 @@ class _SearchScreenState extends State<SearchScreen> {
     return entries;
   }
 
-  Future<List<Map>> _community(String query) async {
-    final uri = Uri.https('haneoka.org', '/api/v1/community/posts', {
-      'q': query,
-      'scope': 'latest',
-      'order': 'relevance',
-      'state': 'active',
-      'limit': '12',
-    });
+  Future<_CommunityResults> _community(String query, {String? cursor}) async {
+    final state = AppScope.of(context);
+    final uri = Uri.parse(state.api.origin)
+        .resolve('/api/v1/community/posts')
+        .replace(
+          queryParameters: {
+            'q': query,
+            'scope': 'latest',
+            'order': 'relevance',
+            'state': 'active',
+            'limit': '12',
+            'cursor': ?cursor,
+            'server': state.server,
+            'locale': state.text.locale,
+          },
+        );
     final response = await netClient
         .get(uri)
         .timeout(const Duration(seconds: 30));
-    if (response.statusCode != 200) return const [];
+    if (response.statusCode != 200) {
+      throw StateError('HTTP ${response.statusCode}');
+    }
     final body = jsonDecode(utf8.decode(response.bodyBytes));
-    return ((body as Map?)?['posts'] as List? ?? const [])
-        .whereType<Map>()
-        .toList();
+    final data = body as Map;
+    return _CommunityResults(
+      (data['posts'] as List? ?? const []).whereType<Map>().toList(),
+      data['nextCursor'] as String?,
+    );
   }
 
-  void _search(String value) {
-    final query = value.trim();
-    setState(() {
-      _query = query;
-      _posts = query.isEmpty || query.length > 100 ? null : _community(query);
-    });
+  Future<_CommunityResults> _moreCommunity(
+    _CommunityResults current,
+    String query,
+  ) async {
+    final next = await _community(query, cursor: current.nextCursor);
+    final known = {for (final post in current.posts) '${post['id']}'};
+    return _CommunityResults([
+      ...current.posts,
+      for (final post in next.posts)
+        if (known.add('${post['id']}')) post,
+    ], next.nextCursor);
+  }
+
+  void _search(String value, {bool immediate = false}) {
+    _searchTimer?.cancel();
+    void apply() {
+      if (!mounted) return;
+      final query = value.trim();
+      if (_query == query) return;
+      setState(() {
+        _query = query;
+        _visiblePerGroup = 24;
+        _posts = query.isEmpty || query.length > 100 ? null : _community(query);
+      });
+    }
+
+    if (immediate || value.trim().isEmpty) {
+      apply();
+    } else {
+      _searchTimer = Timer(const Duration(milliseconds: 150), apply);
+    }
   }
 
   @override
@@ -339,7 +399,7 @@ class _SearchScreenState extends State<SearchScreen> {
       search: ShellSearch(
         label: t('common.actions.search', 'Search'),
         onChanged: _search,
-        onSubmitted: _search,
+        onSubmitted: (value) => _search(value, immediate: true),
       ),
       body: ListView(
         padding: pagePadding(context),
@@ -395,7 +455,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   children: [
                     for (final MapEntry(:key, :value) in groups.entries) ...[
                       heading('${t(key, key)}  ${value.length}'),
-                      for (final entry in value.take(24))
+                      for (final entry in value.take(_visiblePerGroup))
                         row(
                           entry.image == null
                               ? Icon(
@@ -412,6 +472,18 @@ class _SearchScreenState extends State<SearchScreen> {
                           entry.subtitle,
                           () => entry.open(context),
                         ),
+                      if (value.length > _visiblePerGroup)
+                        Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: TextButton.icon(
+                            icon: const Icon(Symbols.expand_more_rounded),
+                            label: Text(
+                              t('common.actions.loadMore', 'Load more'),
+                            ),
+                            onPressed: () =>
+                                setState(() => _visiblePerGroup += 24),
+                          ),
+                        ),
                     ],
                   ],
                 );
@@ -421,11 +493,22 @@ class _SearchScreenState extends State<SearchScreen> {
             FutureBuilder(
               future: _posts,
               builder: (context, snapshot) {
-                final posts = snapshot.data ?? const <Map>[];
+                final page = snapshot.data;
+                final posts = page?.posts ?? const <Map>[];
                 if (snapshot.connectionState != ConnectionState.done) {
                   return const Padding(
                     padding: EdgeInsets.all(24),
                     child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return Center(
+                    child: TextButton.icon(
+                      icon: const Icon(Symbols.refresh_rounded),
+                      label: Text(t('common.actions.retry', 'Retry')),
+                      onPressed: () =>
+                          setState(() => _posts = _community(_query)),
+                    ),
                   );
                 }
                 if (posts.isEmpty) {
@@ -443,7 +526,7 @@ class _SearchScreenState extends State<SearchScreen> {
                             .whereType<Map>()
                             .firstOrNull?['contentUrl']) {
                           final String url => AppImage(
-                            candidates: ['https://haneoka.org$url'],
+                            candidates: [state.api.asset(url).toString()],
                             fit: BoxFit.cover,
                             localized: false,
                           ),
@@ -462,6 +545,19 @@ class _SearchScreenState extends State<SearchScreen> {
                         () => openLink(
                           context,
                           '/${t.locale}/community/posts/${post['id']}/',
+                        ),
+                      ),
+                    if (page?.nextCursor != null)
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: TextButton.icon(
+                          icon: const Icon(Symbols.expand_more_rounded),
+                          label: Text(
+                            t('common.actions.loadMore', 'Load more'),
+                          ),
+                          onPressed: () => setState(
+                            () => _posts = _moreCommunity(page!, _query),
+                          ),
                         ),
                       ),
                   ],

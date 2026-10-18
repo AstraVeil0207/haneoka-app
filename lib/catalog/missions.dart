@@ -199,7 +199,7 @@ class MissionsScreen extends StatefulWidget {
 
 class _MissionsScreenState extends State<MissionsScreen> {
   Future<List<Map<String, Object?>>>? _data;
-  String? _server;
+  Object? _dataKey;
   String _mode = 'all';
   late final Timer _clock;
 
@@ -229,8 +229,8 @@ class _MissionsScreenState extends State<MissionsScreen> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final state = AppScope.of(context);
-    if (_data == null || _server != state.server) {
-      _server = state.server;
+    if (_dataKey != state.publicDataKey) {
+      _dataKey = state.publicDataKey;
       _data = _load(state);
     }
   }
@@ -646,11 +646,13 @@ class MissionDetailScreen extends StatefulWidget {
 class _MissionDetailScreenState extends State<MissionDetailScreen> {
   Future<Object?>? _data;
   String? _server;
+  Object? _dataKey;
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final state = AppScope.of(context), server = widget.server ?? state.server;
-    if (_data == null || _server != server) {
+    if (_dataKey != (state.publicDataKey, server)) {
+      _dataKey = (state.publicDataKey, server);
       _server = server;
       _data = state.apiFor(server).catalog('missions', widget.id);
     }

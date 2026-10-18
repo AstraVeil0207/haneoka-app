@@ -9,6 +9,12 @@ import 'package:flutter/services.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../catalog/catalog_screen.dart' show cardRarityName;
+import '../catalog/chart_rates.dart';
+import '../catalog/deck_state.dart';
+import '../catalog/song_meta.dart';
+import 'rank_targets.dart';
+import 'engine/box.dart';
+import 'engine/skills.dart';
 
 import '../ui/app_image.dart';
 import '../ui/card_artwork.dart';
@@ -45,6 +51,77 @@ CardGrowthDisplay? _resultGrowth(
   return input == null
       ? null
       : c.catalog!.resolvedGrowth(input, inputs.unknownPolicy);
+}
+
+void openResultSongAnalysis(
+  BuildContext context,
+  TeamBuilderController c,
+  EngineHit hit,
+  BuildSettings settings,
+) {
+  final inputs = c.activity && c.settings.rewardMode == 'recommendation'
+      ? c.pt.job?.request
+      : c.resultInputs;
+  if (inputs == null) return;
+  final master = c.catalog!.master,
+      box = resolveBox(
+        master,
+        inputs.members.where((row) => hit.members.contains(row.key)).toList(),
+        inputs.snaps.where((row) => hit.snaps.contains(row.key)).toList(),
+        inputs.unknownPolicy,
+      );
+  final slots = [
+    for (var index = 0; index < hit.members.length; index++)
+      () {
+        final member = box.members
+            .where((m) => m.key == hit.members[index])
+            .firstOrNull;
+        if (member == null) return const DeckSlot(score: 0);
+        final snapKey = hit.snaps.elementAtOrNull(index),
+            snap = box.snaps.where((s) => s.key == snapKey).firstOrNull,
+            skill = resolveSlotSkill(master, member, snap);
+        double percent(int type) => skill.effects
+            .where((effect) => effect.type == type)
+            .fold<double>(0, (sum, effect) => sum + effect.delta / 1000);
+        return DeckSlot(
+          score: percent(2000),
+          perfect: percent(2004),
+          extensionMs: skill.extensionMs.round(),
+        );
+      }(),
+  ];
+  if (slots.length != 5) return;
+  var deck = AnalysisDeckController.instance.value.copyWith(
+    power: hit.power,
+    slots: slots,
+  );
+  if (hit.event != null &&
+      settings.goal == GoalKind.event &&
+      settings.route == 'live') {
+    deck = deck.copyWith(
+      event: settings.eventId,
+      boosts: settings.boosts,
+      pointBonus: settings.measure == 'items'
+          ? null
+          : hit.event!.bonusPercent.floor(),
+      itemBonus: settings.measure == 'items'
+          ? hit.event!.bonusPercent.floor()
+          : null,
+    );
+  }
+  AnalysisDeckController.instance.set(deck);
+  Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      settings: RouteSettings(
+        name: Uri(
+          path: '/catalog/song-meta',
+          queryParameters: deck.query,
+        ).toString(),
+      ),
+      builder: (_) =>
+          SongMetaScreen(initialQuery: deck.query, server: c.server),
+    ),
+  );
 }
 
 class ResultsView extends StatefulWidget {
@@ -396,6 +473,9 @@ class _HitCardState extends State<_HitCard> {
   TeamBuilderController get c => widget.controller;
   EngineHit get hit => widget.hit;
 
+  void _openAnalysis() =>
+      openResultSongAnalysis(context, c, hit, widget.settings);
+
   ({String label, String value}) _primary() {
     final s = widget.settings;
     final locale = c.state.text.locale;
@@ -557,86 +637,122 @@ class _HitCardState extends State<_HitCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                CircleAvatar(
-                  radius: 16,
-                  backgroundColor: best
-                      ? theme.colorScheme.primary
-                      : theme.colorScheme.surfaceContainerHighest,
-                  foregroundColor: best
-                      ? theme.colorScheme.onPrimary
-                      : theme.colorScheme.onSurfaceVariant,
-                  child: Text('${widget.index + 1}'),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        [
-                          main.label,
-                          if (hit.song case final song?
-                              when widget.settings.songs.length > 1)
-                            '${catalog.songTitle(song.songId)} ${catalog.difficultyLabel(song.songId, song.difficulty)}',
-                        ].join(' · '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                      Text(
-                        main.value,
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  tooltip: c.tb('saveTeam', 'Save team'),
-                  onPressed: c.stale
-                      ? null
-                      : () {
-                          c.saveTeam(
-                            [for (final key in hit.members) cardIdOf(key)],
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final leading = Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CircleAvatar(
+                      radius: 16,
+                      backgroundColor: best
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.surfaceContainerHighest,
+                      foregroundColor: best
+                          ? theme.colorScheme.onPrimary
+                          : theme.colorScheme.onSurfaceVariant,
+                      child: Text('${widget.index + 1}'),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
                             [
-                              for (final key in hit.snaps)
-                                key == null ? null : cardIdOf(key),
-                            ],
-                            hit.song,
-                          );
-                          ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                c.tb('savedTeam', 'Saved to Teams'),
-                              ),
+                              main.label,
+                              if (hit.song case final song?
+                                  when widget.settings.songs.length > 1)
+                                '${catalog.songTitle(song.songId)} ${catalog.difficultyLabel(song.songId, song.difficulty)}',
+                            ].join(' · '),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
                             ),
-                          );
-                        },
-                  icon: const Icon(Symbols.bookmark_add_rounded),
-                ),
-                IconButton(
-                  tooltip: c.tb('compare', 'Compare'),
-                  isSelected: widget.compared,
-                  onPressed: widget.onCompare,
-                  icon: const Icon(Symbols.compare_arrows_rounded),
-                ),
-                IconButton(
-                  tooltip: c.tb('copyTeam', 'Copy as text'),
-                  onPressed: _copy,
-                  icon: const Icon(Symbols.content_copy_rounded),
-                ),
-                IconButton(
-                  tooltip: c.tb('saveImage', 'Save image'),
-                  onPressed: _rendering ? null : _saveImage,
-                  icon: const Icon(Symbols.image_rounded),
-                ),
-              ],
+                          ),
+                          Text(
+                            main.value,
+                            style: theme.textTheme.headlineSmall?.copyWith(
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                );
+                final actions = Wrap(
+                  children: [
+                    IconButton(
+                      tooltip: c.tb('saveTeam', 'Save team'),
+                      onPressed: c.stale
+                          ? null
+                          : () {
+                              c.saveTeam(
+                                [for (final key in hit.members) cardIdOf(key)],
+                                [
+                                  for (final key in hit.snaps)
+                                    key == null ? null : cardIdOf(key),
+                                ],
+                                hit.song,
+                              );
+                              ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    c.tb('savedTeam', 'Saved to Teams'),
+                                  ),
+                                ),
+                              );
+                            },
+                      icon: const Icon(Symbols.bookmark_add_rounded),
+                    ),
+                    IconButton(
+                      tooltip: c.tb('compare', 'Compare'),
+                      isSelected: widget.compared,
+                      onPressed: widget.onCompare,
+                      icon: const Icon(Symbols.compare_arrows_rounded),
+                    ),
+                    IconButton(
+                      tooltip: c.tb('copyTeam', 'Copy as text'),
+                      onPressed: _copy,
+                      icon: const Icon(Symbols.content_copy_rounded),
+                    ),
+                    IconButton(
+                      tooltip: c.tb(
+                        'songMetaWithTeam',
+                        'Song analysis with this team',
+                      ),
+                      onPressed: _openAnalysis,
+                      icon: const Icon(Symbols.query_stats_rounded),
+                    ),
+                    IconButton(
+                      tooltip: c.tb('saveImage', 'Save image'),
+                      onPressed: _rendering ? null : _saveImage,
+                      icon: const Icon(Symbols.image_rounded),
+                    ),
+                  ],
+                );
+                return constraints.maxWidth >= 640
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(child: leading),
+                          actions,
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          leading,
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: actions,
+                          ),
+                        ],
+                      );
+              },
             ),
             const SizedBox(height: 12),
             Wrap(spacing: 8, runSpacing: 8, children: _chips()),
@@ -660,6 +776,11 @@ class _HitCardState extends State<_HitCard> {
             ),
             if (_expanded) ...[
               if (hit.score != null) _Distribution(controller: c, hit: hit),
+              TeamRankTargets(
+                controller: c,
+                hit: hit,
+                settings: widget.settings,
+              ),
               if (hit.song != null &&
                   (hit.score?.orders.isNotEmpty ?? false)) ...[
                 const SizedBox(height: 16),

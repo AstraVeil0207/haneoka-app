@@ -148,8 +148,10 @@
         "privacy": "Learn how haneoka handles account details, cookies, community content, uploaded files and visit records. Read about data use, storage, security, user rights, privacy settings and contact options.",
         "general": "Explore {title} on haneoka, with BanG Dream! Our Notes game information, preview tools and community contributions. Follow related entries to discover songs, characters, cards and stories.",
         "announcements": "Read BanG Dream! Our Notes announcements, event news, recruitment notices, maintenance updates and known issues. View full articles, images and publication dates in the available language for your selected server.",
-        "stampMaker": "Create custom BanG Dream! Our Notes stamps with character artwork and text. Adjust the image and export a PNG with the browser stamp maker.",
-        "chartEditor": "Create and edit rhythm-game charts in the browser chart editor. Work with notes and connectors, preview the chart and manage local projects."
+        "stampMaker": "Create stamps with game artwork or your own images. Edit text, fonts, outlines, and layout, then export a transparent PNG.",
+        "chartEditor": "Create and edit rhythm-game charts in the browser chart editor. Work with notes and connectors, preview the chart and manage local projects.",
+        "teamBuilder": "Build Our Notes teams using member cards, Snapshots, character ranks, and band-item levels. Compare regular, Gekiso, and event-reward teams, manage your card collection, and import game saves.",
+        "songPuzzle": "Solve sliding puzzles using Our Notes song jackets. Choose a song and board size, shuffle tiles, view hints, and track moves and time."
       },
       "resources": {
         "songs": "Explore BanG Dream! Our Notes song credits, bands and release information. Compare chart difficulties and note counts, open the chart player or chart image, view rankings and access Sonolus levels.",
@@ -703,7 +705,46 @@
         "gekisouPhase2": "Gekiso phase 2",
         "gekisouPhase3": "Gekiso phase 3",
         "gekisouType": "Gekiso type",
-        "scatter": "Scatter"
+        "scatter": "Scatter",
+        "metaDeckScore": "Average score",
+        "metaDeckPower": "Power needed",
+        "metaDeckReach": "Reach rate",
+        "deck": "Deck",
+        "deckPower": "Power",
+        "deckSkills": "Score skills (%)",
+        "deckRank": "Target rank",
+        "deckRoom": "Players in room",
+        "gekisouRoomScores": "Gekisou room scores",
+        "roomPlayer": "1 player",
+        "roomPlayers": "{count} players",
+        "metaDeckPerMinute": "Score per minute",
+        "metaDeckSkip": "Skip score",
+        "metaRankScore": "{rank} score",
+        "deckPlay": "Play",
+        "deckGreat": "Great (%)",
+        "deckOverhead": "Time between plays (s)",
+        "roomScores": "Players' scores",
+        "roomTotal": "Room total",
+        "roomRank": "Room rank",
+        "roomNext": "Next rank",
+        "metaEventPoints": "Event points per live",
+        "metaEventPointsHour": "Event points per hour",
+        "metaEventItemsHour": "Event items per hour",
+        "deckEvent": "Event",
+        "deckBoosts": "Live Boost cost per live",
+        "deckPointBonus": "Event point bonus (%)",
+        "deckItemBonus": "Event item bonus (%)",
+        "frontier": "Charts",
+        "frontierOnly": "Not outclassed",
+        "scatterX": "Horizontal axis",
+        "deckExtension": "Snap skill extension (s)",
+        "metaDeckPowerEvery": "Power needed in every order",
+        "rankScore": "Score",
+        "averageOrder": "Average of the orders",
+        "everyOrder": "Every order",
+        "bestOrder": "Best order",
+        "powerNeeded": "Power needed",
+        "allCharts": "Every chart"
       }
     },
     "characters": {
@@ -1768,7 +1809,7 @@
       "resourceUnknownItems": "Shop rewards unresolved",
       "boxImport": {
         "title": "Import card data",
-        "chooseFiles": "Choose files",
+        "chooseFiles": "Choose files / ZIP / iMazing",
         "paste": "Paste a card list or Box text",
         "parse": "Read data",
         "parsing": "Reading data locally",
@@ -1824,7 +1865,24 @@
         "ownershipMode": "Members and snapshots",
         "mergeOwnership": "Merge ownership",
         "replaceOwnership": "Replace member and snapshot ownership",
-        "replaceScope": "Replace all member and snapshot ownership with selected cards · {count} marked not owned. Account bonuses, teams and preferences stay saved."
+        "replaceScope": "Replace all member and snapshot ownership with selected cards · {count} marked not owned. Account bonuses, teams and preferences stay saved.",
+        "localSources": "Files, backups and backup passwords are processed on this device.",
+        "saveFolder": "Choose save folder",
+        "iosBackup": "iPhone / iPad backup",
+        "backupHint": "Choose one backup folder containing Manifest.db, created with Finder, Apple Devices or iTunes.",
+        "backupPassword": "Backup password (encrypted backups)",
+        "chooseBackup": "Choose backup folder",
+        "readingBackup": "Reading iPhone backup locally",
+        "readingFolder": "Reading local save files",
+        "backupInvalid": "This backup is incomplete or uses an unsupported format.",
+        "backupWrongPassword": "The backup password is incorrect. Enter it again and select the backup.",
+        "backupPasswordRequired": "This backup is encrypted. Enter its password and select it again.",
+        "backupSelectRoot": "Select one backup folder containing Manifest.db and Manifest.plist, rather than its parent folder.",
+        "backupNoGame": "This backup contains no supported Our Notes save.",
+        "sourceTooLarge": "The selected source exceeds the supported file, record or memory limit.",
+        "sourceTimeout": "Reading timed out. Select one backup or a smaller save folder and try again.",
+        "folderAccess": "The browser could not read this folder. Check its access permissions.",
+        "originalJson": "Import the original inventory JSON file."
       },
       "resourceResultsChanged": "Training or conditions changed. Calculate again to update the results.",
       "localDraftChanged": "Your card library changed in another tab. Export your current inputs, then reload the saved library.",
@@ -2333,7 +2391,44 @@
       "clearOwnership": "Mark all members and snapshots not owned",
       "clearOwnershipScope": "{count} owned cards. Training values, account bonuses, teams and preferences stay saved.",
       "clearOwnershipConfirm": "Mark all not owned",
-      "clearedOwnership": "Marked {count} members and snapshots not owned"
+      "clearedOwnership": "Marked {count} members and snapshots not owned",
+      "syncOfflineShort": "Offline",
+      "appDownload": {
+        "title": "Import your save with Haneoka App",
+        "description": "Read your Our Notes save in the app, then send your cards to the team builder or export a file to import here.",
+        "action": "Download App"
+      },
+      "credit": "Team-building algorithm from Haneoka",
+      "creditSource": "Source code",
+      "criterionReach": "Reach rate",
+      "criterionReachHelp": "Rank by the share of the 120 skill orders that reach the target score.",
+      "reachRate": "Orders reaching the target",
+      "provenReach": "Reach rate proven optimal for these cards and conditions",
+      "unprovenReach": "Reach rate: best found so far",
+      "criterionCapped": "Capped average",
+      "criterionCappedHelp": "Rank by the average score, counting each order up to the target score.",
+      "cappedScore": "Capped average",
+      "provenCapped": "Capped average proven optimal for these cards and conditions",
+      "unprovenCapped": "Capped average: best found so far",
+      "targetScore": "Target score",
+      "measureWeighted": "Weighted rewards",
+      "weightPoints": "Weight per event point",
+      "weightItems": "Weight per shop item",
+      "weightCp": "Weight per challenge point",
+      "weightedTotal": "Weighted total per play",
+      "growthTitle": "Training priorities",
+      "growthRun": "Find the best card to train",
+      "growthProgress": "Checking cards {done}/{total}",
+      "growthNone": "No single card upgrade improves the best team.",
+      "gekisoOpponents": "Opponents' scores in each range",
+      "gekisoRange": "Range {n}",
+      "gekisoPlacements": "Placements",
+      "songMetaWithTeam": "Song analysis with this team",
+      "powerNeeded": "Power needed",
+      "averageOrder": "Average of the orders",
+      "everyOrder": "Every order",
+      "roomPlayer": "1 player",
+      "roomPlayers": "{count} players"
     },
     "calendar": {
       "title": "Calendar",
@@ -3046,6 +3141,16 @@
       "reportUser": "Report user",
       "relationshipActions": "User relationship actions",
       "relationshipFailed": "Could not update this relationship"
+    },
+    "app": {
+      "title": "Sign in to the app",
+      "signedInAs": "Signed in as",
+      "continue": "Continue in the app",
+      "useAnother": "Use another account",
+      "cancel": "Cancel",
+      "returned": "Returned to the app",
+      "invalid": "Open this page from the app",
+      "failed": "Could not sign in to the app"
     }
   },
   "community": {
@@ -3576,7 +3681,10 @@
           "mysekai": "Project Sekai My Sekai conversations",
           "live": "Project Sekai virtual live MCs"
         }
-      }
+      },
+      "gameAccountPlayerId": "Player ID {id}",
+      "gameAccountRank": "Player rank {value}",
+      "gameAccountRating": "High score rating {value}"
     }
   },
   "legal": {
@@ -4490,5 +4598,29 @@
       "copySource": "Copy AltStore / SideStore source URL",
       "sourceCopied": "Source URL copied. Add it in AltStore Classic or SideStore after release 0.1.0 is published."
     }
+  },
+  "download": {
+    "title": "Download App",
+    "hero": "Import your save.",
+    "intro": "Import your Our Notes cards, scores and progress. Send your cards to the team builder in one tap.",
+    "all": "Choose your platform",
+    "release": "Release notes",
+    "source": "Source code",
+    "packages": "Download Haneoka",
+    "download": "Download",
+    "universal": "Universal",
+    "installer": "Installer",
+    "portable": "Portable",
+    "bundle": "App bundle",
+    "iosNote": "iOS 15+ · Sign the IPA with AltStore Classic, SideStore or Sideloadly. TIPA requires a compatible device with TrollStore installed.",
+    "windowsNote": "Windows 10+ · Before installing MSIX or App Installer, import the certificate below into Local Computer → Trusted People. EXE / MSI may show unsigned publisher prompts.",
+    "macosNote": "macOS 12+ · Choose ARM64 for Apple Silicon or x64 for Intel. Packages are not notarized; macOS may ask you to confirm the developer.",
+    "linuxNote": "Linux · x64 targets Ubuntu 22.04; ARM64 targets Ubuntu 24.04. GTK 3, libsecret and MPV are required; AppImage, Snap and Flatpak bundle media libraries.",
+    "androidNote": "Android 8+ · Separate APKs for ARM64 and x86-64. AAB is for distribution.",
+    "extras": "Installation resources",
+    "checksums": "SHA-256 checksums",
+    "saveTitle": "Save import options",
+    "saveBody": "Read Android saves with Shizuku or supported folder access. On desktop, connect and authorize an Android phone to import, or use a local iPhone / iPad backup. Standard iOS installations import save files exported on a computer.",
+    "saveGuide": "Explore save import"
   }
 }

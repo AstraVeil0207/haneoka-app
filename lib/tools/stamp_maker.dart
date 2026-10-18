@@ -17,12 +17,32 @@ import '../ui/tile.dart';
 import 'stamp_render.dart';
 
 class _Stamp {
-  const _Stamp(this.id, this.name, this.label, this.sources, this.characters);
+  const _Stamp(
+    this.id,
+    this.name,
+    this.label,
+    this.sources,
+    this.characters, {
+    this.variants = const {},
+  });
   final String id;
   final String name;
   final String label;
   final List<String> sources;
   final List<String> characters;
+  final Map<String, String> variants;
+
+  bool supportsLanguage(String language) =>
+      variants.isEmpty || variants.containsKey(language);
+
+  _Stamp inLanguage(String language) => _Stamp(
+    id,
+    name,
+    label,
+    variants.isEmpty ? sources : [?variants[language]],
+    characters,
+    variants: variants,
+  );
 }
 
 /// The fonts the stamp maker offers (`STAMP_FONTS`): the pinned faces,
@@ -50,6 +70,7 @@ class _StampMakerScreenState extends State<StampMakerScreen> {
   ui.Image? _image;
   // Textless first, as on the website; original when none is published.
   bool _textless = true;
+  String? _imageLanguage;
   final _layers = <StampLayer>[StampLayer.image(), StampLayer.text()];
   int _selected = 1;
   int _exportSize = 512;
@@ -81,6 +102,7 @@ class _StampMakerScreenState extends State<StampMakerScreen> {
       'zh-TW' => 'zh-Hant',
       final other => other,
     };
+    _imageLanguage ??= language;
     final (stamps, characters) = await (
       api.catalog('stamps'),
       api.catalog('characters'),
@@ -111,6 +133,11 @@ class _StampMakerScreenState extends State<StampMakerScreen> {
               : state.text.text(value['name']),
           [for (final s in sources) api.asset(s).toString()],
           [for (final c in value['characterIds'] as List? ?? const []) '$c'],
+          variants: {
+            for (final MapEntry(key: language, value: path) in variants.entries)
+              if (path is String && path.startsWith('/assets/'))
+                '$language': api.asset(path).toString(),
+          },
         ),
       );
     }
@@ -302,6 +329,8 @@ class _StampMakerScreenState extends State<StampMakerScreen> {
     List<_Stamp> textless,
     List<(String, String, Color, String?)> colors,
   ) async {
+    var language = _imageLanguage ?? 'ja';
+    var textlessMode = _textless;
     final picked = await showModalBottomSheet<_Stamp>(
       context: context,
       isScrollControlled: true,
@@ -311,11 +340,17 @@ class _StampMakerScreenState extends State<StampMakerScreen> {
         textless: textless,
         characters: colors,
         textlessMode: _textless,
-        onMode: (value) => _textless = value,
+        language: _imageLanguage ?? 'ja',
+        onLanguage: (value) => language = value,
+        onMode: (value) => textlessMode = value,
         labels: (key, fallback) => _t(key, fallback),
       ),
     );
-    if (picked != null) await _choose(picked, colors);
+    if (picked != null) {
+      _imageLanguage = language;
+      _textless = textlessMode;
+      await _choose(picked, colors);
+    }
   }
 
   @override
@@ -1003,6 +1038,8 @@ class _StampSheet extends StatefulWidget {
     required this.characters,
     required this.textlessMode,
     required this.onMode,
+    required this.language,
+    required this.onLanguage,
     required this.labels,
   });
   final List<_Stamp> originals;
@@ -1010,6 +1047,8 @@ class _StampSheet extends StatefulWidget {
   final List<(String, String, Color, String?)> characters;
   final bool textlessMode;
   final ValueChanged<bool> onMode;
+  final String language;
+  final ValueChanged<String> onLanguage;
   final String Function(String key, String fallback) labels;
   @override
   State<_StampSheet> createState() => _StampSheetState();
@@ -1017,13 +1056,28 @@ class _StampSheet extends StatefulWidget {
 
 class _StampSheetState extends State<_StampSheet> {
   late bool _textless = widget.textlessMode;
+  late String _language = widget.language;
   String _character = '';
   String _query = '';
 
   @override
   Widget build(BuildContext context) {
     final t = AppScope.of(context).text;
-    final stamps = (_textless ? widget.textless : widget.originals)
+    final textless = {for (final stamp in widget.textless) stamp.id: stamp};
+    final stamps = widget.originals
+        .where((stamp) => stamp.supportsLanguage(_language))
+        .map(
+          (stamp) => _textless
+              ? (textless[stamp.id] ??
+                    _Stamp(
+                      stamp.id,
+                      stamp.name,
+                      stamp.label,
+                      const [],
+                      stamp.characters,
+                    ))
+              : stamp.inLanguage(_language),
+        )
         .where(
           (s) =>
               (_character.isEmpty || s.characters.contains(_character)) &&
@@ -1051,24 +1105,54 @@ class _StampSheetState extends State<_StampSheet> {
                     onChanged: (v) => setState(() => _query = v),
                   ),
                 ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    initialValue: _language,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: t('settings.labels.language', 'Language'),
+                      border: const OutlineInputBorder(),
+                    ),
+                    items: [
+                      for (final (key, name) in const [
+                        ('ja', '日本語'),
+                        ('en', 'English'),
+                        ('zh-Hant', '繁體中文'),
+                        ('zh-Hans', '简体中文'),
+                        ('ko', '한국어'),
+                      ])
+                        DropdownMenuItem(value: key, child: Text(name)),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _language = value);
+                        widget.onLanguage(value);
+                      }
+                    },
+                  ),
+                ),
                 const SizedBox(width: 8),
-                SegmentedButton<bool>(
-                  showSelectedIcon: false,
-                  segments: [
-                    ButtonSegment(
-                      value: false,
-                      label: Text(widget.labels('original', 'Original')),
-                    ),
-                    ButtonSegment(
-                      value: true,
-                      label: Text(widget.labels('textless', 'Textless')),
-                    ),
-                  ],
-                  selected: {_textless},
-                  onSelectionChanged: (v) {
-                    setState(() => _textless = v.single);
-                    widget.onMode(v.single);
-                  },
+                SizedBox(
+                  width: 120,
+                  child: CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: Text(widget.labels('original', 'Original')),
+                    value: !_textless,
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _textless = !value);
+                        widget.onMode(!value);
+                      }
+                    },
+                  ),
                 ),
               ],
             ),
@@ -1105,25 +1189,30 @@ class _StampSheetState extends State<_StampSheet> {
             ),
           ),
           Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.all(16),
-              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                maxCrossAxisExtent: 140,
-                childAspectRatio: 0.78,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
+            child: LayoutBuilder(
+              builder: (context, constraints) => GridView.builder(
+                padding: const EdgeInsets.all(16),
+                gridDelegate: collectionGrid(
+                  context,
+                  constraints.maxWidth - 32,
+                  minWidth: 140,
+                  subtitle: false,
+                  small: true,
+                ),
+                itemCount: stamps.length,
+                itemBuilder: (context, index) {
+                  final stamp = stamps[index];
+                  return Tile(
+                    title: stamp.label,
+                    images: stamp.sources,
+                    aspectRatio: 1,
+                    fit: BoxFit.contain,
+                    onTap: stamp.sources.isEmpty
+                        ? null
+                        : () => Navigator.pop(context, stamp),
+                  );
+                },
               ),
-              itemCount: stamps.length,
-              itemBuilder: (context, index) {
-                final stamp = stamps[index];
-                return Tile(
-                  title: stamp.label,
-                  images: [stamp.sources.first],
-                  aspectRatio: 1,
-                  fit: BoxFit.contain,
-                  onTap: () => Navigator.pop(context, stamp),
-                );
-              },
             ),
           ),
         ],

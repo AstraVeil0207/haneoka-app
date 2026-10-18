@@ -17,6 +17,9 @@ import '../ui/theme.dart';
 import '../ui/tile.dart';
 import 'profiles.dart';
 import 'cross_server.dart';
+import 'chart_rates.dart';
+import 'deck_state.dart';
+import 'song_analysis.dart';
 import 'visuals.dart';
 
 const _difficultyNames = ['EASY', 'NORMAL', 'HARD', 'EXPERT', 'SPECIAL'];
@@ -43,7 +46,15 @@ class _Chart {
 /// metrics in one sortable table, against the theoretical, current or a
 /// band's reference deck.
 class SongMetaScreen extends StatefulWidget {
-  const SongMetaScreen({super.key});
+  const SongMetaScreen({
+    super.key,
+    this.initialQuery = const {},
+    this.initialQueryAll = const {},
+    this.server,
+  });
+  final String? server;
+  final Map<String, String> initialQuery;
+  final Map<String, List<String>> initialQueryAll;
   @override
   State<SongMetaScreen> createState() => _SongMetaScreenState();
 }
@@ -58,20 +69,142 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
   String _query = '';
   final Set<int> _difficulties = {};
   final Set<int> _bands = {};
+  final _deckController = AnalysisDeckController.instance;
+  final Map<String, ChartRateTable> _rates = {};
+  final Map<_Chart, SongAnalysis?> _analysisCache = {};
+  AnalysisDeck get _deck => _deckController.value;
+  bool _frontier = false;
+  String _xMetric = 'level';
+  Object? _dataKey;
+  @override
+  void initState() {
+    super.initState();
+    final q = widget.initialQuery;
+    _gekisou = q['metaMode'] == 'gekisou';
+    final tier = q['metaTier'] ?? 'theory';
+    final band = int.tryParse(q['metaBand'] ?? '');
+    _tier = _gekisou
+        ? 'theory'
+        : tier == 'band' && band != null && band > 0
+        ? 'band:$band'
+        : tier == 'current' || RegExp(r'^band:[1-9]\d*$').hasMatch(tier)
+        ? tier
+        : 'theory';
+    _sort = q['sort'] ?? 'score';
+    _descending = q.containsKey('order') ? q['order'] == 'desc' : true;
+    _query = (q['q'] ?? '').trim();
+    for (final value in widget.initialQueryAll['band'] ?? [q['band'] ?? '']) {
+      final id = int.tryParse(value);
+      if (id != null && id > 0) _bands.add(id);
+    }
+    for (final value
+        in widget.initialQueryAll['difficulty'] ?? [q['difficulty'] ?? '']) {
+      final index = _difficultyNames.indexOf(value.toUpperCase());
+      final id = index >= 0 ? index : int.tryParse(value);
+      if (id != null && id >= 0 && id < _difficultyNames.length) {
+        _difficulties.add(id);
+      }
+    }
+    _scatter = const {'chart', 'scatter'}.contains(q['view']);
+    _frontier = q['frontier'] == '1';
+    _xMetric = q['metaX'] ?? 'level';
+    _deckController.addListener(_deckChanged);
+    _deckController.load(q);
+  }
+
+  void _deckChanged() {
+    _analysisCache.clear();
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _deckController.removeListener(_deckChanged);
+    super.dispose();
+  }
+
+  String _metricLabel(String key) {
+    final t = AppScope.of(context).text;
+    if (liveAnalysisMetrics[key] case final name?) {
+      return t('catalog.analysis.fields.$name', key);
+    }
+    if (rankAnalysisMetrics[key] case final rank?) {
+      return t(
+        'catalog.analysis.fields.metaRankScore',
+        '{rank} score',
+      ).replaceAll(
+        '{rank}',
+        const ['', '', '', 'C', 'B', 'A', 'S', 'SS'][rank],
+      );
+    }
+    return t.label(key, key);
+  }
+
+  SongAnalysis? _analysis(_Chart c) => _analysisCache.putIfAbsent(c, () {
+    final table =
+            _rates[(c.song[serverKey] ??
+                    widget.server ??
+                    AppScope.of(context).server)
+                .toString()],
+        rates =
+            table?.charts['${c.song['musicId'] ?? c.song['_key']}:${c.index}'];
+    return table == null || rates == null
+        ? null
+        : SongAnalysis(
+            table: table,
+            rates: rates,
+            deck: _deck,
+            seconds: (_value(c, 'time') ?? 0).toDouble(),
+          );
+  });
+  num? _deckValue(_Chart c, String key) =>
+      _analysis(c)?.value(key, gekisou: _gekisou);
+  List<_Chart> _notOutclassed(List<_Chart> rows) {
+    final sorted =
+        [
+          for (final row in rows)
+            if (_deckValue(row, 'deckScore') != null &&
+                _deckValue(row, 'deckPerMinute') != null)
+              row,
+        ]..sort((a, b) {
+          final first = _deckValue(
+            b,
+            'deckScore',
+          )!.compareTo(_deckValue(a, 'deckScore')!);
+          return first != 0
+              ? first
+              : _deckValue(
+                  b,
+                  'deckPerMinute',
+                )!.compareTo(_deckValue(a, 'deckPerMinute')!);
+        });
+    final kept = <_Chart>{};
+    var best = double.negativeInfinity;
+    for (final row in sorted) {
+      final value = _deckValue(row, 'deckPerMinute')!.toDouble();
+      if (value > best) kept.add(row);
+      best = max(best, value);
+    }
+    return rows.where(kept.contains).toList();
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _data ??= _load();
+    final key = AppScope.of(context).publicDataKey;
+    if (_dataKey != key) {
+      _dataKey = key;
+      _data = _load();
+    }
   }
 
   Future<(List<_Chart>, CatalogVisuals, Map<String, String>)> _load() async {
     final state = AppScope.of(context);
-    final api = state.api;
-    final (songs, metaDocuments, visuals, atlas) = await (
+    final api = state.apiFor(widget.server ?? state.server);
+    final (songs, metaDocuments, visuals, atlas, rateTables) = await (
       crossServerCollection(
         resource: 'songs',
-        selected: state.server,
+        selected: widget.server ?? state.server,
         apis: state.catalogApis,
         rowsPath: null,
       ),
@@ -93,7 +226,19 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
             '/api/v1/servers/${api.server}/sources/Assets/AddressableResources/Live/Images/Atlas/LiveAtlas.spriteatlasv2',
           )
           .then<Object?>((v) => v, onError: (_) => null),
+      Future.wait([
+        for (final entry in state.catalogApis.entries)
+          ChartRateTable.load(entry.value).then<(String, ChartRateTable?)>(
+            (value) => (entry.key, value),
+            onError: (_) => (entry.key, null),
+          ),
+      ]),
     ).wait;
+    _rates.clear();
+    for (final (server, table) in rateTables) {
+      if (table != null) _rates[server] = table;
+    }
+    _analysisCache.clear();
     final pattern = RegExp(r'Icon_gekisou_(combo|luck|just)--');
     final icons = <String, String>{};
     for (final output in ((atlas as Map?)?['outputs'] as List? ?? const [])) {
@@ -138,6 +283,10 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
   }
 
   num? _value(_Chart c, String key) {
+    if (liveAnalysisMetrics.containsKey(key) ||
+        rankAnalysisMetrics.containsKey(key)) {
+      return _deckValue(c, key);
+    }
     num? read(Object? v) => v is num ? v : null;
     if (key == 'bpm') {
       return read(
@@ -186,6 +335,12 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
           ? unavailable
           : '—';
     }
+    if (key == 'deckReach') {
+      return '${NumberFormat('0.#', locale).format(value * 100)}%';
+    }
+    if (key == 'eventPoints') {
+      return NumberFormat('#,##0.#', locale).format(value);
+    }
     if (key == 'time') {
       final s = value.round();
       return '${s ~/ 60}:${(s % 60).toString().padLeft(2, '0')}';
@@ -223,6 +378,9 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
                     ].join(' ').toLowerCase().contains(query)))
               c,
         ];
+        if (_frontier && !_gekisou && _rates.isNotEmpty) {
+          rows = _notOutclassed(rows);
+        }
         rows.sort((a, b) {
           if (_sort == 'title') {
             final x = state.songTitle(a.song['musicTitle']),
@@ -372,12 +530,18 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
       'justableRate',
       'luck',
     };
-    final metric = numeric.contains(_sort) ? _sort : 'score';
+    final metrics = {
+      ...numeric,
+      ...liveAnalysisMetrics.keys,
+      ...rankAnalysisMetrics.keys,
+    };
+    final metric = metrics.contains(_sort) ? _sort : 'score';
     final percent = const {
       'score',
       'eff',
       'sr',
       'justableRate',
+      'deckReach',
     }.contains(metric);
     final t = AppScope.of(context).text;
     final number = NumberFormat.decimalPattern(t.locale)
@@ -386,7 +550,11 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
         percent ? '${number.format(value * 100)}%' : number.format(value);
     final points = [
       for (final c in rows)
-        if ((c.row['sortLevel'] ?? c.row['displayLevel'] ?? c.row['playLevel'])
+        if ((_xMetric == 'level'
+                ? (c.row['sortLevel'] ??
+                      c.row['displayLevel'] ??
+                      c.row['playLevel'])
+                : _value(c, _xMetric))
             case final num level)
           if (_value(c, metric) case final num value)
             (level.toDouble(), value.toDouble(), c),
@@ -408,8 +576,20 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
             format: format,
             scheme: Theme.of(context).colorScheme,
             textStyle: Theme.of(context).textTheme.labelSmall!,
-            xLabel: t.label('level', 'Level'),
-            yLabel: t.label(metric, metric),
+            xFormat: _xMetric == 'level'
+                ? null
+                : (value) =>
+                      const {
+                        'score',
+                        'eff',
+                        'sr',
+                        'justableRate',
+                        'deckReach',
+                      }.contains(_xMetric)
+                      ? '${NumberFormat('0.#', t.locale).format(value * 100)}%'
+                      : NumberFormat('#,##0.#', t.locale).format(value),
+            xLabel: _metricLabel(_xMetric),
+            yLabel: _metricLabel(metric),
           );
           return Align(
             alignment: Alignment.topCenter,
@@ -537,6 +717,13 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
       ('time', label('metaTime', 'Song Duration'), 96, true),
       ('score', label('metaScoreFactor', 'Factor'), 96, true),
       ('eff', label('metaEff', 'Efficiency'), 104, true),
+      if (_rates.isNotEmpty) ...[
+        if (!_gekisou)
+          for (final key in liveAnalysisMetrics.keys)
+            (key, _metricLabel(key), 152, true),
+        for (final key in rankAnalysisMetrics.keys)
+          (key, _metricLabel(key), 128, true),
+      ],
       if (_gekisou) ...[
         ('justableRate', label('justableRate'), 104, true),
         ('justable', label('justable'), 104, true),
@@ -570,6 +757,8 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
       'justable',
       'luck',
       'release',
+      ...liveAnalysisMetrics.keys,
+      ...rankAnalysisMetrics.keys,
     };
 
     Widget header(int column) {
@@ -640,7 +829,7 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
           return Padding(
             padding: EdgeInsets.symmetric(
               horizontal: compact ? 8 : 12,
-              vertical: 8,
+              vertical: 6,
             ),
             child: Row(
               children: [
@@ -889,6 +1078,280 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
     );
   }
 
+  List<Widget> _deckFilters(BuildContext context, StateSetter setSheet) {
+    final text = AppScope.of(context).text;
+    String t(String key, String fallback) =>
+        text('catalog.analysis.fields.$key', fallback);
+    void apply(AnalysisDeck deck) {
+      _deckController.set(deck);
+      setSheet(() {});
+    }
+
+    Widget title(String value) => Padding(
+      padding: const EdgeInsets.only(top: 20, bottom: 8),
+      child: Text(value, style: Theme.of(context).textTheme.titleSmall),
+    );
+    Widget number(
+      String id,
+      String label,
+      num value,
+      num maximum,
+      ValueChanged<double> change,
+    ) => TextFormField(
+      key: ValueKey(id),
+      initialValue: value == value.truncate()
+          ? value.truncate().toString()
+          : value.toString(),
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      decoration: InputDecoration(labelText: label),
+      onChanged: (raw) {
+        final value = double.tryParse(raw);
+        if (value != null && value.isFinite && value >= 0 && value <= maximum) {
+          change(value);
+        }
+      },
+    );
+    Widget row(List<Widget> fields) => Row(
+      children: [
+        for (var i = 0; i < fields.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(child: fields[i]),
+        ],
+      ],
+    );
+    final result = <Widget>[];
+    if (_gekisou) {
+      result.addAll([
+        title(t('deckRoom', 'Players in room')),
+        SegmentedButton<int>(
+          segments: [
+            for (var i = 1; i <= 5; i++)
+              ButtonSegment(value: i, label: Text(i.toString())),
+          ],
+          selected: {_deck.room},
+          onSelectionChanged: (v) => apply(_deck.copyWith(room: v.first)),
+        ),
+      ]);
+    } else {
+      result.addAll([
+        title(t('deck', 'Deck')),
+        number('deckPower', t('deckPower', 'Power'), _deck.power, 99999999, (
+          value,
+        ) {
+          if (value >= 1) apply(_deck.copyWith(power: value.round()));
+        }),
+        title(t('deckSkills', 'Score skills (%)')),
+        row([
+          for (var i = 0; i < 5; i++)
+            number(
+              'slotScore$i',
+              (i + 1).toString(),
+              _deck.slots[i].score + _deck.slots[i].perfect,
+              1000,
+              (value) => apply(
+                _deck.copyWith(
+                  slots: [
+                    for (var n = 0; n < 5; n++)
+                      if (n != i)
+                        _deck.slots[n]
+                      else
+                        _deck.slots[n].perfect > 0 && _deck.slots[n].score == 0
+                            ? _deck.slots[n].copyWith(perfect: value)
+                            : _deck.slots[n].copyWith(score: value, perfect: 0),
+                  ],
+                ),
+              ),
+            ),
+        ]),
+        title(t('deckExtension', 'Snap skill extension (s)')),
+        row([
+          for (var i = 0; i < 5; i++)
+            number(
+              'slotExtension$i',
+              (i + 1).toString(),
+              _deck.slots[i].extensionMs / 1000,
+              6,
+              (value) => apply(
+                _deck.copyWith(
+                  slots: [
+                    for (var n = 0; n < 5; n++)
+                      if (n != i)
+                        _deck.slots[n]
+                      else
+                        _deck.slots[n].copyWith(
+                          extensionMs: (value * 4).round() * 250,
+                        ),
+                  ],
+                ),
+              ),
+            ),
+        ]),
+        title(t('deckPlay', 'Play')),
+        row([
+          number(
+            'deckGreat',
+            t('deckGreat', 'Great (%)'),
+            _deck.great,
+            100,
+            (v) => apply(_deck.copyWith(great: v.round())),
+          ),
+          number(
+            'deckOverhead',
+            t('deckOverhead', 'Time between plays (s)'),
+            _deck.overhead,
+            600,
+            (v) => apply(_deck.copyWith(overhead: v.round())),
+          ),
+        ]),
+      ]);
+      final table = _rates[widget.server ?? AppScope.of(context).server];
+      if (table != null && table.events.isNotEmpty) {
+        final selected = _deck.event == 0
+            ? (table.events.toList()..sort(
+                    (a, b) => (b.startAt ?? 0).compareTo(a.startAt ?? 0),
+                  ))
+                  .where(
+                    (e) =>
+                        e.startAt != null &&
+                        e.startAt! <= DateTime.now().millisecondsSinceEpoch,
+                  )
+                  .firstOrNull
+                  ?.id
+            : _deck.event;
+        result.addAll([
+          title(t('deckEvent', 'Event')),
+          DropdownButtonFormField<int>(
+            isExpanded: true,
+            initialValue: table.events.any((e) => e.id == selected)
+                ? selected
+                : table.events.first.id,
+            decoration: InputDecoration(labelText: t('deckEvent', 'Event')),
+            items: [
+              for (final event in table.events)
+                DropdownMenuItem(
+                  value: event.id,
+                  child: Text(
+                    text.text(event.title),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+            ],
+            onChanged: (v) {
+              if (v != null) apply(_deck.copyWith(event: v));
+            },
+          ),
+          const SizedBox(height: 12),
+          number(
+            'deckBoosts',
+            t('deckBoosts', 'Boosts per live'),
+            _deck.boosts,
+            10,
+            (v) => apply(_deck.copyWith(boosts: v.round())),
+          ),
+          const SizedBox(height: 12),
+          row([
+            number(
+              'deckPointBonus',
+              t('deckPointBonus', 'Event point bonus (%)'),
+              _deck.pointBonus,
+              100000,
+              (v) => apply(_deck.copyWith(pointBonus: v.round())),
+            ),
+            number(
+              'deckItemBonus',
+              t('deckItemBonus', 'Event item bonus (%)'),
+              _deck.itemBonus,
+              100000,
+              (v) => apply(_deck.copyWith(itemBonus: v.round())),
+            ),
+          ]),
+        ]);
+      }
+      result.addAll([
+        title(t('frontier', 'Charts')),
+        SegmentedButton<bool>(
+          segments: [
+            ButtonSegment(value: false, label: Text(text.label('all', 'All'))),
+            ButtonSegment(
+              value: true,
+              label: Text(t('frontierOnly', 'Not outclassed')),
+            ),
+          ],
+          selected: {_frontier},
+          onSelectionChanged: (v) {
+            setState(() => _frontier = v.first);
+            setSheet(() {});
+          },
+        ),
+        title(t('deckRank', 'Target rank')),
+        SegmentedButton<int>(
+          segments: [
+            for (final e in rankAnalysisMetrics.entries)
+              ButtonSegment(
+                value: e.value,
+                label: Text(
+                  const ['', '', '', 'C', 'B', 'A', 'S', 'SS'][e.value],
+                ),
+              ),
+          ],
+          selected: {_deck.rank},
+          onSelectionChanged: (v) => apply(_deck.copyWith(rank: v.first)),
+        ),
+      ]);
+    }
+    if (_scatter) {
+      final metrics = [
+        'level',
+        'score',
+        'eff',
+        'time',
+        'bpm',
+        'n',
+        'nps',
+        'sr',
+        'justable',
+        'justableRate',
+        'luck',
+        if (!_gekisou) ...liveAnalysisMetrics.keys,
+        ...rankAnalysisMetrics.keys,
+      ];
+      result.addAll([
+        title(t('scatterX', 'Horizontal axis')),
+        DropdownButtonFormField<String>(
+          initialValue: metrics.contains(_xMetric) ? _xMetric : 'level',
+          isExpanded: true,
+          items: [
+            for (final key in metrics)
+              DropdownMenuItem(value: key, child: Text(_metricLabel(key))),
+          ],
+          onChanged: (value) {
+            if (value != null) {
+              setState(() => _xMetric = value);
+              setSheet(() {});
+            }
+          },
+        ),
+        title(text.label('sort', 'Sort')),
+        DropdownButtonFormField<String>(
+          initialValue: metrics.contains(_sort) ? _sort : 'score',
+          isExpanded: true,
+          items: [
+            for (final key in metrics)
+              DropdownMenuItem(value: key, child: Text(_metricLabel(key))),
+          ],
+          onChanged: (value) {
+            if (value != null) {
+              setState(() => _sort = value);
+              setSheet(() {});
+            }
+          },
+        ),
+      ]);
+    }
+    return result;
+  }
+
   void _filters(BuildContext context, CatalogVisuals visuals) {
     final t = AppScope.of(context).text;
     showModalBottomSheet<void>(
@@ -905,8 +1368,13 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
           }
 
           return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                16,
+                0,
+                16,
+                16 + MediaQuery.viewInsetsOf(context).bottom,
+              ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -931,6 +1399,7 @@ class _SongMetaScreenState extends State<SongMetaScreen> {
                       ),
                     ],
                   ),
+                  if (_rates.isNotEmpty) ..._deckFilters(context, setSheet),
                   const SizedBox(height: 8),
                   Text(
                     t.label('difficulty', 'Difficulty'),
@@ -990,6 +1459,7 @@ class _ScatterPainter extends CustomPainter {
     required this.textStyle,
     required this.xLabel,
     required this.yLabel,
+    this.xFormat,
   });
   final List<(double, double, Color)> points;
   final String Function(num) format;
@@ -997,6 +1467,7 @@ class _ScatterPainter extends CustomPainter {
   final TextStyle textStyle;
   final String xLabel;
   final String yLabel;
+  final String Function(num)? xFormat;
   static const _pad = (left: 64.0, right: 16.0, top: 20.0, bottom: 40.0);
 
   ({double xMin, double xMax, double yMin, double yMax})? _range() {
@@ -1005,9 +1476,12 @@ class _ScatterPainter extends CustomPainter {
     final yLow = ys.reduce((a, b) => a < b ? a : b),
         yHigh = ys.reduce((a, b) => a > b ? a : b);
     final yPad = (yHigh - yLow) * 0.05 == 0 ? 1.0 : (yHigh - yLow) * 0.05;
+    final xLow = xs.reduce(min),
+        xHigh = xs.reduce(max),
+        xPad = (xHigh - xLow) * .05 == 0 ? 1.0 : (xHigh - xLow) * .05;
     return (
-      xMin: xs.reduce((a, b) => a < b ? a : b).floorToDouble(),
-      xMax: xs.reduce((a, b) => a > b ? a : b).ceilToDouble(),
+      xMin: xFormat == null ? xLow.floorToDouble() : xLow - xPad,
+      xMax: xFormat == null ? xHigh.ceilToDouble() : xHigh + xPad,
       yMin: yLow - yPad,
       yMax: yHigh + yPad,
     );
@@ -1021,7 +1495,10 @@ class _ScatterPainter extends CustomPainter {
   ) => Offset(
     _pad.left +
         (x - r.xMin) /
-            (r.xMax - r.xMin).clamp(1, double.infinity) *
+            (r.xMax - r.xMin).clamp(
+              xFormat == null ? 1 : 1e-9,
+              double.infinity,
+            ) *
             (size.width - _pad.left - _pad.right),
     size.height -
         _pad.bottom -
@@ -1066,19 +1543,21 @@ class _ScatterPainter extends CustomPainter {
   static double log10(double v) => log(v) / ln10;
   static double pow10(int e) => pow(10, e).toDouble();
 
+  TextPainter _label(String text) => TextPainter(
+    text: TextSpan(
+      text: text,
+      style: textStyle.copyWith(color: scheme.onSurfaceVariant),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout();
+
   void _text(
     Canvas canvas,
     String text,
     Offset at, {
     TextAlign align = TextAlign.left,
   }) {
-    final painter = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: textStyle.copyWith(color: scheme.onSurfaceVariant),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
+    final painter = _label(text);
     final dx = switch (align) {
       TextAlign.right => -painter.width,
       TextAlign.center => -painter.width / 2,
@@ -1108,12 +1587,24 @@ class _ScatterPainter extends CustomPainter {
         align: TextAlign.right,
       );
     }
-    for (final value in _ticks(
+    String xText(num value) => xFormat?.call(value) ?? '${value.round()}';
+    final labelWidth = _ticks(
       r.xMin,
       r.xMax,
       12,
-    ).where((v) => v == v.roundToDouble())) {
+    ).fold(0.0, (width, value) => max(width, _label(xText(value)).width));
+    final tickCount =
+        ((size.width - _pad.left - _pad.right) / (labelWidth + 12))
+            .floor()
+            .clamp(1, 12);
+    for (final value in _ticks(
+      r.xMin,
+      r.xMax,
+      tickCount,
+    ).where((v) => xFormat != null || v == v.roundToDouble())) {
       final x = _at(value, r.yMin, size, r).dx;
+      final label = xText(value);
+      final halfWidth = _label(label).width / 2;
       canvas.drawLine(
         Offset(x, _pad.top),
         Offset(x, size.height - _pad.bottom),
@@ -1121,8 +1612,11 @@ class _ScatterPainter extends CustomPainter {
       );
       _text(
         canvas,
-        '${value.round()}',
-        Offset(x, size.height - _pad.bottom + 14),
+        label,
+        Offset(
+          x.clamp(halfWidth, size.width - halfWidth),
+          size.height - _pad.bottom + 14,
+        ),
         align: TextAlign.center,
       );
     }

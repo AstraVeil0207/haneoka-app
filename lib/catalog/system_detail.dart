@@ -10,6 +10,7 @@ import '../core/net.dart';
 import '../core/relative_time.dart';
 import '../shell/links.dart';
 import '../stories/stories.dart';
+import '../stories/story_artwork.dart';
 import '../ui/app_image.dart';
 import '../ui/detail.dart';
 import '../ui/theme.dart';
@@ -1300,7 +1301,15 @@ class _SystemDetailState extends State<SystemDetail> {
                           orElse: () => null,
                         ),
                       ),
-                      adornments: [if (bandIcon is String) _asset(bandIcon)],
+                      adornments: [
+                        ?episodeIdentityArtwork(
+                          episode,
+                          widget.visuals,
+                          normalArtwork: bandIcon is String
+                              ? _asset(bandIcon)
+                              : null,
+                        ),
+                      ],
                       images: [
                         for (final key in ['image', 'banner'])
                           if (episode[key] case final String path

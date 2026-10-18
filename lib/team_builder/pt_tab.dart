@@ -15,7 +15,8 @@ import 'engine/pt_eligibility.dart';
 import 'pickers.dart';
 import 'pt_controller.dart';
 import 'pt_recommendation.dart';
-import 'results_view.dart' show Formation;
+import 'results_view.dart' show Formation, openResultSongAnalysis;
+import 'settings.dart';
 import 'widgets.dart';
 
 class PtTab extends StatefulWidget {
@@ -707,6 +708,24 @@ class _PtTabState extends State<PtTab> {
               ),
             const SizedBox(height: 12),
             Formation(controller: c, hit: hit, settings: c.settings),
+            Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                tooltip: c.tb(
+                  'songMetaWithTeam',
+                  'Song analysis with this team',
+                ),
+                icon: const Icon(Symbols.query_stats_rounded),
+                onPressed: () => openResultSongAnalysis(
+                  context,
+                  c,
+                  hit,
+                  c.searchSettings.forGoal(GoalKind.event).copyWith({
+                    'measure': pt.measure,
+                  }),
+                ),
+              ),
+            ),
           ],
         ),
       ),

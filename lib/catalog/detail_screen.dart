@@ -26,6 +26,7 @@ import 'format.dart';
 import 'labels.g.dart';
 import 'profiles.dart';
 import 'song_summary.dart';
+import 'song_score_targets.dart';
 import 'song_video.dart';
 import 'system_detail.dart';
 import 'visuals.dart';
@@ -608,7 +609,40 @@ class _Page {
             source: kit.api.asset(file).toString(),
           ),
       GekisouStages(song: record, metrics: gekisou),
+      if (kit.api is! ProviderApi &&
+          const ['jp', 'intl'].contains(kit.api.server) &&
+          chosen != null)
+        SongChartTargets(
+          api: kit.api,
+          musicId:
+              (record['musicId'] as num?)?.toInt() ??
+              int.tryParse('${record['_key']}') ??
+              0,
+          difficulty: chosen,
+          inlineRates: (page?['aux'] as Map?)?['chartRates'] as Map?,
+        ),
       ?_rewards(chart),
+      if (kit.api is! ProviderApi &&
+          (record['scoreRanks'] as List? ?? const []).whereType<Map>().any(
+            (r) =>
+                ((r['scoreRank'] as num?) ?? 0) >= 3 &&
+                ((r['battleLiveRequiredScore'] as num?) ?? 0) > 0,
+          ))
+        SongRoomScores(
+          key: ValueKey('room:${kit.api.server}:${record['musicId']}'),
+          api: kit.api,
+          ranks: [
+            for (final r
+                in (record['scoreRanks'] as List? ?? const []).whereType<Map>())
+              if (((r['scoreRank'] as num?) ?? 0) >= 3 &&
+                  ((r['battleLiveRequiredScore'] as num?) ?? 0) > 0)
+                (
+                  rank: (r['scoreRank'] as num).toInt(),
+                  required: ((r['requiredScore'] as num?) ?? 0).toInt(),
+                  battleRequired: (r['battleLiveRequiredScore'] as num).toInt(),
+                ),
+          ],
+        ),
       if (ready)
         SongVideos(
           key: ValueKey('mv:${canonicalRecord['musicId']}'),

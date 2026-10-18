@@ -128,6 +128,8 @@ class _EntityCommentsState extends State<EntityComments> {
   String _sort = 'hot';
   bool _loading = true;
   bool _initialLoadStarted = false;
+  Object? _queryKey;
+  int _generation = 0;
   Object? _error;
   final _expanded = <String>{};
   final _replyLoading = <String>{};
@@ -138,6 +140,22 @@ class _EntityCommentsState extends State<EntityComments> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final key = (
+      widget.type,
+      widget.id,
+      widget.server,
+      AppScope.of(context).text.locale,
+    );
+    final changed = _queryKey != null && _queryKey != key;
+    _queryKey = key;
+    if (changed && _initialLoadStarted) {
+      _expanded.clear();
+      _replyLoading.clear();
+      _comments = [];
+      _cursor = null;
+      _count = 0;
+      _load();
+    }
     if (!_initialLoadStarted) {
       _initialLoadStarted = true;
       HaneokaAccount.instance.load().then((_) => _load());
@@ -152,6 +170,7 @@ class _EntityCommentsState extends State<EntityComments> {
 
   Future<void> _load({bool append = false}) async {
     if (!mounted) return;
+    final generation = ++_generation;
     setState(() {
       _loading = true;
       _error = null;
@@ -161,7 +180,7 @@ class _EntityCommentsState extends State<EntityComments> {
         'GET',
         '$_endpoint?${Uri(queryParameters: {..._query(), if (append && _cursor != null) 'commentsCursor': _cursor!}).query}',
       );
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       setState(() {
         final incoming = jsonList(data['comments']);
         final known = {for (final c in _comments) '${c['id']}'};
@@ -177,7 +196,7 @@ class _EntityCommentsState extends State<EntityComments> {
         _loading = false;
       });
     } catch (error) {
-      if (mounted) {
+      if (mounted && generation == _generation) {
         setState(() {
           _error = error;
           _loading = false;
@@ -190,13 +209,14 @@ class _EntityCommentsState extends State<EntityComments> {
     final root = _comments.where((c) => '${c['id']}' == rootId).firstOrNull;
     final cursor = root?['replyCursor'];
     if (cursor == null || _replyLoading.contains(rootId)) return;
+    final generation = _generation;
     setState(() => _replyLoading.add(rootId));
     try {
       final data = await communityRequest(
         'GET',
         '$_endpoint?${Uri(queryParameters: {..._query(), 'commentsRoot': rootId, 'commentsCursor': '$cursor'}).query}',
       );
-      if (!mounted) return;
+      if (!mounted || generation != _generation) return;
       final known = {for (final c in _comments) '${c['id']}'};
       setState(() {
         _comments = [
@@ -212,7 +232,9 @@ class _EntityCommentsState extends State<EntityComments> {
       });
     } catch (_) {
     } finally {
-      if (mounted) setState(() => _replyLoading.remove(rootId));
+      if (mounted && generation == _generation) {
+        setState(() => _replyLoading.remove(rootId));
+      }
     }
   }
 

@@ -44,6 +44,8 @@ class _CommunityFeedScreenState extends State<CommunityFeedScreen> {
   Object? _error;
   String _query = '';
   int _generation = 0;
+  Object? _queryKey;
+  bool _sessionReady = false;
 
   bool get _needsSession =>
       const {'following', 'mine', 'bookmarked'}.contains(widget.scope);
@@ -52,9 +54,20 @@ class _CommunityFeedScreenState extends State<CommunityFeedScreen> {
   void initState() {
     super.initState();
     HaneokaAccount.instance.load().then((_) {
+      _sessionReady = true;
       if (mounted) _load(reset: true);
     });
     HaneokaAccount.instance.addListener(_onAccount);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final state = AppScope.of(context);
+    final key = (state.server, state.text.locale);
+    final changed = _queryKey != null && _queryKey != key;
+    _queryKey = key;
+    if (changed && _sessionReady) _load(reset: true);
   }
 
   @override

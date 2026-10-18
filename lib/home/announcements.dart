@@ -28,7 +28,7 @@ String _category(SiteText t, Object? category) => t(
 /// The game's announcements for the release server, newest first
 /// (`fetchAnnouncements`, `sortAnnouncements`).
 Future<List<Announcement>> fetchAnnouncements(AppState state) async {
-  final value = await state.api.live(
+  final value = await state.api.json(
     '/api/v1/announcements?server=${state.server}&locale=${state.text.locale}',
   );
   final list = [
@@ -40,7 +40,12 @@ Future<List<Announcement>> fetchAnnouncements(AppState state) async {
     final pinned =
         (b['pinned'] == true ? 1 : 0) - (a['pinned'] == true ? 1 : 0);
     if (pinned != 0) return pinned;
-    return ((b['startAt'] as num?) ?? 0).compareTo((a['startAt'] as num?) ?? 0);
+    final date = ((b['startAt'] as num?) ?? 0).compareTo(
+      (a['startAt'] as num?) ?? 0,
+    );
+    return date != 0
+        ? date
+        : ((b['id'] as num?) ?? 0).compareTo((a['id'] as num?) ?? 0);
   });
   return list;
 }
@@ -61,7 +66,10 @@ class AnnouncementRow extends StatelessWidget {
     return InkWell(
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (_) => AnnouncementScreen(entry: entry),
+          builder: (_) => AnnouncementScreen(
+            entry: entry,
+            server: AppScope.of(context).server,
+          ),
         ),
       ),
       child: Padding(
@@ -81,7 +89,10 @@ class AnnouncementRow extends StatelessWidget {
                 alignment: Alignment.center,
                 child: banner is String
                     ? AppImage(
-                        candidates: [banner],
+                        candidates: [
+                          AppScope.of(context).api.asset(banner).toString(),
+                        ],
+                        localized: false,
                         fit: BoxFit.cover,
                         placeholder: Icon(
                           Symbols.campaign_rounded,
@@ -163,11 +174,16 @@ class AnnouncementsScreen extends StatefulWidget {
 
 class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
   Future<List<Announcement>>? _entries;
+  Object? _dataKey;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _entries ??= fetchAnnouncements(AppScope.of(context));
+    final state = AppScope.of(context);
+    if (_dataKey != state.publicDataKey) {
+      _dataKey = state.publicDataKey;
+      _entries = fetchAnnouncements(state);
+    }
   }
 
   @override
@@ -202,7 +218,10 @@ class _AnnouncementsScreenState extends State<AnnouncementsScreen> {
           }
           return RefreshIndicator(
             onRefresh: () async {
-              final next = fetchAnnouncements(AppScope.of(context));
+              final state = AppScope.of(context);
+              await state.api.revalidate();
+              if (!mounted) return;
+              final next = fetchAnnouncements(state);
               setState(() => _entries = next);
               await next;
             },
@@ -226,7 +245,10 @@ final _drop = [
   RegExp(r'<style[\s\S]*?</style>', caseSensitive: false),
   RegExp(r'<script[\s\S]*?</script>', caseSensitive: false),
 ];
-final _colour = RegExp(r'\s(?:color|bgcolor)="[^"]*"', caseSensitive: false);
+final _presentation = RegExp(
+  r'''\s(?:style|color|bgcolor)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)''',
+  caseSensitive: false,
+);
 
 /// The announcement body without the game's own stylesheet, so its text
 /// takes the app's colours (`announcementBodyFragment`).
@@ -235,28 +257,45 @@ String _body(String html) {
   for (final pattern in _drop) {
     body = body.replaceAll(pattern, '');
   }
-  return body.replaceAll(_colour, '');
+  return body.replaceAll(_presentation, '');
 }
 
 /// One announcement (`announcement-detail`): category and date, then the
 /// game's own body.
 class AnnouncementScreen extends StatefulWidget {
-  const AnnouncementScreen({super.key, required this.entry});
+  const AnnouncementScreen({super.key, required this.entry, this.server});
   final Announcement entry;
+  final String? server;
   @override
   State<AnnouncementScreen> createState() => _AnnouncementScreenState();
 }
 
 class _AnnouncementScreenState extends State<AnnouncementScreen> {
-  Future<Object?>? _detail;
+  Future<Announcement>? _detail;
+  Object? _dataKey;
+
+  Future<Announcement> _load(AppState state) async {
+    final server = widget.server ?? state.server;
+    final document = await state
+        .apiFor(server)
+        .json(
+          '/api/v1/announcements/${widget.entry['id']}?server=$server&locale=${state.text.locale}',
+        );
+    final value = document is Map ? document['announcement'] ?? document : null;
+    if (value is! Map || value['id'] != widget.entry['id']) {
+      throw const FormatException('Announcement detail identity');
+    }
+    return value.cast<String, Object?>();
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     final state = AppScope.of(context);
-    _detail ??= state.api.live(
-      '/api/v1/announcements/${widget.entry['id']}?server=${state.server}&locale=${state.text.locale}',
-    );
+    if (_dataKey != state.publicDataKey) {
+      _dataKey = state.publicDataKey;
+      _detail = _load(state);
+    }
   }
 
   @override
@@ -264,19 +303,22 @@ class _AnnouncementScreenState extends State<AnnouncementScreen> {
     final t = AppScope.of(context).text;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    return ShellPage(
-      title: '${widget.entry['title'] ?? ''}',
-      body: FutureBuilder(
-        future: _detail,
-        builder: (context, snapshot) {
-          final entry = {
-            ...widget.entry,
-            ...?(snapshot.data as Map<String, Object?>?),
-          };
-          final html = entry['html'];
-          final image = entry['bodyImage'];
-          final body = html is String ? _body(html) : '';
-          return ListView(
+    return FutureBuilder(
+      future: _detail,
+      builder: (context, snapshot) {
+        final entry = {...widget.entry, ...?snapshot.data};
+        final html = entry['html'];
+        final image =
+            entry['bodyImage'] is String &&
+                (entry['bodyImage'] as String).isNotEmpty
+            ? entry['bodyImage'] as String
+            : null;
+        final body = html is String ? _body(html) : '';
+        return ShellPage(
+          title:
+              '${entry['title'] ?? t('home.announcements.title', 'Announcements')}',
+          showBack: true,
+          body: ListView(
             padding: pagePadding(context),
             children: [
               DetailSection(
@@ -323,17 +365,35 @@ class _AnnouncementScreenState extends State<AnnouncementScreen> {
                   padding: const EdgeInsets.only(bottom: 16),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                    child: AspectRatio(
-                      aspectRatio:
-                          ((entry['bodyImageWidth'] as num?) ?? 420) /
-                          ((entry['bodyImageHeight'] as num?) ?? 180),
-                      child: AppImage(candidates: [image], fit: BoxFit.contain),
+                    child: AppImage(
+                      candidates: [
+                        AppScope.of(context).api.asset(image).toString(),
+                      ],
+                      localized: false,
+                      naturalHeight: true,
+                      placeholder: Text(
+                        t(
+                          'home.announcements.imageError',
+                          'The announcement image could not be loaded.',
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              if (snapshot.connectionState != ConnectionState.done)
+              if (snapshot.hasError)
+                Center(
+                  child: FilledButton.tonalIcon(
+                    icon: const Icon(Symbols.refresh_rounded),
+                    label: Text(t('home.announcements.retry', 'Retry')),
+                    onPressed: () =>
+                        setState(() => _detail = _load(AppScope.of(context))),
+                  ),
+                )
+              else if (snapshot.connectionState != ConnectionState.done &&
+                  body.trim().isEmpty &&
+                  image is! String)
                 const Center(child: CircularProgressIndicator())
-              else if (body.trim().isEmpty)
+              else if (body.trim().isEmpty && image is! String)
                 Text(
                   t(
                     'home.announcements.bodyUnavailable',
@@ -343,17 +403,25 @@ class _AnnouncementScreenState extends State<AnnouncementScreen> {
                     color: scheme.onSurfaceVariant,
                   ),
                 )
-              else
+              else if (body.trim().isNotEmpty)
                 HtmlWidget(
                   body,
+                  baseUrl: Uri.parse(AppScope.of(context).api.origin),
                   textStyle: theme.textTheme.bodyLarge,
+                  customStylesBuilder: (element) => element.localName == 'a'
+                      ? {
+                          'color':
+                              '#${(scheme.primary.toARGB32() & 0xffffff).toRadixString(16).padLeft(6, '0')}',
+                          'text-decoration': 'underline',
+                        }
+                      : null,
                   // haneoka.org addresses open their native page.
                   onTapUrl: (url) => openLink(context, url),
                 ),
             ],
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 }

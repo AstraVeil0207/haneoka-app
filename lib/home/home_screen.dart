@@ -251,15 +251,19 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<List<Announcement>> _loadNews() async {
     final state = AppScope.of(context);
-    final seed = (await _data!).seed;
-    if (seed['announcements'] case final List rows) {
-      return rows
-          .whereType<Map>()
-          .map((r) => r.cast<String, Object?>())
-          .take(5)
-          .toList();
+    try {
+      return (await fetchAnnouncements(state)).take(5).toList();
+    } on Exception {
+      final seed = (await _data!).seed;
+      if (seed['announcements'] case final List rows) {
+        return rows
+            .whereType<Map>()
+            .map((r) => r.cast<String, Object?>())
+            .take(5)
+            .toList();
+      }
+      rethrow;
     }
-    return fetchAnnouncements(state);
   }
 
   /// bandori.fans entries the website's home seed carries.
@@ -275,7 +279,7 @@ class _HomeScreenState extends State<HomeScreen> {
     ].take(8).toList();
   }
 
-  Object? _dataKey;
+  Object? _dataKey, _communityKey;
 
   @override
   void didChangeDependencies() {
@@ -287,7 +291,14 @@ class _HomeScreenState extends State<HomeScreen> {
       _announcements = _loadNews();
       _fanInfo = _loadFanInfo();
     }
-    _community ??= _loadCommunity();
+    final communityKey = (
+      AppScope.of(context).server,
+      AppScope.of(context).text.locale,
+    );
+    if (_communityKey != communityKey) {
+      _communityKey = communityKey;
+      _community = _loadCommunity();
+    }
   }
 
   Future<_HomeData> _load() async {
@@ -805,7 +816,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           _EventCard(
                             event: event,
                             t: t,
-                            api: state.api,
+                            api: state.apiFor(
+                              '${event[serverKey] ?? state.server}',
+                            ),
                             visuals: data.visuals,
                             onOpen: () => _open(context, 'events', event),
                           ),
@@ -1337,7 +1350,7 @@ class _EventCard extends StatelessWidget {
               .clamp(0.0, 1.0)
         : null;
     final effects = event['effects'];
-    final targets = <Map>[
+    final targetRows = <Map>[
       for (final effect
           in (effects is Map
                   ? effects.values
@@ -1348,6 +1361,11 @@ class _EventCard extends StatelessWidget {
         ...((effect['targets'] as Map?)?.values.whereType<Map>() ??
             const <Map>[]),
     ];
+    final targets = {
+      for (final target in targetRows)
+        '${target['homeTargetKind'] ?? target['kind']}:${target['resourceId'] ?? target['bandId'] ?? target['cardType'] ?? t.text(target['name'])}':
+            target,
+    }.values;
     final bands = targets
         .where((target) => target['homeTargetKind'] == 'band')
         .map((target) => target['bandId'])
@@ -1355,6 +1373,33 @@ class _EventCard extends StatelessWidget {
     final characters = visuals.characters.values.where(
       (c) => bands.contains(c['bandId']),
     );
+    Widget bonusTarget(Map target) {
+      final band = visuals.bands[target['bandId']];
+      final image = target['homeTargetKind'] == 'band'
+          ? visuals.bandIcon(target['bandId']) ?? target['icon']
+          : target['image'] ?? visuals.cardTypeMark(target['cardType']);
+      final name = t.text(target['name']);
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (image is String && image.isNotEmpty)
+            SizedBox.square(
+              dimension: 20,
+              child: AppImage(candidates: [api.asset(image).toString()]),
+            ),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              name.isNotEmpty ? name : t.text(band?['bandName']),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall,
+            ),
+          ),
+        ],
+      );
+    }
+
     Widget chip(String text) => Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
@@ -1368,190 +1413,250 @@ class _EventCard extends StatelessWidget {
         ),
       ),
     );
-    return AspectRatio(
-      aspectRatio: 7 / 3,
-      child: Material(
-        color: scheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(Corner.extraLarge),
-        clipBehavior: Clip.antiAlias,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              flex: 2,
-              child: InkWell(
-                onTap: onOpen,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    EventArtwork(
-                      background: api
-                          .asset(
-                            '${event['backgroundImage'] ?? event['image'] ?? ''}',
-                          )
-                          .toString(),
-                      logoWidth: 0.86,
-                      logo: event['logo'] is String
-                          ? api.asset('${event['logo']}').toString()
-                          : '',
-                    ),
-                    Positioned(
-                      left: 8,
-                      top: 8,
-                      child: chip(t('navigation.events', 'Events')),
-                    ),
-                    if (window.isNotEmpty)
+    return LayoutBuilder(
+      builder: (context, constraints) => SizedBox(
+        height: (constraints.maxWidth * 3 / 7).clamp(184.0, double.infinity),
+        child: Material(
+          color: scheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(Corner.extraLarge),
+          clipBehavior: Clip.antiAlias,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                flex: 2,
+                child: InkWell(
+                  onTap: onOpen,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      EventArtwork(
+                        background: api
+                            .asset(
+                              '${event['backgroundImage'] ?? event['image'] ?? ''}',
+                            )
+                            .toString(),
+                        logoWidth: 0.86,
+                        logo: event['logo'] is String
+                            ? api.asset('${event['logo']}').toString()
+                            : '',
+                      ),
                       Positioned(
                         left: 8,
-                        bottom: 8,
-                        right: 8,
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: chip(window),
-                        ),
+                        top: 8,
+                        child: chip(t('navigation.events', 'Events')),
                       ),
-                  ],
+                      if (window.isNotEmpty)
+                        Positioned(
+                          left: 8,
+                          bottom: 8,
+                          right: 8,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: chip(window),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            Expanded(
-              flex: 3,
-              child: LayoutBuilder(
-                builder: (context, box) {
-                  final tight = box.maxHeight < 160;
-                  return Padding(
-                    padding: EdgeInsets.all(tight ? 8 : 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        InkWell(
-                          onTap: onOpen,
-                          child: Text(
-                            t.text(event['title']),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: tight
-                                ? theme.textTheme.titleMedium
-                                : theme.textTheme.titleLarge,
+              Expanded(
+                flex: 3,
+                child: LayoutBuilder(
+                  builder: (context, box) {
+                    final tight = box.maxHeight < 240 || box.maxWidth < 280;
+                    return Padding(
+                      padding: EdgeInsets.all(tight ? 8 : 16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          InkWell(
+                            onTap: onOpen,
+                            child: Text(
+                              t.text(event['title']),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: tight
+                                  ? theme.textTheme.titleMedium
+                                  : theme.textTheme.titleLarge,
+                            ),
                           ),
-                        ),
-                        if (start != null && end != null && box.maxHeight > 125)
-                          Text(
-                            '${DateFormat.yMMMd(t.locale).format(DateTime.fromMillisecondsSinceEpoch(start.toInt()))} – ${DateFormat.yMMMd(t.locale).format(DateTime.fromMillisecondsSinceEpoch(end.toInt()))}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: theme.textTheme.bodySmall,
+                          if (start != null &&
+                              end != null &&
+                              box.maxHeight > 125)
+                            Text(
+                              '${DateFormat.yMMMd(t.locale).format(DateTime.fromMillisecondsSinceEpoch(start.toInt()))} – ${DateFormat.yMMMd(t.locale).format(DateTime.fromMillisecondsSinceEpoch(end.toInt()))}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          const SizedBox(height: 8),
+                          if (progress != null)
+                            LinearProgressIndicator(
+                              value: progress,
+                              borderRadius: BorderRadius.circular(Corner.full),
+                            ),
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: SingleChildScrollView(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Wrap(
+                                      spacing: 4,
+                                      runSpacing: 4,
+                                      children: [
+                                        for (final target in targets.where(
+                                          (target) => const {
+                                            'band',
+                                            'attribute',
+                                          }.contains(target['homeTargetKind']),
+                                        ))
+                                          bonusTarget(target),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Wrap(
+                                      spacing: 4,
+                                      runSpacing: 4,
+                                      children: [
+                                        for (final character in characters)
+                                          Tooltip(
+                                            message: t.text(
+                                              character['characterName'],
+                                            ),
+                                            child: InkWell(
+                                              onTap: () => openLink(
+                                                context,
+                                                '/${api.server}/${t.locale}/characters/${character['characterId']}/',
+                                              ),
+                                              child: ClipOval(
+                                                child: SizedBox.square(
+                                                  dimension: tight ? 24 : 32,
+                                                  child: AppImage(
+                                                    candidates: [
+                                                      api
+                                                          .asset(
+                                                            '${character['faceImage']}',
+                                                          )
+                                                          .toString(),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
                           ),
-                        const SizedBox(height: 8),
-                        if (progress != null)
-                          LinearProgressIndicator(
-                            value: progress,
-                            borderRadius: BorderRadius.circular(Corner.full),
-                          ),
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: SingleChildScrollView(
-                              child: Wrap(
-                                spacing: 4,
-                                runSpacing: 4,
-                                children: [
-                                  for (final character in characters)
-                                    Tooltip(
-                                      message: t.text(
-                                        character['characterName'],
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              for (final (index, action)
+                                  in <(IconData, String, VoidCallback)>[
+                                    (
+                                      Symbols.event_note_rounded,
+                                      t(
+                                        'home.dashboard.viewDetails',
+                                        'View details',
                                       ),
-                                      child: InkWell(
-                                        onTap: () => openLink(
-                                          context,
-                                          '/catalog/characters/${character['characterId']}',
+                                      () => onOpen?.call(),
+                                    ),
+                                    (
+                                      Symbols.monitoring_rounded,
+                                      t(
+                                        'home.dashboard.eventTracker',
+                                        'Event tracker',
+                                      ),
+                                      () => openLink(
+                                        context,
+                                        '/${api.server}/${t.locale}/events/tracker/',
+                                      ),
+                                    ),
+                                    (
+                                      Symbols.auto_stories_rounded,
+                                      t(
+                                        'story.labels.eventStory',
+                                        'Event story',
+                                      ),
+                                      () => openLink(
+                                        context,
+                                        event['homeStoryId'] is String &&
+                                                '${event['homeStoryId']}'
+                                                    .isNotEmpty
+                                            ? '/${api.server}/${t.locale}/stories/${event['homeStoryId']}/'
+                                            : '/${api.server}/${t.locale}/catalog/stories/event/',
+                                      ),
+                                    ),
+                                  ].indexed) ...[
+                                if (index > 0) const SizedBox(width: 2),
+                                Expanded(
+                                  child: Tooltip(
+                                    message: action.$2,
+                                    child: FilledButton.tonal(
+                                      style: FilledButton.styleFrom(
+                                        minimumSize: const Size(0, 48),
+                                        backgroundColor: index == 0
+                                            ? scheme.primary
+                                            : null,
+                                        foregroundColor: index == 0
+                                            ? scheme.onPrimary
+                                            : null,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 4,
+                                          vertical: 4,
                                         ),
-                                        child: ClipOval(
-                                          child: SizedBox.square(
-                                            dimension: tight ? 24 : 32,
-                                            child: AppImage(
-                                              candidates: [
-                                                api
-                                                    .asset(
-                                                      '${character['faceImage']}',
-                                                    )
-                                                    .toString(),
-                                              ],
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.horizontal(
+                                            left: Radius.circular(
+                                              index == 0 ? 24 : 6,
+                                            ),
+                                            right: Radius.circular(
+                                              index == 2 ? 24 : 6,
                                             ),
                                           ),
                                         ),
                                       ),
+                                      onPressed: action.$3,
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(action.$1, size: 20),
+                                          Text(
+                                            action.$2,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            textAlign: TextAlign.center,
+                                            style: theme.textTheme.labelSmall
+                                                ?.copyWith(
+                                                  color: index == 0
+                                                      ? scheme.onPrimary
+                                                      : scheme
+                                                            .onSecondaryContainer,
+                                                ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                ],
-                              ),
-                            ),
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
-                        ),
-                        Wrap(
-                          spacing: 4,
-                          children: [
-                            IconButton(
-                              tooltip: t('navigation.events', 'Event'),
-                              onPressed: onOpen,
-                              icon: const Icon(
-                                Symbols.local_activity_rounded,
-                                size: 20,
-                              ),
-                              constraints: const BoxConstraints(
-                                minWidth: 32,
-                                minHeight: 32,
-                              ),
-                              padding: EdgeInsets.zero,
-                            ),
-                            IconButton.filledTonal(
-                              tooltip: t(
-                                'home.dashboard.eventTracker',
-                                'Event tracker',
-                              ),
-                              onPressed: () =>
-                                  openLink(context, '/catalog/events/tracker'),
-                              icon: const Icon(
-                                Symbols.monitoring_rounded,
-                                size: 20,
-                              ),
-                              constraints: const BoxConstraints(
-                                minWidth: 32,
-                                minHeight: 32,
-                              ),
-                              padding: EdgeInsets.zero,
-                            ),
-                            IconButton.filledTonal(
-                              tooltip: t(
-                                'home.dashboard.eventStory',
-                                'Event story',
-                              ),
-                              onPressed: () => openLink(
-                                context,
-                                event['homeStoryId'] is String &&
-                                        '${event['homeStoryId']}'.isNotEmpty
-                                    ? '/stories/${event['homeStoryId']}'
-                                    : '/catalog/stories/event',
-                              ),
-                              icon: const Icon(
-                                Symbols.auto_stories_rounded,
-                                size: 20,
-                              ),
-                              constraints: const BoxConstraints(
-                                minWidth: 32,
-                                minHeight: 32,
-                              ),
-                              padding: EdgeInsets.zero,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  );
-                },
+                        ],
+                      ),
+                    );
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
