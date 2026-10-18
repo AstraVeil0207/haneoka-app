@@ -52,7 +52,7 @@ dependencies:
   vega_plugin_haneoka:
     git:
       url: https://github.com/haneoka-gakuen/vega-plugin-haneoka.git
-      ref: 7e99b8ce3a181e961108f83db5b15e510ca47dc8
+      ref: d043969901fb3382751338dfd2bb080b356ab130
       path: dart
   cassiopeia_plugin_our_notes:
     git:

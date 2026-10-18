@@ -1318,27 +1318,25 @@ final class NativeStoryWorld {
     int ease, {
     required int executionId,
   }) {
-    final backgroundEnabled =
-        document.runtime['allowBackgroundBlur'] == true &&
-        (_focusSettings!['_backgroundBlurEnabled'] == 1 ||
-            _focusSettings!['_backgroundBlurEnabled'] == true);
-    final charactersEnabled =
-        document.runtime['allowCharacterBlur'] == true &&
-        (_focusSettings!['_characterBlurEnabled'] == 1 ||
-            _focusSettings!['_characterBlurEnabled'] == true);
-    if (backgroundEnabled) {
+    final blur = StoryFocusBlurPlan.fromCommand(
+      command,
+      runtime: document.runtime,
+      settings: _focusSettings!,
+      focus: focus,
+    );
+    if (blur.backgroundIntensity case final intensity?) {
       _backgroundBlurGeneration++;
       _cameraValue(
         'blur:background',
         _backgroundBlur,
-        (focus['_backgroundBlurIntensity'] as num).toDouble().clamp(0.0, 1.0),
+        intensity,
         command,
         ease,
         (value) => _backgroundBlur = value,
         executionId: executionId,
       );
     }
-    if (charactersEnabled) {
+    if (blur.characterIntensity case final intensity?) {
       final focused =
           _actors[_characterPresentation.placements.nameAt(position)];
       for (final current in _characterPresentation.placements.positions) {
@@ -1349,12 +1347,7 @@ final class NativeStoryWorld {
         _cameraValue(
           'blur:slot:$slot',
           _characterBlur.read(slot),
-          focused != null && current != position
-              ? (focus['_characterBlurIntensity'] as num).toDouble().clamp(
-                  0.0,
-                  1.0,
-                )
-              : 0,
+          focused != null && current != position ? intensity : 0,
           command,
           ease,
           (value) => _characterBlur.write(entrySlot, value),
