@@ -33,6 +33,23 @@ import 'shapes.dart';
 import 'theme.dart';
 import 'tile.dart';
 
+typedef SaveHistoryAction = void Function(BuildContext context, GameSave save);
+
+class SaveHistoryActionScope extends InheritedWidget {
+  const SaveHistoryActionScope({
+    super.key,
+    required this.onReadHistory,
+    required super.child,
+  });
+  final SaveHistoryAction onReadHistory;
+  static SaveHistoryAction? maybeOf(BuildContext context) => context
+      .dependOnInheritedWidgetOfExactType<SaveHistoryActionScope>()
+      ?.onReadHistory;
+  @override
+  bool updateShouldNotify(SaveHistoryActionScope oldWidget) =>
+      oldWidget.onReadHistory != onReadHistory;
+}
+
 /// The game catalogue a save is read against: its release's cards, songs,
 /// items and events.
 class _Catalog {
@@ -122,14 +139,17 @@ class _Catalog {
 /// standing, song clears, collection and items, then exports and the raw
 /// data.
 class SaveScreen extends StatefulWidget {
-  const SaveScreen({super.key, required this.save});
+  const SaveScreen({super.key, required this.save, this.onReadHistory});
   final GameSave save;
+  final SaveHistoryAction? onReadHistory;
 
   @override
   State<SaveScreen> createState() => _SaveScreenState();
 }
 
 class _SaveScreenState extends State<SaveScreen> {
+  SaveHistoryAction? get _historyAction =>
+      widget.onReadHistory ?? SaveHistoryActionScope.maybeOf(context);
   Future<_Catalog>? _catalog;
   bool _busy = false;
   bool _newestFirst = false;
@@ -164,7 +184,10 @@ class _SaveScreenState extends State<SaveScreen> {
     if (_busy) return;
     setState(() => _busy = true);
     final updated = await Navigator.of(context).push<GameSave>(
-      MaterialPageRoute(builder: (_) => ImportScreen(updateSave: save)),
+      MaterialPageRoute(
+        builder: (_) =>
+            ImportScreen(updateSave: save, onReadHistory: _historyAction),
+      ),
     );
     if (!mounted) return;
     setState(() => _busy = false);
@@ -249,6 +272,16 @@ class _SaveScreenState extends State<SaveScreen> {
     return ShellPage(
       title: save.name ?? save.profileId,
       actions: [
+        if (_historyAction case final action?)
+          BarAction(
+            icon: Symbols.history_rounded,
+            label: AppScope.of(
+              context,
+            ).text('catalog.gachaHistory.readHistory'),
+            onPressed: _busy ? null : () => action(context, save),
+            tonal: true,
+            showLabel: true,
+          ),
         BarAction(
           icon: Symbols.groups_rounded,
           label: t.importToTeamBuilder,
@@ -271,6 +304,10 @@ class _SaveScreenState extends State<SaveScreen> {
           onRemove: _remove,
           onUpdateSave: _busy ? null : _updateSave,
           onImportTeam: _busy ? null : _importTeam,
+          showReadHistory: _historyAction != null,
+          onReadHistory: _busy || _historyAction == null
+              ? null
+              : () => _historyAction!(context, save),
           newestFirst: _newestFirst,
           onSortChanged: (value) => setState(() => _newestFirst = value),
         ),
@@ -288,6 +325,8 @@ class _Profile extends StatelessWidget {
     required this.onRemove,
     required this.onUpdateSave,
     required this.onImportTeam,
+    required this.onReadHistory,
+    required this.showReadHistory,
     required this.newestFirst,
     required this.onSortChanged,
   });
@@ -296,8 +335,8 @@ class _Profile extends StatelessWidget {
   final VoidCallback onCopyPackage;
   final VoidCallback onSaveFile;
   final VoidCallback onRemove;
-  final VoidCallback? onUpdateSave, onImportTeam;
-  final bool newestFirst;
+  final VoidCallback? onUpdateSave, onImportTeam, onReadHistory;
+  final bool newestFirst, showReadHistory;
   final ValueChanged<bool> onSortChanged;
 
   @override
@@ -890,6 +929,12 @@ class _Profile extends StatelessWidget {
                   spacing: 12,
                   runSpacing: 8,
                   children: [
+                    if (showReadHistory)
+                      FilledButton.tonalIcon(
+                        onPressed: onReadHistory,
+                        icon: const Icon(Symbols.history_rounded),
+                        label: Text(site('catalog.gachaHistory.readHistory')),
+                      ),
                     FilledButton.icon(
                       onPressed: onImportTeam,
                       icon: const Icon(Symbols.groups_rounded),

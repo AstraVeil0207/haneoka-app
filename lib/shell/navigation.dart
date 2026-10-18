@@ -250,6 +250,11 @@ final navSections = <NavSection>[
     ),
     NavItem('/stamp-maker', 'tools.stampMaker.title', Symbols.image_rounded),
     NavItem(
+      '/gacha-history',
+      'catalog.gachaHistory.title',
+      Symbols.history_rounded,
+    ),
+    NavItem(
       '/chart-editor/create',
       'navigation.chartEditor',
       Symbols.edit_rounded,

@@ -1,7 +1,7 @@
 name: haneoka
 description: "Reads your Our Notes save on every platform and shows everything it holds."
 publish_to: 'none'
-version: 0.1.5+40
+version: 0.1.6+41
 
 environment:
   sdk: ^3.13.5
@@ -116,6 +116,8 @@ dependencies:
       url: https://github.com/haneoka-gakuen/flutter_soloud.git
       ref: 421afc8897576929b3b4812d9e29c31f0a900adc
   window_manager: ^0.5.2
+  grpc: ^5.1.0
+  protobuf: ^6.1.0
 dependency_overrides:
   media_kit_libs_windows_video:
     path: third_party/media_kit_libs_windows_video

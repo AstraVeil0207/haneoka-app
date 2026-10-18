@@ -9,6 +9,8 @@ import 'core/app_media_lifetime.dart';
 import 'core/music_background.dart';
 import 'l10n/app_localizations.dart';
 import 'shell/shell.dart';
+import 'gacha_history/history_page.dart';
+import 'ui/save_screen.dart';
 import 'ui/fonts.dart';
 import 'ui/theme.dart';
 import 'team_builder/engine_client.dart'
@@ -69,6 +71,8 @@ class HaneokaApp extends StatelessWidget {
     final state = AppScope.of(context);
     return MaterialApp(
       title: 'Haneoka',
+      builder: (context, child) =>
+          SaveHistoryActionScope(onReadHistory: openGameHistory, child: child!),
       locale: state.locale,
       theme: haneokaTheme(
         Brightness.light,

@@ -39,7 +39,13 @@ String releaseEmblem(GameRelease? release) => release == GameRelease.jp
 /// Reading the game's save: what it is for, the version, and every way this
 /// platform can reach the save, each with what it needs and its steps.
 class ImportScreen extends StatefulWidget {
-  const ImportScreen({super.key, this.initialPath, this.updateSave});
+  const ImportScreen({
+    super.key,
+    this.initialPath,
+    this.updateSave,
+    this.onReadHistory,
+  });
+  final SaveHistoryAction? onReadHistory;
   final String? initialPath;
   final GameSave? updateSave;
   @override
@@ -47,6 +53,8 @@ class ImportScreen extends StatefulWidget {
 }
 
 class _ImportScreenState extends State<ImportScreen> {
+  SaveHistoryAction? get _historyAction =>
+      widget.onReadHistory ?? SaveHistoryActionScope.maybeOf(context);
   bool _busy = false;
   ShizukuStatus? _shizuku;
   bool _canGrant = false;
@@ -142,9 +150,13 @@ class _ImportScreenState extends State<ImportScreen> {
       }
       if (!mounted) return;
       if (collector.saves.length == 1) {
+        final historyAction = _historyAction;
         Navigator.of(context).pushReplacement(
           MaterialPageRoute<void>(
-            builder: (_) => SaveScreen(save: collector.saves.single),
+            builder: (_) => SaveScreen(
+              save: collector.saves.single,
+              onReadHistory: historyAction,
+            ),
           ),
         );
       } else {
@@ -830,21 +842,26 @@ class _Method extends StatelessWidget {
 /// The imported accounts (`/account`): each player's card, opening their
 /// profile; importing another account is the primary action.
 class AccountsScreen extends StatefulWidget {
-  const AccountsScreen({super.key});
+  const AccountsScreen({super.key, this.onReadHistory});
+  final SaveHistoryAction? onReadHistory;
   @override
   State<AccountsScreen> createState() => _AccountsScreenState();
 }
 
 class _AccountsScreenState extends State<AccountsScreen> {
+  SaveHistoryAction? get _historyAction =>
+      widget.onReadHistory ?? SaveHistoryActionScope.maybeOf(context);
   @override
   void initState() {
     super.initState();
     AccountStore.instance.load();
   }
 
-  void _import() =>
-      Navigator.of(context)
-          .push(MaterialPageRoute<void>(builder: (_) => const ImportScreen()));
+  void _import() => Navigator.of(context).push(
+    MaterialPageRoute<void>(
+      builder: (_) => ImportScreen(onReadHistory: _historyAction),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -921,7 +938,10 @@ class _AccountsScreenState extends State<AccountsScreen> {
                       save: save,
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute<void>(
-                          builder: (_) => SaveScreen(save: save),
+                          builder: (_) => SaveScreen(
+                            save: save,
+                            onReadHistory: _historyAction,
+                          ),
                         ),
                       ),
                     ),
@@ -940,7 +960,9 @@ class StoredPlayerScreen extends StatefulWidget {
     super.key,
     required this.server,
     required this.profileId,
+    this.onReadHistory,
   });
+  final SaveHistoryAction? onReadHistory;
   final String server;
   final String profileId;
   @override
@@ -965,7 +987,11 @@ class _StoredPlayerScreenState extends State<StoredPlayerScreen> {
                 s.profileId == widget.profileId,
           )
           .firstOrNull;
-      return save == null ? const AccountsScreen() : SaveScreen(save: save);
+      final action =
+          widget.onReadHistory ?? SaveHistoryActionScope.maybeOf(context);
+      return save == null
+          ? AccountsScreen(onReadHistory: action)
+          : SaveScreen(save: save, onReadHistory: action);
     },
   );
 }
