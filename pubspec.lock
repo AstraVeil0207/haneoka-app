@@ -502,8 +502,8 @@ packages:
     dependency: "direct main"
     description:
       path: dart
-      ref: "5f54ca8c86a2e36d99f8f9f274e4a8c160f32693"
-      resolved-ref: "5f54ca8c86a2e36d99f8f9f274e4a8c160f32693"
+      ref: e44ffb9bd97ac997bc42070d8a7f9a8b88739de4
+      resolved-ref: e44ffb9bd97ac997bc42070d8a7f9a8b88739de4
       url: "https://github.com/haneoka-gakuen/game-data-exporter.git"
     source: git
     version: "0.1.0"
@@ -540,7 +540,7 @@ packages:
     source: hosted
     version: "2.3.4"
   grpc:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: grpc
       sha256: "0cde49bc17f6b1e96c374ad1b5d389816cc8ade2015f24294eaa76193de87090"
@@ -957,7 +957,7 @@ packages:
     source: hosted
     version: "5.0.6"
   protobuf:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: protobuf
       sha256: "13b6717366aa7ec3792dd62c19c7d33a785708224365f2db23c5ca01f1c1a0f2"

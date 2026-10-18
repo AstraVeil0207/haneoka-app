@@ -10,7 +10,7 @@ dependencies:
   game_data_exporter:
     git:
       url: https://github.com/haneoka-gakuen/game-data-exporter.git
-      ref: 5f54ca8c86a2e36d99f8f9f274e4a8c160f32693
+      ref: e44ffb9bd97ac997bc42070d8a7f9a8b88739de4
       path: dart
   vega_runtime_ffi:
     git:
@@ -116,8 +116,6 @@ dependencies:
       url: https://github.com/haneoka-gakuen/flutter_soloud.git
       ref: 421afc8897576929b3b4812d9e29c31f0a900adc
   window_manager: ^0.5.2
-  grpc: ^5.1.0
-  protobuf: ^6.1.0
 dependency_overrides:
   media_kit_libs_windows_video:
     path: third_party/media_kit_libs_windows_video

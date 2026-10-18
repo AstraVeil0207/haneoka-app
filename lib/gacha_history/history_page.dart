@@ -44,17 +44,39 @@ class HistoryPage extends StatefulWidget {
   State<HistoryPage> createState() => _HistoryPageState();
 }
 
+class _HistoryPersist {
+  const _HistoryPersist(
+    this.document,
+    this.release,
+    this.sessionKey,
+    this.modifiedAt,
+  );
+  final Map<String, Object?> document;
+  final GameRelease release;
+  final String sessionKey;
+  final DateTime? modifiedAt;
+  String get key => '$sessionKey-${release.server}';
+}
+
 class _HistoryChoice {
-  const _HistoryChoice(this.key, this.region, this.save, this.record);
+  const _HistoryChoice(
+    this.key,
+    this.region,
+    this.save,
+    this.record, {
+    this.persist,
+  });
   final String key;
   final GameHistoryRegion region;
   final GameSave? save;
   final StoredHistory? record;
+  final _HistoryPersist? persist;
 }
 
 class _HistoryPageState extends State<HistoryPage> {
   final _repository = HistoryRepository.instance;
   final _accounts = AccountStore.instance;
+  final _persists = <String, _HistoryPersist>{};
   static final _catalogs = <(HaneokaApi, int), Future<HistoryCatalog>>{};
   String _selected = '';
   String? _errorCode;
@@ -106,7 +128,30 @@ class _HistoryPageState extends State<HistoryPage> {
   void dispose() {
     _repository.removeListener(_changed);
     _accounts.removeListener(_changed);
+    _persists.clear();
     super.dispose();
+  }
+
+  SaveCollector _collector(List<_HistoryPersist> persists) => SaveCollector(
+    onDocument: (document, candidate) {
+      final key = historyPersistKey(document), release = candidate.release;
+      if (key == null || release == null) return;
+      persists.add(
+        _HistoryPersist(
+          {'_certification': document['_certification']},
+          release,
+          key,
+          candidate.modifiedAt,
+        ),
+      );
+    },
+  );
+
+  _HistoryPersist? _persistFor(GameSave save) {
+    final key = historyPersistKey(
+      save.documents[SaveDocumentKind.persist]?.data,
+    );
+    return _persists['$key-${save.release?.server}'];
   }
 
   List<_HistoryChoice> _choices() {
@@ -127,10 +172,40 @@ class _HistoryPageState extends State<HistoryPage> {
               HistoryRepository.accountKey(save, region),
               region,
               save,
-              records[HistoryRepository.accountKey(save, region)],
+              records[HistoryRepository.accountKey(save, region)] ??
+                  records[HistoryRepository.persistAccountKey(
+                    save.documents[SaveDocumentKind.persist]?.data,
+                    region,
+                  )],
+              persist: _persistFor(save),
             ),
     ];
-    final used = choices.map((choice) => choice.key).toSet();
+    for (final persist in _persists.values) {
+      if (saves.any(
+        (save) =>
+            save.release?.server == persist.release.server &&
+            historyPersistKey(save.documents[SaveDocumentKind.persist]?.data) ==
+                persist.sessionKey,
+      )) {
+        continue;
+      }
+      for (final region in GameHistoryRegion.values) {
+        if (region.catalogServer != persist.release.server) continue;
+        final key = '${persist.sessionKey}-${region.id}';
+        choices.add(
+          _HistoryChoice(key, region, null, records[key], persist: persist),
+        );
+      }
+    }
+    final used = {
+      ...choices.map((choice) => choice.key),
+      for (final choice in choices)
+        if (choice.save case final save?)
+          HistoryRepository.persistAccountKey(
+            save.documents[SaveDocumentKind.persist]?.data,
+            choice.region,
+          ),
+    };
     return [
       ...choices,
       for (final record in records.values)
@@ -168,13 +243,23 @@ class _HistoryPageState extends State<HistoryPage> {
 
   Future<void> _refresh(String key) async {
     final choice = _choices().where((value) => value.key == key).firstOrNull;
-    if (choice?.save == null) return;
+    if (choice == null || (choice.save == null && choice.persist == null)) {
+      return;
+    }
     setState(() {
       _selected = key;
       _errorCode = null;
     });
     try {
-      await _repository.refresh(choice!.save!, choice.region);
+      if (choice.persist case final persist?) {
+        await _repository.refreshPersist(
+          persist.document,
+          choice.region,
+          account: choice.save,
+        );
+      } else {
+        await _repository.refresh(choice.save!, choice.region);
+      }
     } on GameHistoryException catch (error) {
       if (mounted) setState(() => _errorCode = error.code);
     } on Exception {
@@ -182,24 +267,46 @@ class _HistoryPageState extends State<HistoryPage> {
     }
   }
 
-  Future<void> _acceptSaves(Iterable<GameSave> values) async {
-    final saves = values.toList();
-    if (saves.isEmpty || saves.any((save) => save.release == null)) {
+  Future<void> _acceptSaves(
+    Iterable<GameSave> values, {
+    Iterable<_HistoryPersist> persists = const [],
+  }) async {
+    final saves = values.toList(), sessions = persists.toList();
+    if ((saves.isEmpty && sessions.isEmpty) ||
+        saves.any((save) => save.release == null)) {
       throw const FormatException('history_import_invalid');
     }
     for (final save in saves) {
       await _accounts.put(save);
       unawaited(HaneokaAccount.instance.syncIfLinked(save));
     }
-    final save = saves.first;
-    final region = save.release == GameRelease.jp
+    for (final persist in sessions) {
+      final previous = _persists[persist.key];
+      if (previous == null ||
+          persist.modifiedAt == null ||
+          (persist.modifiedAt != null &&
+              (previous.modifiedAt == null ||
+                  persist.modifiedAt!.isAfter(previous.modifiedAt!)))) {
+        _persists[persist.key] = persist;
+      }
+    }
+    final save = saves.firstOrNull, persist = sessions.firstOrNull;
+    final release = save?.release ?? persist!.release;
+    final region = release == GameRelease.jp
         ? GameHistoryRegion.jp
         : GameHistoryRegion.hmt;
-    if (!mounted) return;
-    setState(() => _selected = HistoryRepository.accountKey(save, region));
-    if (SavedGameSession.fromSave(save) != null &&
-        (save.release == GameRelease.jp ||
-            save.release == GameRelease.intlOfficial)) {
+    final choice = _choices().where((choice) {
+      if (choice.region != region) return false;
+      if (save != null) {
+        return choice.key == HistoryRepository.accountKey(save, region);
+      }
+      return choice.persist?.sessionKey == persist!.sessionKey;
+    }).firstOrNull;
+    if (!mounted || choice == null) return;
+    setState(() => _selected = choice.key);
+    if ((choice.persist != null ||
+            historySessionFromSave(choice.save!) != null) &&
+        (release == GameRelease.jp || release == GameRelease.intlOfficial)) {
       unawaited(_refresh(_selected));
     }
   }
@@ -213,13 +320,14 @@ class _HistoryPageState extends State<HistoryPage> {
     });
     CacheStorage.instance.beginImport();
     try {
-      final collector = SaveCollector();
+      final persists = <_HistoryPersist>[];
+      final collector = _collector(persists);
+      final current = _choices()
+          .where((value) => value.key == _selected)
+          .firstOrNull;
       final initialRelease =
-          _choices()
-              .where((value) => value.key == _selected)
-              .firstOrNull
-              ?.save
-              ?.release ??
+          current?.save?.release ??
+          current?.persist?.release ??
           (AppScope.of(context).server == 'jp'
               ? GameRelease.jp
               : GameRelease.intlOfficial);
@@ -270,8 +378,13 @@ class _HistoryPageState extends State<HistoryPage> {
           ).addBytes(bytes, file.path ?? file.name);
         }
       }
-      if (collector.saves.isNotEmpty || rawAccounts.isNotEmpty) {
-        await _acceptSaves([...collector.saves, ...rawAccounts]);
+      if (collector.saves.isNotEmpty ||
+          rawAccounts.isNotEmpty ||
+          persists.isNotEmpty) {
+        await _acceptSaves([
+          ...collector.saves,
+          ...rawAccounts,
+        ], persists: persists);
       } else if (snapshots == 0) {
         throw const FormatException('history_import_invalid');
       }
@@ -300,9 +413,23 @@ class _HistoryPageState extends State<HistoryPage> {
           showAdbSheet(
             context,
             onRead: (read) async {
-              final collector = SaveCollector();
-              await read(collector);
-              await _acceptSaves(collector.saves);
+              if (!mounted) return;
+              setState(() {
+                _importing = true;
+                _errorCode = null;
+              });
+              try {
+                final persists = <_HistoryPersist>[];
+                final collector = _collector(persists);
+                await read(collector);
+                await _acceptSaves(collector.saves, persists: persists);
+              } on Exception {
+                if (mounted) {
+                  setState(() => _errorCode = 'history_import_invalid');
+                }
+              } finally {
+                if (mounted) setState(() => _importing = false);
+              }
             },
           ),
         );
@@ -392,11 +519,14 @@ class _HistoryPageState extends State<HistoryPage> {
       }
     }
     final snapshot = current?.record?.snapshot;
+    final needsCatalog = snapshot?.executions.isNotEmpty ?? false;
     final api = state.apiFor(current?.region.catalogServer ?? state.server);
-    final catalog = cachedResource(_catalogs, (
-      api,
-      api.revision,
-    ), () => HistoryCatalog.load(api));
+    final catalog = !needsCatalog
+        ? null
+        : cachedResource(_catalogs, (
+            api,
+            api.revision,
+          ), () => HistoryCatalog.load(api));
     return FutureBuilder<HistoryCatalog>(
       key: ValueKey((api, api.revision)),
       future: catalog,
@@ -472,8 +602,11 @@ class _HistoryPageState extends State<HistoryPage> {
           historyLoaded: snapshot != null,
           busy: _importing || _repository.isReading(_selected),
           error: _error,
-          catalogLoading: data.connectionState == ConnectionState.waiting,
-          catalogError: data.hasError ? _t('errorCatalogUnavailable') : null,
+          catalogLoading:
+              needsCatalog && data.connectionState == ConnectionState.waiting,
+          catalogError: needsCatalog && data.hasError
+              ? _t('errorCatalogUnavailable')
+              : null,
           onCatalogRetry: () => setState(() {
             _catalogs.remove((api, api.revision));
           }),
@@ -481,7 +614,7 @@ class _HistoryPageState extends State<HistoryPage> {
             _selected = key;
             _errorCode = null;
           }),
-          onRefresh: current?.save == null
+          onRefresh: current?.save == null && current?.persist == null
               ? null
               : (key) => unawaited(_refresh(key)),
           onImportSource: _source,

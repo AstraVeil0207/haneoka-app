@@ -17,6 +17,16 @@ String historySaveKey(GameSave save) => sha256
     )
     .toString();
 
+String? historyPersistKey(Object? document) {
+  if (SavedGameSession.fromPersist(document) == null || document is! Map) {
+    return null;
+  }
+  final certification = document['_certification'] as Map;
+  return sha256
+      .convert(utf8.encode(certification['_playerId'] as String))
+      .toString();
+}
+
 class StoredHistory {
   const StoredHistory({
     required this.key,
@@ -41,6 +51,10 @@ class HistoryRepository extends ChangeNotifier {
   bool isReading(String key) => _pending.containsKey(key);
   static String accountKey(GameSave save, GameHistoryRegion region) =>
       '${historySaveKey(save)}-${region.id}';
+  static String? persistAccountKey(Object? document, GameHistoryRegion region) {
+    final key = historyPersistKey(document);
+    return key == null ? null : '$key-${region.id}';
+  }
 
   Future<Directory> _folder() async {
     final support = await getApplicationSupportDirectory();
@@ -93,17 +107,60 @@ class HistoryRepository extends ChangeNotifier {
   }
 
   Future<StoredHistory> refresh(GameSave save, GameHistoryRegion region) async {
-    await load();
-    final key = accountKey(save, region);
-    if (_pending[key] case final current?) return current;
-    final session = SavedGameSession.fromSave(save);
+    final session = historySessionFromSave(save);
     if (session == null) {
       throw const GameHistoryException('history_missing_session');
     }
     if (save.release?.server != region.catalogServer) {
       throw const GameHistoryException('history_server_mismatch');
     }
-    final pending = _read(save, region, session);
+    return _refresh(
+      historySaveKey(save),
+      region,
+      session,
+      mergeKey: persistAccountKey(
+        save.documents[SaveDocumentKind.persist]?.data,
+        region,
+      ),
+    );
+  }
+
+  Future<StoredHistory> refreshPersist(
+    Object? document,
+    GameHistoryRegion region, {
+    GameSave? account,
+  }) async {
+    final session = SavedGameSession.fromPersist(document);
+    final key = historyPersistKey(document);
+    if (session == null || key == null) {
+      throw const GameHistoryException('history_missing_session');
+    }
+    if (account != null &&
+        (account.release?.server != region.catalogServer ||
+            historyPersistKey(
+                  account.documents[SaveDocumentKind.persist]?.data,
+                ) !=
+                key)) {
+      throw const GameHistoryException('history_import_invalid');
+    }
+    return _refresh(
+      account == null ? key : historySaveKey(account),
+      region,
+      session,
+      mergeKey: '$key-${region.id}',
+    );
+  }
+
+  Future<StoredHistory> _refresh(
+    String saveKey,
+    GameHistoryRegion region,
+    SavedGameSession session, {
+    String? mergeKey,
+  }) async {
+    await load();
+    final key = '$saveKey-${region.id}';
+    if (_pending[key] case final current?) return current;
+    final pending = _read(saveKey, region, session, mergeKey: mergeKey);
     _pending[key] = pending;
     notifyListeners();
     try {
@@ -115,21 +172,22 @@ class HistoryRepository extends ChangeNotifier {
   }
 
   Future<StoredHistory> _read(
-    GameSave save,
+    String saveKey,
     GameHistoryRegion region,
-    SavedGameSession session,
-  ) async {
+    SavedGameSession session, {
+    String? mergeKey,
+  }) async {
     final snapshot = await _client.read(session, region);
     final record = StoredHistory(
-      key: accountKey(save, region),
-      saveKey: historySaveKey(save),
+      key: '$saveKey-${region.id}',
+      saveKey: saveKey,
       snapshot: snapshot,
     );
-    await _put(record);
-    return record;
+    await _put(record, mergeKey: mergeKey);
+    return _records[record.key] ?? record;
   }
 
-  Future<void> _put(StoredHistory record) async {
+  Future<void> _put(StoredHistory record, {String? mergeKey}) async {
     final write = _writes.then((_) async {
       final folder = await _folder();
       final rawSnapshot = jsonEncode(record.snapshot.toJson());
@@ -146,6 +204,21 @@ class HistoryRepository extends ChangeNotifier {
           key: record.key,
           saveKey: record.saveKey,
           snapshot: record.snapshot.withOlder(previous!.snapshot),
+        );
+      }
+      final candidate = mergeKey == record.key ? null : _records[mergeKey];
+      final collected =
+          candidate != null &&
+              candidate.saveKey != null &&
+              mergeKey == '${candidate.saveKey}-${record.snapshot.server}' &&
+              candidate.snapshot.server == record.snapshot.server
+          ? candidate
+          : null;
+      if (collected != null) {
+        record = StoredHistory(
+          key: record.key,
+          saveKey: record.saveKey,
+          snapshot: record.snapshot.withOlder(collected.snapshot),
         );
       }
       final target = File(p.join(folder.path, '${record.key}.json'));
@@ -166,7 +239,20 @@ class HistoryRepository extends ChangeNotifier {
       _records[record.key] = record;
       notifyListeners();
       try {
-        await writeHistoryHandoff(record.key, record.snapshot);
+        await writeHistoryHandoff(
+          record.key,
+          record.snapshot,
+          replaces: collected?.key,
+        );
+        if (collected != null) {
+          _records.remove(collected.key);
+          try {
+            final oldFile = File(p.join(folder.path, '${collected.key}.json'));
+            if (await oldFile.exists()) await oldFile.delete();
+          } on FileSystemException {
+            // The merged history has already been stored under the account key.
+          }
+        }
       } on FileSystemException {
         // The private history remains committed; refresh retries USB sharing.
       }

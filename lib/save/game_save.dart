@@ -88,6 +88,11 @@ class SaveCandidate {
 /// content hashes that change between versions, so a file is a save exactly
 /// when it decrypts; the newest copy of an account wins.
 class SaveCollector {
+  SaveCollector({this.onDocument});
+
+  /// Observes decoded documents before account grouping.
+  final void Function(Map<String, Object?> data, SaveCandidate candidate)?
+  onDocument;
   final Map<String, GameSave> _byProfile = {};
   final Map<String, List<SaveDocument>> _orphans = {};
   final Map<String, String> _profileOfGroup = {};
@@ -103,6 +108,7 @@ class SaveCollector {
   /// A JSON save exported by Haneoka, with the same account grouping and
   /// newest-document rules as the game's encrypted files.
   bool offerDocument(Map<String, Object?> data, SaveCandidate candidate) {
+    onDocument?.call(data, candidate);
     final kind = _kindOf(data);
     if (kind == null) {
       unreadable++;
