@@ -272,16 +272,6 @@ class _SaveScreenState extends State<SaveScreen> {
     return ShellPage(
       title: save.name ?? save.profileId,
       actions: [
-        if (_historyAction case final action?)
-          BarAction(
-            icon: Symbols.history_rounded,
-            label: AppScope.of(
-              context,
-            ).text('catalog.gachaHistory.readHistory'),
-            onPressed: _busy ? null : () => action(context, save),
-            tonal: true,
-            showLabel: true,
-          ),
         BarAction(
           icon: Symbols.groups_rounded,
           label: t.importToTeamBuilder,
