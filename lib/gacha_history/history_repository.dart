@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -10,32 +11,42 @@ import '../save/game_save.dart';
 import 'game_history_client.dart';
 import 'history_snapshot.dart';
 import 'history_handoff.dart';
+import 'history_identity.dart';
 
-String historySaveKey(GameSave save) => sha256
-    .convert(
-      utf8.encode('${save.release?.server ?? 'unknown'}:${save.profileId}'),
-    )
-    .toString();
+export 'history_identity.dart';
 
-String? historyPersistKey(Object? document) {
-  if (SavedGameSession.fromPersist(document) == null || document is! Map) {
-    return null;
-  }
-  final certification = document['_certification'] as Map;
-  return sha256
-      .convert(utf8.encode(certification['_playerId'] as String))
-      .toString();
-}
+Future<Object?> _decodeHistory(String text) =>
+    Isolate.run(() => jsonDecode(text));
+Future<(String, String)> _encodeSnapshot(HistorySnapshot snapshot) =>
+    Isolate.run(() {
+      final text = jsonEncode(snapshot.toJson());
+      return (text, sha256.convert(utf8.encode(text)).toString());
+    });
+Future<String> _encodeHistoryRecord(StoredHistory record) => Isolate.run(
+  () => jsonEncode({
+    'key': record.key,
+    'saveKey': record.saveKey,
+    'snapshot': record.snapshot.toJson(),
+    'histories': record.histories.map((history) => history.toJson()).toList(),
+  }),
+);
 
 class StoredHistory {
   const StoredHistory({
     required this.key,
     required this.snapshot,
     this.saveKey,
+    this.snapshots = const [],
   });
   final String key;
   final String? saveKey;
   final HistorySnapshot snapshot;
+  final List<HistorySnapshot> snapshots;
+  List<HistorySnapshot> get histories =>
+      snapshots.isEmpty ? [snapshot] : snapshots;
+  HistorySnapshot history(String? kind) =>
+      histories.where((history) => history.historyKind == kind).firstOrNull ??
+      snapshot;
 }
 
 class HistoryRepository extends ChangeNotifier {
@@ -73,7 +84,7 @@ class HistoryRepository extends ChangeNotifier {
       if (entry is! File || !entry.path.endsWith('.json')) continue;
       try {
         if (await entry.length() > historyResponseLimit * 4) continue;
-        final value = jsonDecode(await entry.readAsString());
+        final value = await _decodeHistory(await entry.readAsString());
         if (value is! Map || value['key'] is! String) continue;
         final key = value['key'] as String;
         if (!RegExp(
@@ -81,9 +92,25 @@ class HistoryRepository extends ChangeNotifier {
         ).hasMatch(key)) {
           continue;
         }
+        final snapshot = HistorySnapshot.fromJson(value['snapshot']);
+        var histories = <HistorySnapshot>[snapshot];
+        for (final raw
+            in value['histories'] is List
+                ? value['histories'] as List
+                : [value['snapshot']]) {
+          histories = mergeHistoryCollection(
+            histories,
+            HistorySnapshot.fromJson(raw),
+          );
+        }
         _records[key] = StoredHistory(
           key: key,
-          snapshot: HistorySnapshot.fromJson(value['snapshot']),
+          snapshot:
+              histories
+                  .where((row) => row.historyKind == snapshot.historyKind)
+                  .firstOrNull ??
+              histories.first,
+          snapshots: histories,
           saveKey: value['saveKey'] as String?,
         );
       } on FormatException {
@@ -98,12 +125,31 @@ class HistoryRepository extends ChangeNotifier {
 
   Future<StoredHistory> import(HistorySnapshot snapshot) async {
     await load();
-    final key = sha256
-        .convert(utf8.encode(jsonEncode(snapshot.toJson())))
-        .toString();
-    final record = StoredHistory(key: key, snapshot: snapshot);
-    await _put(record);
-    return record;
+    final (_, digest) = await _encodeSnapshot(snapshot);
+    final previous = snapshot.accountKey == null
+        ? null
+        : _records.values
+              .where(
+                (record) =>
+                    record.snapshot.server == snapshot.server &&
+                    (record.snapshot.accountKey ??
+                            (record.saveKey == null
+                                ? record.key
+                                : historyPortableKey(
+                                    record.key,
+                                    record.snapshot.server,
+                                  ))) ==
+                        snapshot.accountKey,
+              )
+              .firstOrNull;
+    final key = previous?.key ?? snapshot.accountKey ?? digest;
+    final record = StoredHistory(
+      key: key,
+      saveKey: previous?.saveKey,
+      snapshot: snapshot,
+    );
+    await _put(record, mergePrevious: snapshot.accountKey != null);
+    return _records[key]!;
   }
 
   Future<StoredHistory> refresh(GameSave save, GameHistoryRegion region) async {
@@ -177,9 +223,13 @@ class HistoryRepository extends ChangeNotifier {
     SavedGameSession session, {
     String? mergeKey,
   }) async {
-    final snapshot = await _client.read(session, region);
+    final key = '$saveKey-${region.id}';
+    final snapshot = (await _client.read(
+      session,
+      region,
+    )).forAccount(historyPortableKey(mergeKey ?? key, region.id));
     final record = StoredHistory(
-      key: '$saveKey-${region.id}',
+      key: key,
       saveKey: saveKey,
       snapshot: snapshot,
     );
@@ -187,11 +237,14 @@ class HistoryRepository extends ChangeNotifier {
     return _records[record.key] ?? record;
   }
 
-  Future<void> _put(StoredHistory record, {String? mergeKey}) async {
+  Future<void> _put(
+    StoredHistory record, {
+    String? mergeKey,
+    bool mergePrevious = false,
+  }) async {
     final write = _writes.then((_) async {
       final folder = await _folder();
-      final rawSnapshot = jsonEncode(record.snapshot.toJson());
-      final digest = sha256.convert(utf8.encode(rawSnapshot)).toString();
+      final (rawSnapshot, digest) = await _encodeSnapshot(record.snapshot);
       final archives = await Directory(p.join(folder.path, 'snapshots'))
           .create(recursive: true);
       final archive = File(p.join(archives.path, '$digest.json'));
@@ -199,60 +252,86 @@ class HistoryRepository extends ChangeNotifier {
         await archive.writeAsString(rawSnapshot, flush: true);
       }
       final previous = _records[record.key];
-      if (record.saveKey != null && previous?.saveKey == record.saveKey) {
+      var histories = record.histories;
+      if (previous != null &&
+          (mergePrevious ||
+              (record.saveKey != null && previous.saveKey == record.saveKey))) {
+        histories = previous.histories;
+        for (final incoming in record.histories) {
+          histories = mergeHistoryCollection(histories, incoming);
+        }
+        final accountKey = record.snapshot.accountKey;
+        if (accountKey != null) {
+          histories = histories
+              .map((history) => history.forAccount(accountKey))
+              .toList();
+        }
         record = StoredHistory(
           key: record.key,
           saveKey: record.saveKey,
-          snapshot: record.snapshot.withOlder(previous!.snapshot),
+          snapshot: histories.first,
+          snapshots: histories,
         );
       }
-      final candidate = mergeKey == record.key ? null : _records[mergeKey];
-      final collected =
-          candidate != null &&
-              candidate.saveKey != null &&
-              mergeKey == '${candidate.saveKey}-${record.snapshot.server}' &&
-              candidate.snapshot.server == record.snapshot.server
-          ? candidate
-          : null;
-      if (collected != null) {
+      final aliases = _records.values
+          .where(
+            (candidate) =>
+                candidate.key != record.key &&
+                candidate.snapshot.server == record.snapshot.server &&
+                ((record.snapshot.accountKey != null &&
+                        record.snapshot.accountKey ==
+                            candidate.snapshot.accountKey) ||
+                    (candidate.key == mergeKey &&
+                        candidate.saveKey != null &&
+                        mergeKey ==
+                            '${candidate.saveKey}-${record.snapshot.server}')),
+          )
+          .toList();
+      for (final alias in aliases) {
+        var merged = alias.histories;
+        for (final incoming in record.histories) {
+          merged = mergeHistoryCollection(merged, incoming);
+        }
+        final accountKey = record.snapshot.accountKey;
+        if (accountKey != null) {
+          merged = merged
+              .map((history) => history.forAccount(accountKey))
+              .toList();
+        }
         record = StoredHistory(
           key: record.key,
           saveKey: record.saveKey,
-          snapshot: record.snapshot.withOlder(collected.snapshot),
+          snapshot: merged.first,
+          snapshots: merged,
         );
       }
       final target = File(p.join(folder.path, '${record.key}.json'));
       final temporary = File('${target.path}.tmp');
-      final bytes = utf8.encode(
-        jsonEncode({
-          'key': record.key,
-          'saveKey': record.saveKey,
-          'snapshot': record.snapshot.toJson(),
-        }),
-      );
+      final text = await _encodeHistoryRecord(record);
       try {
-        await temporary.writeAsBytes(bytes, flush: true);
+        await temporary.writeAsString(text, flush: true);
         await temporary.rename(target.path);
       } finally {
         if (await temporary.exists()) await temporary.delete();
       }
       _records[record.key] = record;
+      for (final alias in aliases) {
+        _records.remove(alias.key);
+        try {
+          final oldFile = File(p.join(folder.path, '${alias.key}.json'));
+          if (await oldFile.exists()) await oldFile.delete();
+        } on FileSystemException {
+          // The replacement already contains all versions of this history.
+        }
+      }
       notifyListeners();
       try {
         await writeHistoryHandoff(
           record.key,
           record.snapshot,
-          replaces: collected?.key,
+          histories: record.histories,
+          replaces: aliases.map((alias) => alias.key),
         );
-        if (collected != null) {
-          _records.remove(collected.key);
-          try {
-            final oldFile = File(p.join(folder.path, '${collected.key}.json'));
-            if (await oldFile.exists()) await oldFile.delete();
-          } on FileSystemException {
-            // The merged history has already been stored under the account key.
-          }
-        }
       } on FileSystemException {
         // The private history remains committed; refresh retries USB sharing.
       }

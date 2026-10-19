@@ -4,8 +4,11 @@ import 'package:material_symbols_icons/symbols.dart';
 
 import '../core/app_state.dart';
 import '../core/net.dart';
+import '../ui/gacha_prize_card.dart';
 import '../ui/app_image.dart';
+import '../ui/export_brand.dart';
 import '../ui/theme.dart';
+import 'history_chart.dart';
 
 class GachaHistoryReportCard {
   const GachaHistoryReportCard({
@@ -13,15 +16,26 @@ class GachaHistoryReportCard {
     required this.kindLabel,
     required this.quantity,
     this.imageUrl,
+    this.attributeImageUrl,
+    this.rarityImageUrl,
+    this.rarity = 0,
+    this.pickup = 0,
   });
   final String name, kindLabel;
   final int quantity;
-  final String? imageUrl;
+  final String? imageUrl, attributeImageUrl, rarityImageUrl;
+  final int rarity;
+  final int pickup;
 }
 
 class GachaHistoryReportGroup {
-  const GachaHistoryReportGroup({required this.label, required this.cards});
+  const GachaHistoryReportGroup({
+    required this.label,
+    required this.cards,
+    this.imageUrl,
+  });
   final String label;
+  final String? imageUrl;
   final List<GachaHistoryReportCard> cards;
 }
 
@@ -31,7 +45,9 @@ class GachaHistoryReportData {
     required this.scope,
     required this.metrics,
     required this.groups,
+    required this.charts,
   });
+  final List<GachaHistoryChart> charts;
   final String title;
   final List<String> scope;
   final List<(String label, String value)> metrics;
@@ -76,6 +92,7 @@ class _GachaHistoryImagePreviewState extends State<GachaHistoryImagePreview> {
         _pages.last.add(
           GachaHistoryReportGroup(
             label: group.label,
+            imageUrl: group.imageUrl,
             cards: group.cards.sublist(start, end),
           ),
         );
@@ -93,10 +110,17 @@ class _GachaHistoryImagePreviewState extends State<GachaHistoryImagePreview> {
     _started = true;
     final sources = {
       for (final group in widget.report.groups)
+        if (group.imageUrl != null) group.imageUrl!,
+      for (final group in widget.report.groups)
         for (final card in group.cards)
-          if (card.imageUrl != null) card.imageUrl!,
+          ...[
+            card.imageUrl,
+            card.attributeImageUrl,
+            card.rarityImageUrl,
+          ].whereType<String>(),
     };
     Future.wait([
+      loadExportBrandLogo(),
       for (final source in sources)
         precacheImage(
           CachedNetworkImageProvider(source, cacheManager: artworkCache),
@@ -222,7 +246,21 @@ class GachaHistoryReportPage extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(report.title, style: theme.textTheme.headlineMedium),
+            LayoutBuilder(
+              builder: (context, box) => Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      report.title,
+                      style: theme.textTheme.headlineMedium,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ExportBrand(width: (box.maxWidth * 0.42).clamp(120, 184)),
+                ],
+              ),
+            ),
             const SizedBox(height: 12),
             for (final line in report.scope)
               Text(
@@ -234,7 +272,7 @@ class GachaHistoryReportPage extends StatelessWidget {
             const SizedBox(height: 24),
             LayoutBuilder(
               builder: (context, constraints) {
-                final columns = constraints.maxWidth < 500 ? 2 : 3;
+                final columns = constraints.maxWidth < 500 ? 2 : 4;
                 return Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -272,13 +310,32 @@ class GachaHistoryReportPage extends StatelessWidget {
                 );
               },
             ),
+            for (final chart in report.charts)
+              Padding(padding: const EdgeInsets.only(top: 16), child: chart),
             for (final group in groups) ...[
               const SizedBox(height: 24),
-              Text(
-                group.label,
-                style: theme.textTheme.titleLarge?.copyWith(
-                  color: scheme.primary,
-                ),
+              Row(
+                children: [
+                  if (group.imageUrl case final image?) ...[
+                    SizedBox(
+                      width: 72,
+                      height: 40,
+                      child: AppImage(
+                        candidates: [image],
+                        placeholder: const Icon(Symbols.photo_library_rounded),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                  ],
+                  Expanded(
+                    child: Text(
+                      group.label,
+                      style: theme.textTheme.titleLarge?.copyWith(
+                        color: scheme.primary,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 12),
               LayoutBuilder(
@@ -299,58 +356,15 @@ class GachaHistoryReportPage extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              AspectRatio(
-                                aspectRatio: 1,
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    color: scheme.surfaceContainer,
-                                    borderRadius: BorderRadius.circular(
-                                      Corner.medium,
-                                    ),
-                                  ),
-                                  child: Stack(
-                                    children: [
-                                      Positioned.fill(
-                                        child: AppImage(
-                                          candidates: [
-                                            if (card.imageUrl != null)
-                                              card.imageUrl!,
-                                          ],
-                                          localized: false,
-                                          placeholder: const Icon(
-                                            Symbols.image_rounded,
-                                          ),
-                                        ),
-                                      ),
-                                      Positioned(
-                                        right: 4,
-                                        bottom: 4,
-                                        child: DecoratedBox(
-                                          decoration: BoxDecoration(
-                                            color: scheme.primaryContainer,
-                                            borderRadius: BorderRadius.circular(
-                                              Corner.full,
-                                            ),
-                                          ),
-                                          child: Padding(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 2,
-                                            ),
-                                            child: Text(
-                                              '×${card.quantity}',
-                                              style: theme.textTheme.labelMedium
-                                                  ?.copyWith(
-                                                    color: scheme
-                                                        .onPrimaryContainer,
-                                                  ),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                              GachaPrizeCard(
+                                label: card.name,
+                                rarityValue: card.rarity,
+                                image: card.imageUrl,
+                                attribute: card.attributeImageUrl,
+                                rarity: card.rarityImageUrl,
+                                pickup: card.pickup > 0,
+                                pickupCount: card.pickup,
+                                count: card.quantity,
                               ),
                               const SizedBox(height: 4),
                               Text(

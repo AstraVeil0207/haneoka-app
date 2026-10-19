@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
@@ -9,6 +10,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:game_data_exporter/gacha_history_points.dart';
 
 import '../account/haneoka_account.dart';
 import '../core/api.dart';
@@ -23,10 +25,15 @@ import '../ui/import_screen.dart';
 import '../ui/game_release_picker.dart';
 import 'game_history_client.dart';
 import 'history_catalog.dart';
+import 'history_cloud_sync.dart';
 import 'history_repository.dart';
+import 'history_sessions.dart';
 import 'history_screen.dart';
 import 'history_snapshot.dart';
 import 'history_view.dart';
+
+Future<Object?> _historyJson(Uint8List bytes) =>
+    Isolate.run(() => jsonDecode(utf8.decode(bytes)));
 
 void openGameHistory(BuildContext context, GameSave save) =>
     Navigator.of(context).push(
@@ -44,20 +51,6 @@ class HistoryPage extends StatefulWidget {
   State<HistoryPage> createState() => _HistoryPageState();
 }
 
-class _HistoryPersist {
-  const _HistoryPersist(
-    this.document,
-    this.release,
-    this.sessionKey,
-    this.modifiedAt,
-  );
-  final Map<String, Object?> document;
-  final GameRelease release;
-  final String sessionKey;
-  final DateTime? modifiedAt;
-  String get key => '$sessionKey-${release.server}';
-}
-
 class _HistoryChoice {
   const _HistoryChoice(
     this.key,
@@ -70,19 +63,28 @@ class _HistoryChoice {
   final GameHistoryRegion region;
   final GameSave? save;
   final StoredHistory? record;
-  final _HistoryPersist? persist;
+  final HistorySession? persist;
 }
 
 class _HistoryPageState extends State<HistoryPage> {
   final _repository = HistoryRepository.instance;
   final _accounts = AccountStore.instance;
-  final _persists = <String, _HistoryPersist>{};
+  final _sessions = HistorySessionStore.instance;
+  final _cloud = HistoryCloudSync.instance;
+  String? _cloudOwner;
+  Map<String, HistorySession> get _persists => _sessions.records;
   static final _catalogs = <(HaneokaApi, int), Future<HistoryCatalog>>{};
   String _selected = '';
+  String _historyKind = '';
   String? _errorCode;
   bool _importing = false;
   bool _opened = false;
-  GachaHistoryConversion? _conversion;
+  bool _ready = false;
+  final _preferredRegions = <String, String>{};
+  String? _currencyCode;
+  final _conversions = <String, GachaHistoryConversion>{};
+  final _defaultConversions =
+      <(String, double?, double?), GachaHistoryConversion>{};
 
   String _t(String key) =>
       AppScope.of(context).text('catalog.gachaHistory.$key');
@@ -92,14 +94,34 @@ class _HistoryPageState extends State<HistoryPage> {
     super.initState();
     _repository.addListener(_changed);
     _accounts.addListener(_changed);
+    _cloudOwner = _cloud.owner;
+    _cloud.addListener(_cloudChanged);
     unawaited(_load());
   }
 
   Future<void> _load() async {
-    await Future.wait([_repository.load(), _accounts.load()]);
+    await Future.wait([_repository.load(), _accounts.load(), _sessions.load()]);
     final preferences = await SharedPreferences.getInstance();
+    try {
+      final regions = jsonDecode(
+        preferences.getString('gachaHistory.regions') ?? '{}',
+      );
+      if (regions is Map) {
+        for (final entry in regions.entries) {
+          if (entry.key is String && entry.value is String) {
+            _preferredRegions[entry.key as String] = entry.value as String;
+          }
+        }
+      }
+    } on FormatException {
+      // Region selection starts from the most recent successful read.
+    }
     final currency = preferences.getString('gachaHistory.currency');
-    final price = preferences.getDouble('gachaHistory.unitGemPrice');
+    double? price(String key) {
+      final value = preferences.getDouble(key);
+      return value != null && value.isFinite && value >= 0 ? value : null;
+    }
+
     if (currency != null &&
         const {
           'JPY',
@@ -110,44 +132,77 @@ class _HistoryPageState extends State<HistoryPage> {
           'KRW',
           'CNY',
         }.contains(currency)) {
-      _conversion = GachaHistoryConversion(
-        currencyCode: currency,
-        unitGemPrice: price != null && price.isFinite && price >= 0
-            ? price
-            : null,
+      _currencyCode = currency;
+      if (preferences.getBool('gachaHistory.price.$currency') != false) {
+        _conversions[currency] = GachaHistoryConversion(
+          currencyCode: currency,
+          freeUnitGemPrice: price('gachaHistory.freeUnitGemPrice') ?? 0,
+          paidUnitGemPrice:
+              price('gachaHistory.paidUnitGemPrice') ??
+              price('gachaHistory.unitGemPrice'),
+        );
+      }
+    }
+    for (final code in const [
+      'JPY',
+      'TWD',
+      'HKD',
+      'MOP',
+      'USD',
+      'KRW',
+      'CNY',
+    ]) {
+      if (preferences.getBool('gachaHistory.price.$code') != true) continue;
+      _conversions[code] = GachaHistoryConversion(
+        currencyCode: code,
+        freeUnitGemPrice: price('gachaHistory.price.$code.free') ?? 0,
+        paidUnitGemPrice: price('gachaHistory.price.$code.paid'),
       );
     }
-    if (mounted) setState(() {});
+    if (mounted) setState(() => _ready = true);
+    unawaited(_cloud.sync());
   }
 
   void _changed() {
     if (mounted) setState(() {});
   }
 
+  void _cloudChanged() {
+    if (!mounted) return;
+    setState(() {
+      if (_cloudOwner != _cloud.owner) {
+        _cloudOwner = _cloud.owner;
+        _errorCode = null;
+        _historyKind = '';
+        if (!_choices().any((choice) => choice.key == _selected)) {
+          _selected = '';
+        }
+      }
+    });
+  }
+
   @override
   void dispose() {
+    _cloud.removeListener(_cloudChanged);
     _repository.removeListener(_changed);
     _accounts.removeListener(_changed);
-    _persists.clear();
     super.dispose();
   }
 
-  SaveCollector _collector(List<_HistoryPersist> persists) => SaveCollector(
+  SaveCollector _collector(List<HistorySession> persists) => SaveCollector(
     onDocument: (document, candidate) {
-      final key = historyPersistKey(document), release = candidate.release;
-      if (key == null || release == null) return;
-      persists.add(
-        _HistoryPersist(
-          {'_certification': document['_certification']},
-          release,
-          key,
-          candidate.modifiedAt,
-        ),
+      final release = candidate.release;
+      if (release == null) return;
+      final session = HistorySession.fromDocument(
+        document,
+        release,
+        candidate.modifiedAt,
       );
+      if (session != null) persists.add(session);
     },
   );
 
-  _HistoryPersist? _persistFor(GameSave save) {
+  HistorySession? _persistFor(GameSave save) {
     final key = historyPersistKey(
       save.documents[SaveDocumentKind.persist]?.data,
     );
@@ -162,8 +217,29 @@ class _HistoryPageState extends State<HistoryPage> {
       saves.insert(0, initial);
     }
     final records = {
-      for (final record in _repository.records) record.key: record,
+      for (final record in _cloud.visibleRecords) record.key: record,
     };
+    final byCloudKey = {
+      for (final record in records.values)
+        HistoryCloudSync.accountKeyFor(record): record,
+    };
+    StoredHistory? recordFor(GameSave save, GameHistoryRegion region) {
+      final persist = historyPersistKey(
+        save.documents[SaveDocumentKind.persist]?.data,
+      );
+      return records[HistoryRepository.accountKey(save, region)] ??
+          records[HistoryRepository.persistAccountKey(
+            save.documents[SaveDocumentKind.persist]?.data,
+            region,
+          )] ??
+          (persist == null
+              ? null
+              : byCloudKey[historyPortableKey(
+                  '$persist-${region.id}',
+                  region.id,
+                )]);
+    }
+
     final choices = [
       for (final save in saves)
         for (final region in GameHistoryRegion.values)
@@ -172,11 +248,7 @@ class _HistoryPageState extends State<HistoryPage> {
               HistoryRepository.accountKey(save, region),
               region,
               save,
-              records[HistoryRepository.accountKey(save, region)] ??
-                  records[HistoryRepository.persistAccountKey(
-                    save.documents[SaveDocumentKind.persist]?.data,
-                    region,
-                  )],
+              recordFor(save, region),
               persist: _persistFor(save),
             ),
     ];
@@ -193,12 +265,19 @@ class _HistoryPageState extends State<HistoryPage> {
         if (region.catalogServer != persist.release.server) continue;
         final key = '${persist.sessionKey}-${region.id}';
         choices.add(
-          _HistoryChoice(key, region, null, records[key], persist: persist),
+          _HistoryChoice(
+            key,
+            region,
+            null,
+            records[key] ?? byCloudKey[historyPortableKey(key, region.id)],
+            persist: persist,
+          ),
         );
       }
     }
     final used = {
       ...choices.map((choice) => choice.key),
+      ...choices.map((choice) => choice.record?.key),
       for (final choice in choices)
         if (choice.save case final save?)
           HistoryRepository.persistAccountKey(
@@ -221,6 +300,21 @@ class _HistoryPageState extends State<HistoryPage> {
     ];
   }
 
+  String? _cloudKey(_HistoryChoice? choice) {
+    if (choice == null) return null;
+    if (choice.record case final record?) {
+      return HistoryCloudSync.accountKeyFor(record);
+    }
+    final hash =
+        choice.persist?.sessionKey ??
+        historyPersistKey(
+          choice.save?.documents[SaveDocumentKind.persist]?.data,
+        );
+    return hash == null
+        ? null
+        : historyPortableKey('$hash-${choice.region.id}', choice.region.id);
+  }
+
   String _regionLabel(GameHistoryRegion region) => _t(switch (region) {
     GameHistoryRegion.jp => 'regionJp',
     GameHistoryRegion.hmt => 'regionHmt',
@@ -241,15 +335,66 @@ class _HistoryPageState extends State<HistoryPage> {
           _ => 'errorNetwork',
         });
 
-  Future<void> _refresh(String key) async {
+  GameHistoryRegion? _preferredRegion(
+    GameRelease release, {
+    GameSave? save,
+    HistorySession? session,
+  }) {
+    if (release == GameRelease.jp) return GameHistoryRegion.jp;
+    final identity = save == null ? session?.sessionKey : historySaveKey(save);
+    final remembered = GameHistoryRegion.values
+        .where(
+          (region) =>
+              region.id == _preferredRegions[identity] &&
+              region.catalogServer == release.server,
+        )
+        .firstOrNull;
+    if (remembered != null) return remembered;
+    final keys = {
+      if (save != null) historySaveKey(save),
+      if (session != null) session.sessionKey,
+      if (save != null)
+        historyPersistKey(save.documents[SaveDocumentKind.persist]?.data),
+    }.whereType<String>().toSet();
+    final previous =
+        _repository.records
+            .where((record) => keys.contains(record.saveKey))
+            .toList()
+          ..sort(
+            (a, b) => b.snapshot.queriedAt.compareTo(a.snapshot.queriedAt),
+          );
+    if (previous.isNotEmpty) {
+      return GameHistoryRegion.values.firstWhere(
+        (region) => region.id == previous.first.snapshot.server,
+      );
+    }
+    return null;
+  }
+
+  Future<void> _rememberRegion(_HistoryChoice choice) async {
+    final identity = choice.save == null
+        ? choice.persist?.sessionKey
+        : historySaveKey(choice.save!);
+    if (identity == null) return;
+    _preferredRegions[identity] = choice.region.id;
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      'gachaHistory.regions',
+      jsonEncode(_preferredRegions),
+    );
+  }
+
+  Future<void> _refresh(String key, {bool select = true}) async {
     final choice = _choices().where((value) => value.key == key).firstOrNull;
     if (choice == null || (choice.save == null && choice.persist == null)) {
       return;
     }
-    setState(() {
-      _selected = key;
-      _errorCode = null;
-    });
+    if (mounted && (select || _selected == key)) {
+      setState(() {
+        if (select) _selected = key;
+        _errorCode = null;
+      });
+    }
     try {
       if (choice.persist case final persist?) {
         await _repository.refreshPersist(
@@ -260,16 +405,20 @@ class _HistoryPageState extends State<HistoryPage> {
       } else {
         await _repository.refresh(choice.save!, choice.region);
       }
+      await _rememberRegion(choice);
+      unawaited(_cloud.sync(force: true, localChange: true));
     } on GameHistoryException catch (error) {
-      if (mounted) setState(() => _errorCode = error.code);
+      if (mounted && _selected == key) setState(() => _errorCode = error.code);
     } on Exception {
-      if (mounted) setState(() => _errorCode = 'history_network_error');
+      if (mounted && _selected == key) {
+        setState(() => _errorCode = 'history_network_error');
+      }
     }
   }
 
   Future<void> _acceptSaves(
     Iterable<GameSave> values, {
-    Iterable<_HistoryPersist> persists = const [],
+    Iterable<HistorySession> persists = const [],
   }) async {
     final saves = values.toList(), sessions = persists.toList();
     if ((saves.isEmpty && sessions.isEmpty) ||
@@ -280,21 +429,12 @@ class _HistoryPageState extends State<HistoryPage> {
       await _accounts.put(save);
       unawaited(HaneokaAccount.instance.syncIfLinked(save));
     }
-    for (final persist in sessions) {
-      final previous = _persists[persist.key];
-      if (previous == null ||
-          persist.modifiedAt == null ||
-          (persist.modifiedAt != null &&
-              (previous.modifiedAt == null ||
-                  persist.modifiedAt!.isAfter(previous.modifiedAt!)))) {
-        _persists[persist.key] = persist;
-      }
-    }
+    await _sessions.putAll(sessions);
+    unawaited(_cloud.sync(force: true, localChange: true));
     final save = saves.firstOrNull, persist = sessions.firstOrNull;
     final release = save?.release ?? persist!.release;
-    final region = release == GameRelease.jp
-        ? GameHistoryRegion.jp
-        : GameHistoryRegion.hmt;
+    final preferred = _preferredRegion(release, save: save, session: persist);
+    final region = preferred ?? GameHistoryRegion.hmt;
     final choice = _choices().where((choice) {
       if (choice.region != region) return false;
       if (save != null) {
@@ -304,9 +444,10 @@ class _HistoryPageState extends State<HistoryPage> {
     }).firstOrNull;
     if (!mounted || choice == null) return;
     setState(() => _selected = choice.key);
-    if ((choice.persist != null ||
-            historySessionFromSave(choice.save!) != null) &&
-        (release == GameRelease.jp || release == GameRelease.intlOfficial)) {
+    if (preferred != null &&
+        (choice.persist != null ||
+            (choice.save != null &&
+                historySessionFromSave(choice.save!) != null))) {
       unawaited(_refresh(_selected));
     }
   }
@@ -320,7 +461,10 @@ class _HistoryPageState extends State<HistoryPage> {
     });
     CacheStorage.instance.beginImport();
     try {
-      final persists = <_HistoryPersist>[];
+      if (chosen.length > 128) {
+        throw const FormatException('history_import_invalid');
+      }
+      final persists = <HistorySession>[];
       final collector = _collector(persists);
       final current = _choices()
           .where((value) => value.key == _selected)
@@ -348,7 +492,7 @@ class _HistoryPageState extends State<HistoryPage> {
         final bytes = await file.readAsBytes();
         Object? json;
         try {
-          json = jsonDecode(utf8.decode(bytes));
+          json = await _historyJson(bytes);
         } on FormatException {
           json = null;
         }
@@ -367,14 +511,20 @@ class _HistoryPageState extends State<HistoryPage> {
           rawAccounts.add(save);
         } else {
           if (!mounted) return;
-          rawRelease ??= await chooseGameSaveRelease(
-            context,
-            initial: initialRelease,
-          );
-          if (rawRelease == null) return;
+          final declaredRelease =
+              json is Map && json['schema'] == 'haneoka-game-save-v1'
+              ? GameRelease.fromPackage('${json['release']}')
+              : null;
+          if (declaredRelease == null) {
+            rawRelease ??= await chooseGameSaveRelease(
+              context,
+              initial: initialRelease,
+            );
+            if (rawRelease == null) return;
+          }
           FileSaveSource(
             collector,
-            release: rawRelease,
+            release: declaredRelease ?? rawRelease,
           ).addBytes(bytes, file.path ?? file.name);
         }
       }
@@ -419,7 +569,7 @@ class _HistoryPageState extends State<HistoryPage> {
                 _errorCode = null;
               });
               try {
-                final persists = <_HistoryPersist>[];
+                final persists = <HistorySession>[];
                 final collector = _collector(persists);
                 await read(collector);
                 await _acceptSaves(collector.saves, persists: persists);
@@ -440,19 +590,50 @@ class _HistoryPageState extends State<HistoryPage> {
     final choice = _choices()
         .where((value) => value.key == selection.accountKey)
         .firstOrNull;
-    final snapshot = choice?.record?.snapshot;
+    final snapshot = choice == null
+        ? null
+        : _snapshotFor(choice, selection.historyKind);
     if (snapshot == null) return;
     final indexes = selection.batches
         .map((batch) => int.tryParse(batch.id.split(':').last))
         .whereType<int>()
         .toSet();
-    final selected = snapshot.selected(indexes);
+    final identity =
+        snapshot.accountKey ??
+        (choice!.record!.saveKey == null
+            ? choice.record!.key
+            : historyPortableKey(choice.record!.key, snapshot.server));
+    final selected = snapshot.forAccount(identity).selected(indexes);
     await FilePicker.saveFile(
       fileName: 'haneoka-gacha-${snapshot.server}.json',
       bytes: Uint8List.fromList(utf8.encode(jsonEncode(selected.toJson()))),
       type: FileType.custom,
       allowedExtensions: const ['json'],
     );
+  }
+
+  HistorySnapshot? _snapshotFor(_HistoryChoice choice, String? kind) {
+    final snapshot = choice.record?.history(kind), save = choice.save;
+    if (snapshot == null || save == null) return snapshot;
+    final HistoryAccountState state;
+    try {
+      state = projectHistoryAccountState(
+        save.player,
+        server: choice.region.id,
+        collectedAt: (save.modifiedAt ?? DateTime.now())
+            .toUtc()
+            .toIso8601String(),
+      );
+    } on FormatException {
+      return snapshot;
+    }
+    final previousAt = snapshot.accountState?['collectedAt'];
+    if (previousAt is String &&
+        DateTime.parse(previousAt)
+            .isAfter(DateTime.parse(state['collectedAt'] as String))) {
+      return snapshot;
+    }
+    return snapshot.withAccountState(state);
   }
 
   Future<void> _images(List<GlobalKey> pages) async {
@@ -493,14 +674,18 @@ class _HistoryPageState extends State<HistoryPage> {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final choices = _choices();
-    if (_selected.isEmpty && choices.isNotEmpty) {
+    if (_ready && _selected.isEmpty && choices.isNotEmpty) {
       final initial = widget.initialSave;
+      final preferred = initial?.release == null
+          ? null
+          : _preferredRegion(initial!.release!, save: initial);
       _selected =
           choices
               .where(
                 (value) =>
                     initial != null &&
                     value.save != null &&
+                    value.region == preferred &&
                     historySaveKey(value.save!) == historySaveKey(initial),
               )
               .firstOrNull
@@ -510,15 +695,20 @@ class _HistoryPageState extends State<HistoryPage> {
     final current = choices
         .where((value) => value.key == _selected)
         .firstOrNull;
-    if (!_opened && current != null) {
+    if (_ready && !_opened && current != null) {
       _opened = true;
-      if (widget.readOnOpen) {
+      if (widget.readOnOpen &&
+          current.save?.release != null &&
+          _preferredRegion(current.save!.release!, save: current.save) !=
+              null) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) unawaited(_refresh(_selected));
         });
       }
     }
-    final snapshot = current?.record?.snapshot;
+    final snapshot = current == null
+        ? null
+        : _snapshotFor(current, _historyKind);
     final needsCatalog = snapshot?.executions.isNotEmpty ?? false;
     final api = state.apiFor(current?.region.catalogServer ?? state.server);
     final catalog = !needsCatalog
@@ -532,6 +722,25 @@ class _HistoryPageState extends State<HistoryPage> {
       future: catalog,
       builder: (context, data) {
         final source = data.data;
+        final currencyCode =
+            _currencyCode ??
+            switch (current?.region) {
+              GameHistoryRegion.jp => 'JPY',
+              GameHistoryRegion.en => 'USD',
+              GameHistoryRegion.ko => 'KRW',
+              _ => 'TWD',
+            };
+        final defaultConversion = historyDefaultGemConversion(
+          currencyCode,
+          baseTopUp: source?.baseTopUp,
+        );
+        final conversion =
+            _conversions[currencyCode] ??
+            _defaultConversions.putIfAbsent((
+              currencyCode,
+              defaultConversion.freeUnitGemPrice,
+              defaultConversion.paidUnitGemPrice,
+            ), () => defaultConversion);
         final fallback = snapshot == null
             ? <GachaHistoryBatch>[]
             : [
@@ -540,6 +749,7 @@ class _HistoryPageState extends State<HistoryPage> {
                     id: '$index',
                     accountKey: _selected,
                     poolId: execution.poolId ?? '',
+                    productId: execution.productId,
                     pulledAt: execution.executedAt == null
                         ? null
                         : DateTime.fromMillisecondsSinceEpoch(
@@ -556,6 +766,7 @@ class _HistoryPageState extends State<HistoryPage> {
                           rarity: '',
                           rarityLabel: _t('unknown'),
                           quantity: 1,
+                          converted: prize.converted,
                         ),
                     ],
                     cost: GachaHistoryCost(
@@ -565,12 +776,29 @@ class _HistoryPageState extends State<HistoryPage> {
                     ),
                   ),
               ];
+        final cloudKey = _cloudKey(current);
         return GachaHistoryScreen(
+          cloudSignedIn: _cloud.signedIn,
+          cloudBusy: _cloud.busy,
+          cloudLinked: _cloud.isLinked(cloudKey),
+          cloudRefreshPending: _cloud.pendingFor(cloudKey),
+          cloudErrorCode: _cloud.errorCode,
+          onCloudLink: cloudKey == null
+              ? null
+              : (linked) => unawaited(_cloud.setLinked(cloudKey, linked)),
+          onCloudSync: () => unawaited(_cloud.sync(force: true)),
+          onCloudRefresh:
+              cloudKey == null ||
+                  !_cloud.isLinked(cloudKey) ||
+                  !_cloud.hasDocument(cloudKey)
+              ? null
+              : () => unawaited(_cloud.requestRefresh(cloudKey)),
           accounts: [
             for (final choice in choices)
               GachaHistoryAccount(
                 key: choice.key,
                 server: choice.region.id,
+                offsetMinutes: choice.region.offsetMinutes,
                 serverLabel: _regionLabel(choice.region),
                 label:
                     choice.save?.name ??
@@ -587,6 +815,7 @@ class _HistoryPageState extends State<HistoryPage> {
                   'catalog.recruitments.types.$category',
                   category,
                 ),
+                snapshot: snapshot,
               ) ??
               const [],
           batches: snapshot == null
@@ -599,8 +828,15 @@ class _HistoryPageState extends State<HistoryPage> {
                     ) ??
                     fallback,
           selectedAccountKey: _selected,
+          historyKinds:
+              current?.record?.histories
+                  .map((history) => history.historyKind)
+                  .toList() ??
+              const [],
+          selectedHistoryKind: snapshot?.historyKind ?? '',
+          onHistoryKindChanged: (kind) => setState(() => _historyKind = kind),
           historyLoaded: snapshot != null,
-          busy: _importing || _repository.isReading(_selected),
+          busy: !_ready || _importing || _repository.isReading(_selected),
           error: _error,
           catalogLoading:
               needsCatalog && data.connectionState == ConnectionState.waiting,
@@ -610,10 +846,17 @@ class _HistoryPageState extends State<HistoryPage> {
           onCatalogRetry: () => setState(() {
             _catalogs.remove((api, api.revision));
           }),
-          onAccountChanged: (key) => setState(() {
-            _selected = key;
-            _errorCode = null;
-          }),
+          onAccountChanged: (key) {
+            setState(() {
+              _selected = key;
+              _historyKind = '';
+              _errorCode = null;
+            });
+            final choice = _choices()
+                .where((value) => value.key == key)
+                .firstOrNull;
+            if (choice != null) unawaited(_rememberRegion(choice));
+          },
           onRefresh: current?.save == null && current?.persist == null
               ? null
               : (key) => unawaited(_refresh(key)),
@@ -628,20 +871,14 @@ class _HistoryPageState extends State<HistoryPage> {
               ? null
               : (value) => unawaited(_export(value)),
           onExportImage: snapshot == null ? null : _images,
-          currencyConversion:
-              _conversion ??
-              GachaHistoryConversion(
-                currencyCode: switch (current?.region) {
-                  GameHistoryRegion.jp => 'JPY',
-                  GameHistoryRegion.en => 'USD',
-                  GameHistoryRegion.ko => 'KRW',
-                  _ => 'TWD',
-                },
-                unitGemPrice: null,
-              ),
+          currencyConversion: conversion,
           onConversionChanged: (value) {
-            setState(() => _conversion = value);
-            unawaited(_saveConversion(value));
+            final changedCurrency = value.currencyCode != currencyCode;
+            if (!changedCurrency) {
+              _conversions[value.currencyCode] = value;
+            }
+            setState(() => _currencyCode = value.currencyCode);
+            unawaited(_saveConversion(value, savePrices: !changedCurrency));
           },
           onOpenCard: (href) => unawaited(openLink(context, href)),
         );
@@ -649,13 +886,32 @@ class _HistoryPageState extends State<HistoryPage> {
     );
   }
 
-  Future<void> _saveConversion(GachaHistoryConversion value) async {
+  Future<void> _saveConversion(
+    GachaHistoryConversion value, {
+    bool savePrices = true,
+  }) async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString('gachaHistory.currency', value.currencyCode);
-    if (value.unitGemPrice case final price?) {
-      await preferences.setDouble('gachaHistory.unitGemPrice', price);
-    } else {
-      await preferences.remove('gachaHistory.unitGemPrice');
+    final priceKey = 'gachaHistory.price.${value.currencyCode}';
+    if (!savePrices) {
+      if (!preferences.containsKey(priceKey)) {
+        await preferences.setBool(priceKey, false);
+      }
+      return;
     }
+    await preferences.setBool(priceKey, true);
+    for (final (key, price) in [
+      ('gachaHistory.freeUnitGemPrice', value.freeUnitGemPrice),
+      ('gachaHistory.paidUnitGemPrice', value.paidUnitGemPrice),
+      ('gachaHistory.price.${value.currencyCode}.free', value.freeUnitGemPrice),
+      ('gachaHistory.price.${value.currencyCode}.paid', value.paidUnitGemPrice),
+    ]) {
+      if (price != null) {
+        await preferences.setDouble(key, price);
+      } else {
+        await preferences.remove(key);
+      }
+    }
+    await preferences.remove('gachaHistory.unitGemPrice');
   }
 }

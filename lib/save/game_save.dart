@@ -84,6 +84,8 @@ class SaveCandidate {
   final String? group;
 }
 
+typedef _SaveGroup = (String?, String);
+
 /// Turns candidate files into saves, whatever they came from. Names are
 /// content hashes that change between versions, so a file is a save exactly
 /// when it decrypts; the newest copy of an account wins.
@@ -94,8 +96,8 @@ class SaveCollector {
   final void Function(Map<String, Object?> data, SaveCandidate candidate)?
   onDocument;
   final Map<String, GameSave> _byProfile = {};
-  final Map<String, List<SaveDocument>> _orphans = {};
-  final Map<String, String> _profileOfGroup = {};
+  final Map<_SaveGroup, Set<String>> _profilesOfGroup = {};
+  final List<(_SaveGroup, SaveDocument)> _documents = [];
   int unreadable = 0;
 
   /// Returns true when the file was a save document.
@@ -115,14 +117,13 @@ class SaveCollector {
       return false;
     }
     final document = SaveDocument(kind, data, candidate.modifiedAt);
-    final group = candidate.group ?? candidate.source;
+    final group = (
+      candidate.release?.server,
+      candidate.group ?? candidate.source,
+    );
     if (kind != SaveDocumentKind.cache) {
-      final profile = _profileOfGroup[group];
-      if (profile != null) {
-        _place(_byProfile[profile]!, document);
-      } else {
-        (_orphans[group] ??= []).add(document);
-      }
+      _documents.add((group, document));
+      _bindDocuments();
       return true;
     }
     final player = data['_player'];
@@ -142,24 +143,31 @@ class SaveCollector {
                 candidate.modifiedAt!.isAfter(existing.modifiedAt!)));
     if (newer) {
       final name = (player as Map<String, Object?>)['_name'];
-      _byProfile[identity] =
-          GameSave(
-              profileId: id,
-              name: name is String && name.trim().isNotEmpty ? name : null,
-              release: candidate.release ?? existing?.release,
-              source: candidate.source,
-            )
-            ..documents.addAll(existing?.documents ?? const {})
-            ..documents[SaveDocumentKind.cache] = document;
+      _byProfile[identity] = GameSave(
+        profileId: id,
+        name: name is String && name.trim().isNotEmpty ? name : null,
+        release: candidate.release ?? existing?.release,
+        source: candidate.source,
+      )..documents[SaveDocumentKind.cache] = document;
     }
-    _profileOfGroup[group] = identity;
-    for (final orphan in _orphans.remove(group) ?? const <SaveDocument>[]) {
-      _place(_byProfile[identity]!, orphan);
-    }
+    (_profilesOfGroup[group] ??= {}).add(identity);
+    _bindDocuments();
     return true;
   }
 
   List<GameSave> get saves => _byProfile.values.toList();
+
+  void _bindDocuments() {
+    for (final save in _byProfile.values) {
+      save.documents.removeWhere((kind, _) => kind != SaveDocumentKind.cache);
+    }
+    for (final (group, document) in _documents) {
+      final profiles = _profilesOfGroup[group];
+      if (profiles != null && profiles.length == 1) {
+        _place(_byProfile[profiles.single]!, document);
+      }
+    }
+  }
 
   static void _place(GameSave save, SaveDocument document) {
     final current = save.documents[document.kind];

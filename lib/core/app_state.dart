@@ -5,6 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'api.dart';
+import '../gacha_history/history_cloud_sync.dart';
 import 'audio.dart';
 import 'provider_api.dart';
 import 'i18n.dart';
@@ -23,6 +24,7 @@ class AppState extends ChangeNotifier {
       compact = _prefs.getBool('compact') ?? false,
       japaneseTitles = _prefs.getBool('japaneseTitles') ?? true,
       difficultyEstimates = _prefs.getBool('difficultyEstimates') ?? false {
+    HistoryCloudSync.instance.start();
     _apis[server] = api;
     api.addListener(_publicDataChanged);
     _pageUpdates = publicPageDataChanges.listen((_) => _publicDataChanged());
@@ -157,6 +159,7 @@ class AppState extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    HistoryCloudSync.instance.stop();
     unawaited(_pageUpdates.cancel());
     for (final client in {..._apis.values, ..._providers.values}) {
       client.removeListener(_publicDataChanged);

@@ -11,6 +11,8 @@ import '../core/app_state.dart';
 import '../core/i18n.dart';
 import '../shell/links.dart';
 import '../ui/app_image.dart';
+import '../ui/gacha_prize_card.dart';
+import '../ui/export_brand.dart';
 import '../ui/detail.dart';
 import '../ui/theme.dart';
 import 'catalog_screen.dart';
@@ -323,87 +325,25 @@ class _GachaSimulatorState extends State<GachaSimulator> {
     );
   }
 
-  /// One drawn card (`prizeCard`): art, attribute, rarity, UP and a count.
   Widget _card(GachaPrize prize, {int count = 0, double aspectRatio = 1}) {
-    final scheme = Theme.of(context).colorScheme;
     final source = prize.source;
-    final attribute = prize.kind == 'item'
-        ? null
-        : widget.visuals?.cardTypeMark(source['cardType']);
-    final rarity = prize.kind == 'item' ? null : _rarityMark(prize.rarity);
     final href = source['href'];
-    return AspectRatio(
+    return GachaPrizeCard(
+      label: '${t.text(source['name'])} ×${count > 0 ? count : 1}',
+      rarityValue: prize.rarity,
+      image: source['image'] is String
+          ? state.api.asset(source['image'] as String).toString()
+          : null,
+      attribute: prize.kind == 'item'
+          ? null
+          : widget.visuals?.cardTypeMark(source['cardType']),
+      rarity: prize.kind == 'item' ? null : _rarityMark(prize.rarity),
+      pickup: prize.pickup,
+      count: count,
       aspectRatio: aspectRatio,
-      child: Material(
-        color: prize.rarity == 4 || prize.rarity == 20
-            ? scheme.tertiaryContainer
-            : scheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(Corner.medium),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          onTap: href is String && href.isNotEmpty
-              ? () => openLink(context, href)
-              : null,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final mark = min(constraints.maxWidth * 0.24, 22.0);
-              return Stack(
-                fit: StackFit.expand,
-                children: [
-                  if (source['image'] case final String image
-                      when image.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.all(2),
-                      child: AppImage(
-                        candidates: [state.api.asset(image).toString()],
-                      ),
-                    ),
-                  if (attribute != null)
-                    Positioned(
-                      left: 3,
-                      top: 3,
-                      width: mark,
-                      height: mark,
-                      child: AppImage(candidates: [attribute]),
-                    ),
-                  if (rarity != null)
-                    Positioned(
-                      right: 3,
-                      top: 3,
-                      width: mark,
-                      height: mark,
-                      child: AppImage(candidates: [rarity]),
-                    ),
-                  if (prize.pickup)
-                    Positioned(left: 3, bottom: 3, child: _up()),
-                  if (count > 0)
-                    Positioned(
-                      right: 3,
-                      bottom: 3,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.72),
-                          borderRadius: BorderRadius.circular(Corner.full),
-                        ),
-                        child: Text(
-                          '×$count',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            height: 16 / 11,
-                            fontWeight: FontWeight.w700,
-                            fontFeatures: [FontFeature.tabularFigures()],
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              );
-            },
-          ),
-        ),
-      ),
+      onTap: href is String && href.isNotEmpty
+          ? () => openLink(context, href)
+          : null,
     );
   }
 
@@ -436,7 +376,6 @@ class _GachaSimulatorState extends State<GachaSimulator> {
     try {
       final scheme = Theme.of(context).colorScheme;
       final textColor = scheme.onSurface;
-      final muted = scheme.onSurfaceVariant;
       final title = t.text(widget.item['title']);
       const ratio = 2.0, margin = 24.0;
       final parts = <ui.Image>[];
@@ -463,13 +402,14 @@ class _GachaSimulatorState extends State<GachaSimulator> {
           );
       final width = parts.first.width + margin * ratio * 2;
       final heading = line(title, 20, textColor, FontWeight.w700)
-        ..layout(maxWidth: width - margin * ratio * 2);
-      final brand = line('haneoka.org', 12, muted, FontWeight.w500)..layout();
+        ..layout(maxWidth: width - margin * ratio * 2 - 200 * ratio);
+      final logo = await loadExportBrandLogo();
+      if (!mounted) return;
+      final headerHeight = max(heading.height, 52 * ratio);
       final gap = 16 * ratio;
       final height =
           margin * ratio * 2 +
-          heading.height +
-          brand.height +
+          headerHeight +
           gap * 3 +
           parts.fold<double>(0, (sum, part) => sum + part.height);
       final recorder = ui.PictureRecorder();
@@ -480,12 +420,22 @@ class _GachaSimulatorState extends State<GachaSimulator> {
         );
       var y = margin * ratio;
       heading.paint(canvas, Offset(margin * ratio, y));
-      y += heading.height + gap;
+      paintExportBrand(
+        canvas,
+        Theme.of(context),
+        Rect.fromLTWH(
+          width - margin * ratio - 184 * ratio,
+          y,
+          184 * ratio,
+          52 * ratio,
+        ),
+        logo,
+      );
+      y += headerHeight + gap;
       for (final part in parts) {
         canvas.drawImage(part, Offset(margin * ratio, y), Paint());
         y += part.height + gap;
       }
-      brand.paint(canvas, Offset(width - margin * ratio - brand.width, y));
       final image = await recorder.endRecording().toImage(
         width.ceil(),
         height.ceil(),

@@ -4,5 +4,6 @@ export 'package:game_data_exporter/gacha_history.dart'
         HistoryPrize,
         HistorySnapshot,
         decodeHistoryResponse,
+        mergeHistoryCollection,
         historyResponseLimit,
         historySnapshotSchema;

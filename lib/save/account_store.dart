@@ -72,7 +72,31 @@ class AccountStore extends ChangeNotifier {
     return result;
   }
 
-  Future<void> put(GameSave save) => _exclusive(() async {
+  Future<void> put(GameSave incoming) => _exclusive(() async {
+    final previous = _saves
+        .where((value) => _key(value) == _key(incoming))
+        .firstOrNull;
+    final incomingAt = incoming.modifiedAt, previousAt = previous?.modifiedAt;
+    final retainMetadata =
+        incomingAt != null &&
+        previousAt != null &&
+        incomingAt.isBefore(previousAt);
+    final metadata = retainMetadata ? previous! : incoming;
+    final save = GameSave(
+      profileId: metadata.profileId,
+      name: metadata.name ?? previous?.name,
+      release: metadata.release,
+      source: metadata.source,
+    )..documents.addAll(previous?.documents ?? const {});
+    for (final entry in incoming.documents.entries) {
+      final old = save.documents[entry.key];
+      if (old?.modifiedAt != null &&
+          entry.value.modifiedAt != null &&
+          entry.value.modifiedAt!.isBefore(old!.modifiedAt!)) {
+        continue;
+      }
+      save.documents[entry.key] = entry.value;
+    }
     final folder = await _folder();
     final json = encode(save);
     final text = await _encodeAccount(json);
@@ -127,8 +151,13 @@ class AccountStore extends ChangeNotifier {
   /// An account read back from [encode]; null for anything else.
   static GameSave? decode(Object? json) {
     if (json is! Map || json['schema'] != 'haneoka-account-v1') return null;
+    final profileId = '${json['profileId']}';
+    if (!RegExp(r'^[1-9][0-9]{0,18}$').hasMatch(profileId) ||
+        BigInt.parse(profileId) > BigInt.parse('9223372036854775807')) {
+      return null;
+    }
     final save = GameSave(
-      profileId: '${json['profileId']}',
+      profileId: profileId,
       name: json['name'] as String?,
       release: GameRelease.values
           .where((r) => r.name == json['release'])
