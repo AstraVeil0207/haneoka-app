@@ -4,10 +4,10 @@
 library;
 
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../ui/tile.dart';
@@ -569,25 +569,14 @@ class _CardEditor extends StatelessWidget {
     );
     Widget level(int? value, int cap) => ToolField(
       label: c.tb('level', 'Level'),
-      value: '${value == null ? '—' : (value < cap ? value : cap)} / $cap',
-      child: Row(
-        children: [
-          Expanded(
-            child: Slider(
-              min: 1,
-              max: cap.toDouble(),
-              divisions: cap > 1 ? cap - 1 : null,
-              value: (value ?? cap).clamp(1, cap).toDouble(),
-              label: '${value ?? cap}',
-              onChanged: cap > 1 ? (v) => write('lvl', v.round()) : null,
-            ),
-          ),
-          IconButton(
-            tooltip: c.tb('maxLevel', 'Max level'),
-            onPressed: value == cap ? null : () => write('lvl', cap),
-            icon: const Icon(Symbols.vertical_align_top_rounded),
-          ),
-        ],
+      value: '${value == null ? '—' : value.clamp(1, cap)} / $cap',
+      child: _CardLevel(
+        key: ValueKey('$p.$id.lvl'),
+        label: c.tb('level', 'Level'),
+        value: value,
+        cap: cap,
+        maxLabel: c.tb('maxLevel', 'Max level'),
+        onChanged: (next) => write('lvl', next),
       ),
     );
     final fields = <Widget>[];
@@ -751,6 +740,131 @@ class _CardEditor extends StatelessWidget {
       ),
     );
   }
+}
+
+class _CardLevel extends StatefulWidget {
+  const _CardLevel({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.cap,
+    required this.maxLabel,
+    required this.onChanged,
+  });
+  final String label, maxLabel;
+  final int? value;
+  final int cap;
+  final ValueChanged<int?> onChanged;
+
+  @override
+  State<_CardLevel> createState() => _CardLevelState();
+}
+
+class _CardLevelState extends State<_CardLevel> {
+  late final _text = TextEditingController(text: _valueText);
+  final _focus = FocusNode();
+
+  String get _valueText =>
+      widget.value == null ? '' : '${widget.value!.clamp(1, widget.cap)}';
+
+  @override
+  void initState() {
+    super.initState();
+    _focus.addListener(_focusChanged);
+  }
+
+  void _focusChanged() {
+    if (!_focus.hasFocus) _commit();
+  }
+
+  void _commit() {
+    if (_text.text.isEmpty) {
+      if (widget.value != null) widget.onChanged(null);
+      return;
+    }
+    final parsed = int.tryParse(_text.text);
+    if (parsed == null) {
+      _text.text = _valueText;
+      return;
+    }
+    _choose(parsed.clamp(1, widget.cap));
+  }
+
+  void _choose(int value) {
+    if (_text.text != '$value') _text.text = '$value';
+    if (value != widget.value) widget.onChanged(value);
+  }
+
+  @override
+  void didUpdateWidget(_CardLevel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_focus.hasFocus && _text.text != _valueText) {
+      _text.text = _valueText;
+    }
+  }
+
+  @override
+  void dispose() {
+    _focus.removeListener(_focusChanged);
+    _focus.dispose();
+    _text.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      SizedBox(
+        width: 72,
+        child: Semantics(
+          label: widget.label,
+          child: TextField(
+            controller: _text,
+            focusNode: _focus,
+            keyboardType: TextInputType.number,
+            textInputAction: TextInputAction.done,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: InputDecoration(
+              hintText: '—',
+              border: const OutlineInputBorder(),
+            ),
+            onChanged: (text) {
+              final value = int.tryParse(text);
+              if (text.isEmpty) {
+                widget.onChanged(null);
+              } else if (value != null && value >= 1 && value <= widget.cap) {
+                widget.onChanged(value);
+              }
+            },
+            onSubmitted: (_) => _commit(),
+            onTapOutside: (_) => _focus.unfocus(),
+          ),
+        ),
+      ),
+      const SizedBox(width: 8),
+      Expanded(
+        child: Semantics(
+          label: widget.label,
+          child: Slider(
+            min: 1,
+            max: widget.cap.toDouble(),
+            divisions: widget.cap > 1 ? widget.cap - 1 : null,
+            value: (widget.value ?? widget.cap).clamp(1, widget.cap).toDouble(),
+            label: '${widget.value ?? widget.cap}',
+            onChanged: widget.cap > 1 ? (v) => _choose(v.round()) : null,
+            onChangeEnd: widget.cap > 1 ? (v) => _choose(v.round()) : null,
+          ),
+        ),
+      ),
+      IconButton(
+        tooltip: widget.maxLabel,
+        onPressed: widget.value == widget.cap
+            ? null
+            : () => _choose(widget.cap),
+        icon: const Icon(Symbols.vertical_align_top_rounded),
+      ),
+    ],
+  );
 }
 
 /// Saves the box as the website's inventory document
