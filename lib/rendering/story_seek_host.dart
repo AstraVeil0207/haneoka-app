@@ -445,34 +445,46 @@ final class NativeStorySeekFacade<T>
       if (fetch == null || restoreUi == null) {
         throw StateError('story_portable_restore_context');
       }
-      await player.restoreData(
-        portable['playback'] as Map,
-        fetch: fetch,
-        executionHistory: state.portableExecutionHistory,
+      await _measure(
+        'restorePlayer',
+        () => player.restoreData(
+          portable['playback'] as Map,
+          fetch: fetch,
+          executionHistory: state.portableExecutionHistory,
+        ),
       );
       context.checkCurrent();
-      await world.restoreData(
-        portable['world'] as Map,
-        stamp: player.actualUpdateStamp,
+      await _measure(
+        'restoreWorld',
+        () => world.restoreData(
+          portable['world'] as Map,
+          stamp: player.actualUpdateStamp,
+        ),
       );
       context.checkCurrent();
       _decisions
         ..clear()
         ..addAll(state.decisions);
-      await restoreUi(
-        Map<String, Object?>.from(portable['ui'] as Map),
-        context,
+      await _measure(
+        'restoreUi',
+        () => restoreUi(
+          Map<String, Object?>.from(portable['ui'] as Map),
+          context,
+        ),
       );
       context.checkCurrent();
       return;
     }
-    await player.restoreCheckpoint(state.playback);
-    await world.restoreCheckpoint(state.world);
+    await _measure(
+      'restorePlayer',
+      () => player.restoreCheckpoint(state.playback),
+    );
+    await _measure('restoreWorld', () => world.restoreCheckpoint(state.world));
     _decisions
       ..clear()
       ..addAll(state.decisions);
     player.restoreClock(atUs);
-    await callbacks.restoreUi(state.ui, context);
+    await _measure('restoreUi', () => callbacks.restoreUi(state.ui, context));
     context.checkCurrent();
   }
 
@@ -547,12 +559,12 @@ final class NativeStorySeekFacade<T>
     required bool resume,
     required int atUs,
     required VegaSeekContext context,
-  }) async {
+  }) => _measure('finishSeek', () async {
     context.checkCurrent();
     await player.finishSeek(atUs: atUs, resume: false);
     await callbacks.advanceUi(player.actualUpdateStamp, context);
     if (resume && !player.completed) await player.resume();
-  }
+  });
 
   void dispose() {
     if (_disposed) return;

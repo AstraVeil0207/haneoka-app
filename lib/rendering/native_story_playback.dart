@@ -902,7 +902,7 @@ final class NativeStoryPlayback extends ChangeNotifier {
       throw const FormatException('story_playback_checkpoint_source');
     }
     await quiesceForSeek();
-    await media.restore(checkpoint.media);
+    await media.restore(checkpoint.media, replayAtUs: checkpoint.atUs);
     checkpoint._restore();
     restoreClock(checkpoint.atUs);
     _observations = await media.sample();

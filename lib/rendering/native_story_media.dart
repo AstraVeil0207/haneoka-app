@@ -1084,9 +1084,12 @@ final class NativeStoryMediaHost extends ChangeNotifier {
     });
   }
 
-  Future<void> restore(NativeStoryMediaSnapshot snapshot) =>
-      _track(_restore(snapshot));
-  Future<void> _restore(NativeStoryMediaSnapshot snapshot) async {
+  Future<void> restore(NativeStoryMediaSnapshot snapshot, {int? replayAtUs}) =>
+      _track(_restore(snapshot, replayAtUs: replayAtUs));
+  Future<void> _restore(
+    NativeStoryMediaSnapshot snapshot, {
+    int? replayAtUs,
+  }) async {
     if (_disposed) {
       throw StateError('story_media_host_disposed');
     }
@@ -1180,6 +1183,10 @@ final class NativeStoryMediaHost extends ChangeNotifier {
               commandIndex: saved.commandIndex,
               sourceEpoch: sourceEpoch,
               sourceDurationUs: saved.durationUs,
+              metadataOnly:
+                  replayAtUs != null &&
+                  saved.kind != StoryMediaKind.movie &&
+                  (saved.durationUs ?? -1) >= 0,
               loopStartUs: saved.loopStartUs,
               loopEndUs: saved.loopEndUs,
               changed: () {
@@ -1213,6 +1220,10 @@ final class NativeStoryMediaHost extends ChangeNotifier {
         if (cue.error != null) {
           throw StateError('story_media:${cue.id}:${cue.error}');
         }
+      }
+      if (replayAtUs != null && cues.any((cue) => cue._metadataOnly)) {
+        await beginReplay(replayAtUs);
+        checkCurrent();
       }
       if (!_disposed) notifyListeners();
     } finally {
