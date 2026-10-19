@@ -147,6 +147,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
   NativeStoryUiSnapshot? _uiFrame;
   final _capture = GlobalKey();
   final _bytes = <String, Future<Uint8List>>{};
+  final _visualResourceWork = <Future<Object?>, int>{};
   final _unsupportedVisual = <int, String>{};
   NativeStoryWorld? _world;
   String _mode = 'Default', _line = '', _speaker = '', _locale = '';
@@ -198,26 +199,36 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
     if (mounted) setState(() {});
   }
 
-  Future<Uint8List> _fetch(Uri uri) => _bytes
-      .putIfAbsent(uri.toString(), () async {
-        if (uri.scheme == 'haneoka-asset') {
-          final data = await loadHaneokaProfileAsset(uri.path);
-          return data.buffer.asUint8List(
-            data.offsetInBytes,
-            data.lengthInBytes,
+  Future<T> _visualResource<T>(Future<T> Function() load) {
+    final epoch = _epoch;
+    late final Future<T> work;
+    work = load().whenComplete(() => _visualResourceWork.remove(work));
+    _visualResourceWork[work] = epoch;
+    return work;
+  }
+
+  Future<Uint8List> _fetch(Uri uri) => _visualResource(
+    () => _bytes
+        .putIfAbsent(uri.toString(), () async {
+          if (uri.scheme == 'haneoka-asset') {
+            final data = await loadHaneokaProfileAsset(uri.path);
+            return data.buffer.asUint8List(
+              data.offsetInBytes,
+              data.lengthInBytes,
+            );
+          }
+          return resourceFileCache.readBytes(
+            uri,
+            kind: _document?.assets.isMediaUri(uri) == true
+                ? ResourceFileKind.media
+                : ResourceFileKind.renderResource,
           );
-        }
-        return resourceFileCache.readBytes(
-          uri,
-          kind: _document?.assets.isMediaUri(uri) == true
-              ? ResourceFileKind.media
-              : ResourceFileKind.renderResource,
-        );
-      })
-      .catchError((Object error) {
-        _bytes.remove(uri.toString());
-        throw error;
-      });
+        })
+        .catchError((Object error) {
+          _bytes.remove(uri.toString());
+          throw error;
+        }),
+  );
 
   @override
   void didChangeDependencies() {
@@ -1376,22 +1387,25 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
           'release': _document!.chapter.sourceIdentity.release,
         },
       );
-      final data = await _fetch(pinned);
-      if (!context.isCurrent() || !mounted) return;
-      final identity = _document!.chapter.sourceIdentity;
-      final lower = await StoryBackgroundImage.fromActualEncodedImage(
-        source: RenderSource(
-          server: identity.server,
-          release: identity.release,
-          document: identity.document,
-        ),
-        epoch: _epoch,
-        uri: pinned,
-        bytes: data,
-      );
-      if (!context.isCurrent() || !mounted) return;
-      _background = data;
-      _backgroundImage = lower;
+      final prepared = await _visualResource(() async {
+        final data = await _fetch(pinned);
+        if (!context.isCurrent() || !mounted) return null;
+        final identity = _document!.chapter.sourceIdentity;
+        final lower = await StoryBackgroundImage.fromActualEncodedImage(
+          source: RenderSource(
+            server: identity.server,
+            release: identity.release,
+            document: identity.document,
+          ),
+          epoch: _epoch,
+          uri: pinned,
+          bytes: data,
+        );
+        return (data: data, lower: lower);
+      });
+      if (prepared == null || !context.isCurrent() || !mounted) return;
+      _background = prepared.data;
+      _backgroundImage = prepared.lower;
       await _world!.stage(command.resourceRefs['backgroundRef']!);
     } else if (command.opcode == 35) {
       final name = (command.payload['targetAssetName'] as String)
@@ -2184,6 +2198,17 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
   Future<void> _settleSeekUi(VegaSeekContext context) async {
     context.checkCurrent();
     await _uiReady.future;
+    final epoch = _epoch;
+    while (true) {
+      context.checkCurrent();
+      if (!mounted || epoch != _epoch) throw const VegaSeekCancelled();
+      final pending = [
+        for (final work in _visualResourceWork.entries)
+          if (work.value == epoch) work.key,
+      ];
+      if (pending.isEmpty) break;
+      await Future.wait(pending);
+    }
     await _stillHost!.settleResources();
     await _frameHost!.settleResources();
     _advanceUi(_player!.actualUpdateStamp);
