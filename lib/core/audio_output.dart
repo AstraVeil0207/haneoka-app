@@ -6,6 +6,7 @@ import 'package:media_kit/media_kit.dart' as media;
 
 import 'media_lifecycle.dart';
 import 'media_kit_transport.dart';
+import 'playback_focus.dart';
 
 /// Linux uses the bundled media backend so MP3 playback does not depend on
 /// the desktop's optional GStreamer codecs. Other platforms retain their
@@ -177,14 +178,18 @@ class AudioOutput {
       ? _durations.stream
       : _audio!.onDurationChanged.handleError(_report);
 
-  Future<void> setAudioContext(AudioContext context) =>
-      _run(() => _audio?.setAudioContext(context) ?? Future.value());
+  Future<void> setAudioContext(AudioContext context) => _run(() async {
+    await PlaybackFocus.ensureReady();
+    if (!_disposed) await _audio?.setAudioContext(context);
+  });
 
   Future<void> play(UrlSource source, {bool shouldPlay = true}) =>
       _run(() => _play(source, shouldPlay: shouldPlay));
   Future<void> _play(UrlSource source, {required bool shouldPlay}) async {
     _interruptMediaLoad();
     final generation = ++_generation;
+    if (shouldPlay) await PlaybackFocus.ensureReady();
+    if (_disposed || generation != _generation) return;
     _lastObservedPosition = null;
     if (_usesMedia) {
       final item = media.Media(source.url);
@@ -223,9 +228,12 @@ class AudioOutput {
   Future<void> pause() => _run(
     () => _usesMedia ? _media?.pause() ?? Future.value() : _audio!.pause(),
   );
-  Future<void> resume() => _run(
-    () => _usesMedia ? _media?.play() ?? Future.value() : _audio!.resume(),
-  );
+  Future<void> resume() => _run(() async {
+    final generation = _generation;
+    await PlaybackFocus.ensureReady();
+    if (_disposed || generation != _generation) return;
+    await (_usesMedia ? _media?.play() ?? Future.value() : _audio!.resume());
+  });
   Future<void> seek(Duration position) => _run(() => _seek(position));
   Future<void> _seek(Duration position) {
     _interruptMediaLoad();

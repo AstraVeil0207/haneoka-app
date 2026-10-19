@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -7,6 +8,7 @@ import 'package:media_kit/media_kit.dart';
 import 'core/app_state.dart';
 import 'core/app_media_lifetime.dart';
 import 'core/music_background.dart';
+import 'core/playback_focus.dart';
 import 'l10n/app_localizations.dart';
 import 'shell/shell.dart';
 import 'gacha_history/history_page.dart';
@@ -37,7 +39,7 @@ Future<void> main(List<String> arguments) async {
   final state = await AppState.load(
     WidgetsBinding.instance.platformDispatcher.locale,
   );
-  await MusicBackground.initialize(state.audio);
+  PlaybackFocus.prepare = MusicBackground.prepareSession;
   Uri? initialAddress;
   for (final argument in arguments) {
     if (argument.startsWith('-')) continue;
@@ -60,6 +62,22 @@ Future<void> main(List<String> arguments) async {
       ),
     ),
   );
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(
+      MusicBackground.initialize(state.audio).catchError((
+        Object error,
+        StackTrace stack,
+      ) {
+        FlutterError.reportError(
+          FlutterErrorDetails(
+            exception: error,
+            stack: stack,
+            context: ErrorDescription('initializing background audio controls'),
+          ),
+        );
+      }),
+    );
+  });
 }
 
 class HaneokaApp extends StatelessWidget {

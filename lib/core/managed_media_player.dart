@@ -1,6 +1,7 @@
 import 'package:media_kit/media_kit.dart' as media;
 
 import 'media_lifecycle.dart';
+import 'playback_focus.dart';
 
 /// Native media ownership for preview/movie hosts using media_kit directly.
 final class ManagedMediaPlayer extends media.Player {
@@ -15,6 +16,24 @@ final class ManagedMediaPlayer extends media.Player {
     MediaLifecycle.register(this, dispose);
   }
   Future<void>? _disposing;
+  @override
+  Future<void> open(media.Playable playable, {bool play = true}) async {
+    if (play) await PlaybackFocus.ensureReady();
+    if (_disposing == null) await super.open(playable, play: play);
+  }
+
+  @override
+  Future<void> play() async {
+    await PlaybackFocus.ensureReady();
+    if (_disposing == null) await super.play();
+  }
+
+  @override
+  Future<void> playOrPause() async {
+    await PlaybackFocus.ensureReady();
+    if (_disposing == null) await super.playOrPause();
+  }
+
   @override
   Future<void> dispose() => _disposing ??= _dispose();
   Future<void> _dispose() async {

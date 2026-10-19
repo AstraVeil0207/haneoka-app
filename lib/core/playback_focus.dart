@@ -7,10 +7,14 @@ final class PlaybackFocus {
   final Future<void> Function() _interrupt;
   static PlaybackFocus? _active;
   static Future<void> _requests = Future.value();
+  static Future<void> Function()? prepare;
+  static Future<void> ensureReady() async => await prepare?.call();
   bool _closed = false;
 
   Future<void> activate(Future<void> Function() start) {
     final request = _requests.then((_) async {
+      if (_closed) return;
+      await ensureReady();
       if (_closed) return;
       final previous = _active;
       if (previous != null && !identical(previous, this)) {

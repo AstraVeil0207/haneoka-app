@@ -23,20 +23,66 @@ final class MusicBackground extends background.BaseAudioHandler
   Duration _reportedPosition = Duration.zero;
   DateTime _reportedAt = DateTime.now();
   final _subscriptions = <StreamSubscription>[];
+  static Future<void>? _sessionReady;
+  static Future<void>? _initializing;
+  static MusicBackground? _handler;
 
-  static Future<void> initialize(AudioService music) async {
-    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) return;
-    final handler = await background.AudioService.init<MusicBackground>(
-      builder: () => MusicBackground(music),
-      config: const background.AudioServiceConfig(
-        androidNotificationChannelId: 'org.haneoka.music',
-        androidNotificationChannelName: 'Music playback',
-        androidNotificationOngoing: true,
-        androidStopForegroundOnPause: true,
+  static Future<void> prepareSession() {
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) {
+      return Future.value();
+    }
+    final current = _sessionReady;
+    if (current != null) return current;
+    final pending = _prepareSession();
+    _sessionReady = pending;
+    unawaited(
+      pending.then<void>(
+        (_) {},
+        onError: (Object _, StackTrace _) {
+          if (identical(_sessionReady, pending)) _sessionReady = null;
+        },
       ),
     );
+    return pending;
+  }
+
+  static Future<void> _prepareSession() async {
     final session = await AudioSession.instance;
     await session.configure(const AudioSessionConfiguration.music());
+  }
+
+  static Future<void> initialize(AudioService music) {
+    if (!Platform.isAndroid && !Platform.isIOS && !Platform.isMacOS) {
+      return Future.value();
+    }
+    final current = _initializing;
+    if (current != null) return current;
+    final pending = _initialize(music);
+    _initializing = pending;
+    unawaited(
+      pending.then<void>(
+        (_) {},
+        onError: (Object _, StackTrace _) {
+          if (identical(_initializing, pending)) _initializing = null;
+        },
+      ),
+    );
+    return pending;
+  }
+
+  static Future<void> _initialize(AudioService music) async {
+    await prepareSession();
+    final session = await AudioSession.instance;
+    final handler = _handler ??=
+        await background.AudioService.init<MusicBackground>(
+          builder: () => MusicBackground(music),
+          config: const background.AudioServiceConfig(
+            androidNotificationChannelId: 'org.haneoka.music',
+            androidNotificationChannelName: 'Music playback',
+            androidNotificationOngoing: true,
+            androidStopForegroundOnPause: true,
+          ),
+        );
     handler._subscriptions.addAll([
       session.interruptionEventStream.listen((event) {
         if (event.begin) unawaited(music.pause());
