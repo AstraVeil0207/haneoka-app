@@ -384,6 +384,7 @@ jobs:
           (cd build/ios-packages/standard && zip -qry "$GITHUB_WORKSPACE/dist/haneoka-ios-unsigned.ipa" Payload)
           ldid -Spackaging/ios-trollstore.entitlements build/ios-packages/trollstore/Payload/Runner.app/Runner
           (cd build/ios-packages/trollstore && zip -qry "$GITHUB_WORKSPACE/dist/haneoka-ios-trollstore.tipa" Payload)
+          python3 scripts/ios_archive.py --trollstore dist/haneoka-ios-trollstore.tipa
       - uses: actions/upload-artifact@v4
         with:
           name: apple-${{ matrix.kind }}-${{ matrix.arch }}

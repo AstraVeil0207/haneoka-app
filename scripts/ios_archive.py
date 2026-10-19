@@ -1,19 +1,27 @@
-"""Read distribution metadata and declared permissions from a real IPA."""
+"""Read distribution metadata and validate real iOS distribution archives."""
+import argparse
+import json
 import plistlib
 import struct
 import zipfile
 
+TROLLSTORE_BUNDLE_ID = 'org.haneoka.haneoka'
+TROLLSTORE_APP_ID = 'TROLLTROLL.' + TROLLSTORE_BUNDLE_ID
 
-def entitlements(binary):
+
+def entitlements(binary, *, values=False):
     magic = binary[:4]
     if magic in (b'\xca\xfe\xba\xbe', b'\xca\xfe\xba\xbf'):
         wide = magic == b'\xca\xfe\xba\xbf'
         count = struct.unpack_from('>I', binary, 4)[0]
-        result = set()
+        result = {} if values else set()
         for index in range(count):
             entry = 8 + index * (32 if wide else 20)
             offset, size = struct.unpack_from('>QQ' if wide else '>II', binary, entry + 8)
-            result.update(entitlements(binary[offset:offset + size]))
+            declared = entitlements(binary[offset:offset + size], values=values)
+            if values and index and result != declared:
+                raise ValueError('Conflicting entitlements between Mach-O slices')
+            result.update(declared)
         return result
     formats = {b'\xcf\xfa\xed\xfe': ('<', 32), b'\xce\xfa\xed\xfe': ('<', 28),
                b'\xfe\xed\xfa\xcf': ('>', 32), b'\xfe\xed\xfa\xce': ('>', 28)}
@@ -21,7 +29,7 @@ def entitlements(binary):
         raise ValueError('An IPA bundle executable is not a supported Mach-O file')
     endian, cursor = formats[magic]
     count = struct.unpack_from(endian + 'I', binary, 16)[0]
-    result = set()
+    result = {} if values else set()
     for _ in range(count):
         command, length = struct.unpack_from(endian + 'II', binary, cursor)
         if length < 8 or cursor + length > len(binary):
@@ -56,7 +64,21 @@ def entitlements(binary):
     return result
 
 
-def read_ipa(path):
+def validate_trollstore_entitlements(bundle_id, declared):
+    errors = []
+    if bundle_id != TROLLSTORE_BUNDLE_ID:
+        errors.append('bundle identifier must be ' + TROLLSTORE_BUNDLE_ID)
+    if declared.get('application-identifier') != TROLLSTORE_APP_ID:
+        errors.append('application-identifier must be ' + TROLLSTORE_APP_ID)
+    if declared.get('keychain-access-groups') != [TROLLSTORE_APP_ID]:
+        errors.append('keychain-access-groups must contain only ' + TROLLSTORE_APP_ID)
+    if declared.get('com.apple.security.application-groups'):
+        errors.append('app-group access is not part of the TrollStore package')
+    if errors:
+        raise ValueError('Invalid TrollStore keychain identity: ' + '; '.join(errors))
+
+
+def read_ipa(path, *, trollstore=False):
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
         root = [name for name in names if name.startswith('Payload/')
@@ -75,7 +97,14 @@ def read_ipa(path):
             executable = bundle.get('CFBundleExecutable')
             if not executable:
                 raise ValueError('An IPA app bundle has no executable')
-            declared.update(entitlements(archive.read(name.rsplit('/', 1)[0] + '/' + executable)))
+            is_trollstore_main = trollstore and name == root[0]
+            bundle_entitlements = entitlements(
+                archive.read(name.rsplit('/', 1)[0] + '/' + executable),
+                values=is_trollstore_main,
+            )
+            if is_trollstore_main:
+                validate_trollstore_entitlements(bundle.get('CFBundleIdentifier'), bundle_entitlements)
+            declared.update(bundle_entitlements)
             for key, value in bundle.items():
                 if key.startswith('NS') and 'UsageDescription' in key:
                     if key in privacy and privacy[key] != value:
@@ -83,3 +112,19 @@ def read_ipa(path):
                     privacy[key] = value
         declared.difference_update({'application-identifier', 'com.apple.developer.team-identifier'})
         return info, {'entitlements': sorted(declared), 'privacy': privacy}
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('archive')
+    parser.add_argument('--trollstore', action='store_true', help='require the scoped Haneoka Keychain identity')
+    args = parser.parse_args()
+    try:
+        info, permissions = read_ipa(args.archive, trollstore=args.trollstore)
+    except (ValueError, zipfile.BadZipFile) as error:
+        parser.exit(1, str(error) + '\n')
+    print(json.dumps({
+        'bundleIdentifier': info['CFBundleIdentifier'],
+        'minimumOSVersion': info.get('MinimumOSVersion'),
+        'permissions': permissions,
+    }, sort_keys=True))
