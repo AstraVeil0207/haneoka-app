@@ -28,6 +28,14 @@ final class NativeStoryColourHost {
   ValueListenable<ui.Image?>? get image => _session?.image;
   bool get hasCurrentImage => _session?.image.value != null;
 
+  /// The fixed LUT target survives only in a successfully submitted graph.
+  /// Reopening a viewport or omitting the world retires its GPU contents.
+  bool hasWorldPostLut(int width, int height) =>
+      hasCurrentImage &&
+      _width == width &&
+      _height == height &&
+      (_last?.scene.targets.containsKey('world:post:lut') ?? false);
+
   bool containsSubmittedLayer(
     int order,
     NativeSceneResources scene,

@@ -2015,8 +2015,9 @@ final class NativeStoryWorld {
   NativeStoryColourLayer snapshot(
     NativeStoryUpdateStamp stamp,
     int width,
-    int height,
-  ) {
+    int height, {
+    bool forcePostLutRebuild = false,
+  }) {
     if (_scene == null) throw StateError('story_world_not_prepared');
     update(stamp);
     final projection = _scene!.projection..resize(width, height);
@@ -2248,6 +2249,7 @@ final class NativeStoryWorld {
         targets: targets,
         cameraDistance: _focusDistance,
         curvedLensRate: _curvedLensRate,
+        forceRebuild: forcePostLutRebuild,
       );
       passes.addAll(plan.passes);
       dataTextures = plan.dataTextures;

@@ -26,6 +26,7 @@ import '../shell/page.dart';
 import '../ui/playback_pane.dart';
 import '../ui/player_orientation.dart';
 import '../ui/player_settings_sheet.dart';
+import '../ui/player_preparation_indicator.dart';
 import '../ui/render_quality_settings.dart';
 import 'native_chart_document.dart';
 import 'native_chart_playback.dart';
@@ -56,6 +57,7 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
     with SingleTickerProviderStateMixin {
   RenderPreferences? _rendering;
   void _renderQualityChanged() {
+    _clearFrameDebt();
     final value = _rendering!;
     _player?.setRenderQuality(factor: value.factor, sharpness: value.sharpness);
   }
@@ -67,27 +69,71 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
   bool _watchMode = false;
   Object? _error;
   bool _autoplayUsed = false, _captured = false, _resumeAfterScrub = false;
+  bool _drainingFrames = false, _pendingHardwareTick = false;
+  int _frameDebtEpoch = 0, _frameActionDepth = 0;
+
+  void _clearFrameDebt() {
+    _pendingHardwareTick = false;
+    ++_frameDebtEpoch;
+  }
+
+  bool _canContinueFrameDrain(NativeChartPlayback player, int epoch) =>
+      mounted &&
+      epoch == _frameDebtEpoch &&
+      identical(player, _player) &&
+      _watchMode &&
+      _ticker.isTicking &&
+      _frameActionDepth == 0 &&
+      _error == null &&
+      _viewport ==
+          (player.logicalWidth, player.logicalHeight, player.pixelRatio) &&
+      player.document?.key == _document?.key &&
+      player.canCoalesceFrameRequests;
+
   late final Ticker _ticker = createTicker((_) async {
     final player = _player;
     if (player == null) return;
-    await player.requestFrame();
-    const path = String.fromEnvironment('HANEOKA_NATIVE_PLAYER_EXPORT');
-    const captureUs = int.fromEnvironment(
-      'HANEOKA_NATIVE_CAPTURE_AT_US',
-      defaultValue: 5000000,
-    );
-    const requireFx = bool.fromEnvironment('HANEOKA_NATIVE_EXPORT_REQUIRE_FX');
-    if (!_captured &&
-        path.isNotEmpty &&
-        player.mediaUs >= captureUs &&
-        (!requireFx || player.hasVisibleEffects)) {
-      _captured = true;
-      try {
-        final receipt = await player.exportCurrentFrame(path);
-        debugPrint('HANEOKA_NATIVE_PLAYER_EXPORT $receipt');
-      } catch (error) {
-        debugPrint('HANEOKA_NATIVE_PLAYER_EXPORT_ERROR $error');
-      }
+    if (_drainingFrames) {
+      _pendingHardwareTick = _canContinueFrameDrain(player, _frameDebtEpoch);
+      return;
+    }
+    _drainingFrames = true;
+    final epoch = _frameDebtEpoch;
+    try {
+      do {
+        _pendingHardwareTick = false;
+        await player.requestFrame();
+        const path = String.fromEnvironment('HANEOKA_NATIVE_PLAYER_EXPORT');
+        const captureUs = int.fromEnvironment(
+          'HANEOKA_NATIVE_CAPTURE_AT_US',
+          defaultValue: 5000000,
+        );
+        const requireFx = bool.fromEnvironment(
+          'HANEOKA_NATIVE_EXPORT_REQUIRE_FX',
+        );
+        if (!_captured &&
+            path.isNotEmpty &&
+            player.mediaUs >= captureUs &&
+            (!requireFx || player.hasVisibleEffects)) {
+          _captured = true;
+          try {
+            final receipt = await player.exportCurrentFrame(path);
+            debugPrint('HANEOKA_NATIVE_PLAYER_EXPORT $receipt');
+          } catch (error) {
+            debugPrint('HANEOKA_NATIVE_PLAYER_EXPORT_ERROR $error');
+          }
+        }
+
+        if (!_pendingHardwareTick || !_canContinueFrameDrain(player, epoch)) {
+          break;
+        }
+        // Let queued commands and Flutter's frame callbacks run before
+        // consuming the single hardware tick that arrived during rendering.
+        await Future<void>.delayed(Duration.zero);
+      } while (_pendingHardwareTick && _canContinueFrameDrain(player, epoch));
+    } finally {
+      _pendingHardwareTick = false;
+      _drainingFrames = false;
     }
   });
   final _bytes = <String, Future<Uint8List>>{};
@@ -144,6 +190,7 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
   }
 
   Future<void> _loadDocument() async {
+    _clearFrameDebt();
     final load = ++_load, state = AppScope.of(context);
     try {
       final api = widget.api ?? state.apiFor(widget.server ?? state.server);
@@ -190,6 +237,7 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
 
   void _setMode(bool watch) {
     if (_watchMode == watch) return;
+    _clearFrameDebt();
     if (!watch) {
       _ticker.stop();
       unawaited(_player!.pause());
@@ -254,8 +302,9 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
         player.error == null &&
         player.presentationPlaying) {
       if (!_ticker.isActive) _ticker.start();
-    } else if (_ticker.isActive) {
-      _ticker.stop();
+    } else {
+      _clearFrameDebt();
+      if (_ticker.isActive) _ticker.stop();
     }
     if (player.needsCompletionFrame) {
       player.requestFrame(force: true);
@@ -749,10 +798,14 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
   );
 
   Future<void> _action(Future<void> Function() action) async {
+    _clearFrameDebt();
+    ++_frameActionDepth;
     try {
       await action();
     } catch (error) {
       if (mounted) setState(() => _error = error);
+    } finally {
+      --_frameActionDepth;
     }
   }
 
@@ -777,6 +830,7 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
         player.document?.key == document.key) {
       return;
     }
+    _clearFrameDebt();
     _viewport = viewport;
     final request = ++_viewportRequest;
     SchedulerBinding.instance.addPostFrameCallback((_) async {
@@ -818,6 +872,7 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
 
   @override
   void dispose() {
+    _clearFrameDebt();
     _rendering?.removeListener(_renderQualityChanged);
     ++_load;
     ++_viewportRequest;
@@ -909,6 +964,15 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
                     ),
                   ),
                 ),
+              if (player.audio.sourcePreparing)
+                Positioned.fill(
+                  child: ColoredBox(
+                    color: Theme.of(context).colorScheme.surface,
+                    child: PlayerPreparationIndicator(
+                      label: t('common.states.loading', 'Loading'),
+                    ),
+                  ),
+                ),
             ],
           );
         },
@@ -925,7 +989,8 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
     final ready =
         _document != null &&
         player?.session != null &&
-        player?.loading == false;
+        player?.loading == false &&
+        player?.audio.sourcePreparing == false;
     return ShellPage(
       title: title.isEmpty ? t('navigation.chart', 'Chart') : title,
       actions: [
@@ -959,14 +1024,13 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
           : !_watchMode
           ? _overview()
           : ListenableBuilder(
-              listenable: Listenable.merge([
-                player.audio.position,
-                player.audio.duration,
-              ]),
+              listenable: player.audio.duration,
               builder: (context, stage) => PlaybackPane(
                 key: _paneKey,
                 playing: playingThisChart,
+                busy: player.audio.sourcePreparing,
                 position: player.audio.position.value.inMicroseconds / 1000000,
+                mediaPosition: player.audio.position,
                 maximum: player.durationSeconds,
                 onToggle: !ready
                     ? null

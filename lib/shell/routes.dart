@@ -38,7 +38,7 @@ import '../home/calendar.dart';
 import '../home/home_screen.dart';
 import '../records/player.dart';
 import '../stories/stories.dart';
-import '../rendering/native_story_player_screen.dart';
+import '../stories/story_sequence_player.dart';
 import '../rendering/native_chart_player_screen.dart';
 import '../team_builder/team_builder_screen.dart';
 import '../records/tracker.dart';
@@ -236,12 +236,12 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route.startsWith('/stories/')) {
     final id = Uri.decodeComponent(route.substring('/stories/'.length));
     if (uri.queryParameters['view'] == 'play') {
-      return NativeStoryPlayerScreen(
+      return StorySequencePlayer(
         key: ValueKey(uri.toString()),
         storyId: id,
         server: uri.queryParameters['server'],
-        textModeBuilder: (context) => StoryReaderScreen(
-          episode: {'storyKey': id},
+        textModeBuilder: (context, currentId) => StoryReaderScreen(
+          episode: {'storyKey': currentId},
           api: AppScope.of(context).apiFor(
             uri.queryParameters['server'] ?? AppScope.of(context).server,
           ),
@@ -256,12 +256,12 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
       return StoriesScreen(key: ValueKey(mode), mode: mode);
     }
     if (uri.queryParameters['view'] == 'play') {
-      return NativeStoryPlayerScreen(
+      return StorySequencePlayer(
         key: ValueKey(uri.toString()),
         storyId: Uri.decodeComponent(mode),
         server: uri.queryParameters['server'],
-        textModeBuilder: (context) => StoryReaderScreen(
-          episode: {'storyKey': Uri.decodeComponent(mode)},
+        textModeBuilder: (context, currentId) => StoryReaderScreen(
+          episode: {'storyKey': currentId},
           api: AppScope.of(context).apiFor(
             uri.queryParameters['server'] ?? AppScope.of(context).server,
           ),

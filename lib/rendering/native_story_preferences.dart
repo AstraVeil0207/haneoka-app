@@ -14,6 +14,7 @@ final class NativeStoryPreferences {
       _store.getBool('${_prefix}subtitlesEnabled') ?? true;
   bool get bgmEnabled => _store.getBool('${_prefix}bgmEnabled') ?? true;
   bool get expanded => _store.getBool('${_prefix}expanded') ?? true;
+  bool get continuous => _store.getBool('${_prefix}continuous') ?? false;
   double _number(String key, double fallback, double min, double max) {
     final value = _store.getDouble('$_prefix$key') ?? fallback;
     return value.isFinite ? value.clamp(min, max) : fallback;
@@ -30,6 +31,7 @@ final class NativeStoryPreferences {
       _boolean('subtitlesEnabled', value);
   Future<void> setBgmEnabled(bool value) => _boolean('bgmEnabled', value);
   Future<void> setExpanded(bool value) => _boolean('expanded', value);
+  Future<void> setContinuous(bool value) => _boolean('continuous', value);
   Future<void> _boolean(String key, bool value) async {
     await _store.setBool('$_prefix$key', value);
   }

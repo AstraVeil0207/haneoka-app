@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'audio_track.dart';
 import 'audio_output.dart';
 import 'playback_focus.dart';
+import 'resource_file_cache.dart';
 
 /// Page-owned transport. It has no queue, persistence or system media item.
 final class PageAudio extends ChangeNotifier {
@@ -50,8 +51,20 @@ final class PageAudio extends ChangeNotifier {
   int revision = 0, _generation = 0;
   Object? error;
   String? _loadedUrl;
+  ResourceFileLease? _sourceLease;
+  Completer<void>? _sourcePreparation;
+
+  void _cancelSourcePreparation() {
+    final preparation = _sourcePreparation;
+    _sourcePreparation = null;
+    if (preparation != null && !preparation.isCompleted) {
+      preparation.complete();
+    }
+  }
+
   bool get active =>
       !_disposed && current != null && _loadedUrl == current!.url;
+  bool get sourcePreparing => _sourcePreparation != null;
   String get clockBackend => _output.clockBackend;
   Future<void> _requests = Future.value();
 
@@ -75,18 +88,69 @@ final class PageAudio extends ChangeNotifier {
     return request;
   }
 
-  Future<void> loadPaused(Track track) => _perform(() async {
-    current = track;
-    _loadedUrl = null;
-    completed = false;
-    playing = false;
-    position.value = Duration.zero;
-    duration.value = Duration.zero;
-    ++revision;
-    await _output.play(UrlSource(track.url), shouldPlay: false);
-    _loadedUrl = track.url;
-    notifyListeners();
-  }, replace: true);
+  Future<void> loadPaused(Track track) {
+    _cancelSourcePreparation();
+    final preparation = _sourcePreparation = Completer<void>();
+    if (!_disposed) notifyListeners();
+    return _perform(() async {
+      final generation = _generation;
+      if (current != null) {
+        await _output.pause();
+        if (_disposed || generation != _generation || preparation.isCompleted) {
+          return;
+        }
+      }
+      current = track;
+      _loadedUrl = null;
+      completed = false;
+      playing = false;
+      position.value = Duration.zero;
+      duration.value = Duration.zero;
+      ++revision;
+      ResourceFileLease? lease;
+      try {
+        final uri = Uri.parse(track.url);
+        if (const {'http', 'https', 'file'}.contains(uri.scheme)) {
+          lease = await resourceFileCache.acquire(
+            uri,
+            kind: ResourceFileKind.media,
+            cancelled: preparation.future,
+          );
+        }
+        if (_disposed || generation != _generation || preparation.isCompleted) {
+          return;
+        }
+        await _output.play(
+          UrlSource(lease?.file.uri.toString() ?? track.url),
+          shouldPlay: false,
+        );
+        final previous = _sourceLease;
+        _sourceLease = lease;
+        lease = null;
+        await previous?.release();
+        if (_disposed || generation != _generation || preparation.isCompleted) {
+          return;
+        }
+        // The source file is an implementation detail; ownership and metadata
+        // continue to use the original immutable track identity.
+        _loadedUrl = track.url;
+        notifyListeners();
+      } on ResourceCacheCancelled {
+        if (!_disposed &&
+            generation == _generation &&
+            !preparation.isCompleted) {
+          rethrow;
+        }
+      } finally {
+        await lease?.release();
+      }
+    }, replace: true).whenComplete(() {
+      if (identical(_sourcePreparation, preparation)) {
+        _sourcePreparation = null;
+        if (!_disposed) notifyListeners();
+      }
+    });
+  }
 
   Future<void> configure({required double rate, required double volume}) =>
       _perform(() async {
@@ -120,6 +184,7 @@ final class PageAudio extends ChangeNotifier {
   Future<void> close() async {
     if (_disposed) return;
     _disposed = true;
+    _cancelSourcePreparation();
     _output.cancelPendingLoad();
     _focus.close();
     ++_generation;
@@ -128,6 +193,8 @@ final class PageAudio extends ChangeNotifier {
       await subscription.cancel();
     }
     await _output.dispose();
+    await _sourceLease?.release();
+    _sourceLease = null;
     position.dispose();
     duration.dispose();
     super.dispose();

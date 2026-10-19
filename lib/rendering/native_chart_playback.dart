@@ -108,6 +108,23 @@ final class NativeChartPlayback extends ChangeNotifier {
       (controlsThisAudio && audio.playing);
   bool get _introPresenting => _intro != null && !_introMusicHandoffComplete;
 
+  /// Allows one hardware tick to remain pending during a steady music frame.
+  /// requestFrame retains ownership of serialization and GPU completion.
+  bool get canCoalesceFrameRequests =>
+      !_disposed &&
+      !loading &&
+      error == null &&
+      !_commandPending &&
+      !_exportBusy &&
+      !_forcedFramePending &&
+      _pendingPreferences == null &&
+      session != null &&
+      !_introPresenting &&
+      !_introHandoffPending &&
+      controlsThisAudio &&
+      audio.playing &&
+      !audio.completed;
+
   void _resetIntroTransport() {
     _intro?.pause(_presentationClock.elapsedMicroseconds);
     _introSounds?.setPaused(true);

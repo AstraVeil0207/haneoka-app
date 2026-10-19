@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -38,6 +39,7 @@ class PlaybackPane extends StatefulWidget {
     required this.stage,
     required this.playing,
     required this.position,
+    this.mediaPosition,
     required this.maximum,
     required this.onToggle,
     this.onSeek,
@@ -65,6 +67,10 @@ class PlaybackPane extends StatefulWidget {
   final bool busy;
   final String? leadLabel;
   final double position, maximum;
+
+  /// Optional media clock for the progress controls. Ordinal-based players
+  /// continue to supply [position] without rebuilding the presentation per PTS.
+  final ValueListenable<Duration>? mediaPosition;
   final String? positionLabel, maximumLabel;
   final VoidCallback? onToggle,
       onScrubStart,
@@ -87,6 +93,10 @@ class _PlaybackPaneState extends State<PlaybackPane> {
   bool _disposing = false;
   int _presentationEpoch = 0;
   bool _overlayBuildScheduled = false;
+  bool _pointerInsideControls = false,
+      _controlsHaveFocus = false,
+      _keyboardFocusWithin = false,
+      _pointerActivation = false;
   bool get _uiAlive => mounted && !_disposing;
   bool get _desktop =>
       !kIsWeb &&
@@ -105,14 +115,23 @@ class _PlaybackPaneState extends State<PlaybackPane> {
   void initState() {
     super.initState();
     _collapsed = widget.collapsed;
+    FocusManager.instance.addEarlyKeyEventHandler(_controlsKeyEvent);
   }
 
   @override
   void didUpdateWidget(PlaybackPane old) {
     super.didUpdateWidget(old);
-    if (old.collapsed != widget.collapsed) _collapsed = widget.collapsed;
+    if (old.collapsed != widget.collapsed) {
+      _collapsed = widget.collapsed;
+      if (_collapsed) _clearControlsInteraction();
+    }
     _queueOverlayBuild();
-    if (old.playing != widget.playing) _scheduleHide();
+    if (old.playing != widget.playing ||
+        old.collapsed != widget.collapsed ||
+        old.controlsVisible != widget.controlsVisible ||
+        old.busy != widget.busy) {
+      _scheduleHide();
+    }
   }
 
   void _changed() {
@@ -139,14 +158,103 @@ class _PlaybackPaneState extends State<PlaybackPane> {
 
   void _scheduleHide() {
     _hide?.cancel();
-    if (_overlay != null && widget.playing && !_collapsed && _scrub == null) {
-      _hide = Timer(const Duration(seconds: 3), () {
-        if (_uiAlive && _overlay != null && widget.playing && _scrub == null) {
+    if (_canAutoHide) {
+      _hide = Timer(const Duration(seconds: 4), () {
+        if (_uiAlive && _canAutoHide) {
           _hidden = true;
+          _clearControlsInteraction();
           _changed();
         }
       });
+    } else {
+      _hidden = false;
     }
+  }
+
+  bool get _canAutoHide =>
+      _overlay != null &&
+      widget.playing &&
+      widget.controlsVisible &&
+      !widget.busy &&
+      !_collapsed &&
+      _scrub == null &&
+      !_pointerInsideControls &&
+      !_keyboardFocusWithin &&
+      !_pointerActivation;
+
+  void _clearControlsInteraction() {
+    _pointerInsideControls = false;
+    _controlsHaveFocus = false;
+    _keyboardFocusWithin = false;
+    _pointerActivation = false;
+  }
+
+  KeyEventResult _controlsKeyEvent(KeyEvent event) {
+    if (_uiAlive &&
+        _controlsHaveFocus &&
+        widget.controlsVisible &&
+        !_collapsed &&
+        !_hidden) {
+      _keyboardFocusWithin = true;
+      _showControls();
+    }
+    return KeyEventResult.ignored;
+  }
+
+  Widget _controlsInteraction({
+    required bool fullscreen,
+    required Widget child,
+  }) {
+    final epoch = _presentationEpoch;
+    bool current() =>
+        _uiAlive &&
+        epoch == _presentationEpoch &&
+        fullscreen == (_overlay != null);
+    void releasePointer() {
+      Future<void>.delayed(Duration.zero, () {
+        if (!current()) return;
+        _pointerActivation = false;
+        _scheduleHide();
+      });
+    }
+
+    return MouseRegion(
+      onEnter: (event) {
+        if (!current() || event.kind == PointerDeviceKind.touch) return;
+        _pointerInsideControls = true;
+        if (!_collapsed && !_hidden) _showControls();
+      },
+      onExit: (event) {
+        if (!current() || event.kind == PointerDeviceKind.touch) return;
+        _pointerInsideControls = false;
+        _scheduleHide();
+      },
+      child: Listener(
+        onPointerDown: (_) {
+          if (!current()) return;
+          _pointerActivation = true;
+          _keyboardFocusWithin = false;
+          _showControls();
+        },
+        onPointerUp: (_) => releasePointer(),
+        onPointerCancel: (_) => releasePointer(),
+        child: Focus(
+          canRequestFocus: false,
+          skipTraversal: true,
+          onFocusChange: (focused) {
+            if (!current()) return;
+            _controlsHaveFocus = focused;
+            _keyboardFocusWithin = focused && !_pointerActivation;
+            if (focused) {
+              _showControls();
+            } else {
+              _scheduleHide();
+            }
+          },
+          child: child,
+        ),
+      ),
+    );
   }
 
   Future<void> _fullscreen() async {
@@ -170,6 +278,7 @@ class _PlaybackPaneState extends State<PlaybackPane> {
         await _exitFullscreen();
         return;
       }
+      _clearControlsInteraction();
       ++_presentationEpoch;
       _overlay = OverlayEntry(
         builder: (context) => Material(
@@ -188,6 +297,7 @@ class _PlaybackPaneState extends State<PlaybackPane> {
     _hide?.cancel();
     final overlay = _overlay;
     _overlay = null;
+    _clearControlsInteraction();
     ++_presentationEpoch;
     overlay?.remove();
     overlay?.dispose();
@@ -203,6 +313,7 @@ class _PlaybackPaneState extends State<PlaybackPane> {
   @override
   void dispose() {
     _disposing = true;
+    FocusManager.instance.removeEarlyKeyEventHandler(_controlsKeyEvent);
     _hide?.cancel();
     if (_overlay != null) unawaited(_exitFullscreen());
     super.dispose();
@@ -221,139 +332,172 @@ class _PlaybackPaneState extends State<PlaybackPane> {
   }) => IconButton(
     tooltip: label,
     isSelected: selected,
-    onPressed: callback,
+    onPressed: widget.busy ? null : callback,
     icon: Icon(icon, size: 20),
   );
+
+  Widget _progress(BuildContext context, double position) {
+    final value = (_scrub ?? position).clamp(
+      0.0,
+      widget.maximum > 0 ? widget.maximum : 1.0,
+    );
+    return Row(
+      children: [
+        Text(
+          widget.positionLabel ?? _clock(value),
+          style: Theme.of(context).textTheme.labelSmall,
+        ),
+        Expanded(
+          child: Slider(
+            value: value,
+            max: widget.maximum > 0 ? widget.maximum : 1,
+            semanticFormatterCallback: (v) =>
+                widget.positionLabel == null ? _clock(v) : '${v.round()}',
+            onChangeStart: widget.busy || widget.onSeek == null
+                ? null
+                : (v) {
+                    _hide?.cancel();
+                    _scrub = v;
+                    widget.onScrubStart?.call();
+                    _changed();
+                  },
+            onChanged: widget.busy || widget.onSeek == null
+                ? null
+                : (v) {
+                    _scrub = v;
+                    widget.onPreviewSeek?.call(v);
+                    _changed();
+                  },
+            onChangeEnd: widget.busy || widget.onSeek == null
+                ? null
+                : (v) {
+                    _scrub = null;
+                    widget.onSeek?.call(v);
+                    _showControls();
+                  },
+          ),
+        ),
+        Text(
+          widget.maximumLabel ?? _clock(widget.maximum),
+          style: Theme.of(context).textTheme.labelSmall,
+        ),
+      ],
+    );
+  }
 
   Widget _controls(BuildContext context, bool fullscreen) {
     final t = AppScope.of(context).text;
     if (_collapsed || _hidden) return const SizedBox.shrink();
     final scheme = Theme.of(context).colorScheme;
-    final value = (_scrub ?? widget.position).clamp(
-      0.0,
-      widget.maximum > 0 ? widget.maximum : 1.0,
-    );
-    return Material(
-      color: fullscreen
-          ? scheme.surfaceContainer.withValues(alpha: .94)
-          : scheme.surfaceContainer,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final compact = constraints.maxWidth < 500;
-            final extras = <Widget>[
-              if (widget.onSettings != null)
-                _button(
-                  Symbols.tune_rounded,
-                  t('media.chartPlayer.settings', 'Settings'),
-                  widget.onSettings,
-                ),
-              if (widget.onLoop != null)
-                _button(
-                  Symbols.refresh_rounded,
-                  t('media.chartPlayer.loop', 'Loop'),
-                  widget.onLoop,
-                  selected: widget.loop,
-                ),
-              _button(
-                fullscreen
-                    ? Symbols.fullscreen_exit_rounded
-                    : Symbols.fullscreen_rounded,
-                t(
-                  fullscreen
-                      ? 'common.actions.fullscreenExit'
-                      : 'common.actions.fullscreen',
-                  'Fullscreen',
-                ),
-                () => unawaited(_fullscreen()),
-                selected: fullscreen,
-              ),
-              _button(
-                Symbols.expand_more_rounded,
-                t('common.actions.collapse', 'Collapse'),
-                () {
-                  _collapsed = true;
-                  widget.onCollapsed?.call(true);
-                  _changed();
-                },
-              ),
-            ];
-            return AbsorbPointer(
-              absorbing: widget.busy,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
+    return _controlsInteraction(
+      fullscreen: fullscreen,
+      child: Material(
+        color: fullscreen
+            ? scheme.surfaceContainer.withValues(alpha: .94)
+            : scheme.surfaceContainer,
+        child: SafeArea(
+          top: false,
+          left: false,
+          right: false,
+          minimum: EdgeInsets.only(
+            bottom: MediaQuery.systemGestureInsetsOf(context).bottom,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxWidth < 500;
+                final extras = <Widget>[
+                  if (widget.onSettings != null)
+                    _button(
+                      Symbols.tune_rounded,
+                      t('media.chartPlayer.settings', 'Settings'),
+                      widget.onSettings,
+                    ),
+                  if (widget.onLoop != null)
+                    _button(
+                      Symbols.refresh_rounded,
+                      t('media.chartPlayer.loop', 'Loop'),
+                      widget.onLoop,
+                      selected: widget.loop,
+                    ),
+                  _button(
+                    fullscreen
+                        ? Symbols.fullscreen_exit_rounded
+                        : Symbols.fullscreen_rounded,
+                    t(
+                      fullscreen
+                          ? 'common.actions.fullscreenExit'
+                          : 'common.actions.fullscreen',
+                      'Fullscreen',
+                    ),
+                    () => unawaited(_fullscreen()),
+                    selected: fullscreen,
+                  ),
+                  _button(
+                    Symbols.expand_more_rounded,
+                    t('common.actions.collapse', 'Collapse'),
+                    () {
+                      _collapsed = true;
+                      _clearControlsInteraction();
+                      _hide?.cancel();
+                      _hidden = false;
+                      widget.onCollapsed?.call(true);
+                      _changed();
+                    },
+                  ),
+                ];
+                return AbsorbPointer(
+                  absorbing: widget.busy,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      _button(
-                        widget.leadReplay
-                            ? Symbols.replay_rounded
-                            : (widget.leadActive ?? widget.playing)
-                            ? Symbols.pause_rounded
-                            : Symbols.play_arrow_rounded,
-                        widget.leadLabel ??
-                            t(
-                              widget.playing
-                                  ? 'common.actions.pause'
-                                  : 'common.actions.play',
-                              'Play',
-                            ),
-                        widget.onToggle,
-                        selected: widget.leadActive,
+                      Row(
+                        children: [
+                          _button(
+                            widget.leadReplay
+                                ? Symbols.replay_rounded
+                                : (widget.leadActive ?? widget.playing)
+                                ? Symbols.pause_rounded
+                                : Symbols.play_arrow_rounded,
+                            widget.leadLabel ??
+                                t(
+                                  widget.playing
+                                      ? 'common.actions.pause'
+                                      : 'common.actions.play',
+                                  'Play',
+                                ),
+                            widget.onToggle,
+                            selected: widget.leadActive,
+                          ),
+                          Expanded(
+                            child:
+                                widget.mediaPosition != null &&
+                                    widget.controlsVisible
+                                ? ValueListenableBuilder<Duration>(
+                                    valueListenable: widget.mediaPosition!,
+                                    builder: (context, position, _) =>
+                                        _progress(
+                                          context,
+                                          position.inMicroseconds / 1000000,
+                                        ),
+                                  )
+                                : _progress(context, widget.position),
+                          ),
+                          if (!compact) ...extras,
+                        ],
                       ),
-                      Text(
-                        widget.positionLabel ?? _clock(value),
-                        style: Theme.of(context).textTheme.labelSmall,
-                      ),
-                      Expanded(
-                        child: Slider(
-                          value: value,
-                          max: widget.maximum > 0 ? widget.maximum : 1,
-                          semanticFormatterCallback: (v) =>
-                              widget.positionLabel == null
-                              ? _clock(v)
-                              : '${v.round()}',
-                          onChangeStart: widget.onSeek == null
-                              ? null
-                              : (v) {
-                                  _hide?.cancel();
-                                  _scrub = v;
-                                  widget.onScrubStart?.call();
-                                  _changed();
-                                },
-                          onChanged: widget.onSeek == null
-                              ? null
-                              : (v) {
-                                  _scrub = v;
-                                  widget.onPreviewSeek?.call(v);
-                                  _changed();
-                                },
-                          onChangeEnd: widget.onSeek == null
-                              ? null
-                              : (v) {
-                                  _scrub = null;
-                                  widget.onSeek?.call(v);
-                                  _showControls();
-                                },
+                      if (compact)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: extras,
                         ),
-                      ),
-                      Text(
-                        widget.maximumLabel ?? _clock(widget.maximum),
-                        style: Theme.of(context).textTheme.labelSmall,
-                      ),
-                      if (!compact) ...extras,
                     ],
                   ),
-                  if (compact)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: extras,
-                    ),
-                ],
-              ),
-            );
-          },
+                );
+              },
+            ),
+          ),
         ),
       ),
     );
@@ -384,6 +528,7 @@ class _PlaybackPaneState extends State<PlaybackPane> {
           actions: {
             ActivateIntent: CallbackAction<ActivateIntent>(
               onInvoke: (_) {
+                if (widget.busy) return null;
                 if (widget.onStageActivate != null) {
                   widget.onStageActivate!();
                 } else if (widget.playing && widget.onPause != null) {

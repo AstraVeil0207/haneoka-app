@@ -17,19 +17,29 @@ import 'system_proxy.dart';
 /// each opening its own.
 final http.Client netClient = _client();
 
+/// File-cached resources share proxy routing and cancellation with other requests.
+Future<http.StreamedResponse> sendFileRequest(http.BaseRequest request) {
+  final client = netClient;
+  return client is _AndroidSystemProxyClient
+      ? client.sendFile(request)
+      : client.send(request);
+}
+
+http.Client _androidDirectClient({bool fileTransfer = false}) {
+  final engine = CronetEngine.build(
+    cacheMode: fileTransfer ? CacheMode.disabled : CacheMode.memory,
+    cacheMaxSize: fileTransfer ? 0 : 8 << 20,
+    enableBrotli: true,
+    enableHttp2: !fileTransfer,
+    enableQuic: !fileTransfer,
+    userAgent: 'haneoka-app',
+  );
+  return CronetClient.fromCronetEngine(engine, closeEngine: true);
+}
+
 http.Client _client() {
   if (Platform.isAndroid) {
-    final engine = CronetEngine.build(
-      cacheMode: CacheMode.memory,
-      cacheMaxSize: 8 << 20,
-      enableBrotli: true,
-      enableHttp2: true,
-      enableQuic: true,
-      userAgent: 'haneoka-app',
-    );
-    return _AndroidSystemProxyClient(
-      CronetClient.fromCronetEngine(engine, closeEngine: true),
-    );
+    return _AndroidSystemProxyClient(_androidDirectClient());
   }
   if (Platform.isIOS || Platform.isMacOS) {
     final config = URLSessionConfiguration.defaultSessionConfiguration()
@@ -50,6 +60,7 @@ final class _AndroidSystemProxyClient extends http.BaseClient {
   _AndroidSystemProxyClient(this._direct);
 
   final http.Client _direct;
+  http.Client? _fileDirect;
   final _waiting = Queue<Completer<void>>();
   int _active = 0;
   bool _closed = false;
@@ -104,9 +115,23 @@ final class _AndroidSystemProxyClient extends http.BaseClient {
   }
 
   @override
-  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+  Future<http.StreamedResponse> send(http.BaseRequest request) =>
+      _send(request);
+
+  Future<http.StreamedResponse> sendFile(http.BaseRequest request) =>
+      _send(request, fileTransfer: true);
+
+  Future<http.StreamedResponse> _send(
+    http.BaseRequest request, {
+    bool fileTransfer = false,
+  }) async {
     if (_closed) throw http.ClientException('Client is closed', request.url);
-    if (systemProxyFor(request.url).isDirect) return _direct.send(request);
+    if (systemProxyFor(request.url).isDirect) {
+      final client = fileTransfer
+          ? (_fileDirect ??= _androidDirectClient(fileTransfer: true))
+          : _direct;
+      return client.send(request);
+    }
     await _acquire(request.url);
     var released = false;
     void release() {
@@ -164,6 +189,7 @@ final class _AndroidSystemProxyClient extends http.BaseClient {
     _waiting.clear();
     _active = 0;
     _direct.close();
+    _fileDirect?.close();
     _proxied.close();
     super.close();
   }

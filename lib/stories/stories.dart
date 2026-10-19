@@ -15,7 +15,8 @@ import '../core/provider_api.dart';
 import '../core/page_data.dart';
 import '../core/relative_time.dart';
 import '../shell/page.dart';
-import '../rendering/native_story_player_screen.dart';
+import 'story_sequence.dart';
+import 'story_sequence_player.dart';
 import '../ui/app_image.dart';
 import '../ui/detail.dart';
 import '../ui/tile.dart';
@@ -564,11 +565,7 @@ class _StoriesScreenState extends State<StoriesScreen> {
   static num _number(Object? value) =>
       value is num ? value : num.tryParse('${value ?? ''}') ?? 0;
 
-  static String _group(Map episode) => episode['isAnotherEpisode'] == true
-      ? 'perspectiveStory'
-      : episode['isExtraEpisode'] == true
-      ? 'extraStory'
-      : 'bandStory';
+  static String _group(Map episode) => storyEpisodeGroup(episode);
 
   /// The website's episode order (`sorted` in `story-workspace.ts`).
   int _compareEpisodes(Entry a, Entry b) {
@@ -1628,11 +1625,17 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
                               },
                             ).toString(),
                           ),
-                          builder: (_) => NativeStoryPlayerScreen(
+                          builder: (_) => StorySequencePlayer(
                             storyId: id,
                             server: api.server,
                             api: api,
                             title: detail['title'],
+                            catalog: detail['_storyPayload'] as Map?,
+                            textModeBuilder: (context, currentId) =>
+                                StoryReaderScreen(
+                                  episode: {'storyKey': currentId},
+                                  api: api,
+                                ),
                           ),
                         ),
                       );

@@ -65,6 +65,7 @@ import 'native_story_preferences.dart';
 import 'story_seek_host.dart';
 import 'story_save_store.dart';
 import 'story_render_profile.dart';
+import '../stories/story_sequence.dart';
 
 /// The ordinary selected-episode host. Media, source command history and the
 /// measured game UI run together; model availability is reported independently.
@@ -76,12 +77,18 @@ class NativeStoryPlayerScreen extends StatefulWidget {
     this.api,
     this.title,
     this.textModeBuilder,
+    this.sequence,
+    this.startAutomatically = false,
+    this.initialAutoAdvance = false,
+    this.replaceTextMode = false,
   });
   final String storyId;
   final String? server;
   final HaneokaApi? api;
   final Object? title;
   final WidgetBuilder? textModeBuilder;
+  final StorySequenceHost? sequence;
+  final bool startAutomatically, initialAutoAdvance, replaceTextMode;
   @override
   State<NativeStoryPlayerScreen> createState() =>
       _NativeStoryPlayerScreenState();
@@ -155,6 +162,8 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
   int _stillCaptures = 0;
   Object? _lastUiState;
   bool _completionPresented = false;
+  String? _sequenceStartedId;
+  int _sequenceCompletionRevision = 0;
   bool _started = false,
       _preparing = true,
       _preparingIndex = false,
@@ -181,7 +190,12 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
   @override
   void initState() {
     super.initState();
+    widget.sequence?.addListener(_sequenceChanged);
     unawaited(_uiReady.future.catchError((Object _) {}));
+  }
+
+  void _sequenceChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<Uint8List> _fetch(Uri uri) => _bytes
@@ -224,6 +238,10 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
   @override
   void didUpdateWidget(covariant NativeStoryPlayerScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.sequence, widget.sequence)) {
+      oldWidget.sequence?.removeListener(_sequenceChanged);
+      widget.sequence?.addListener(_sequenceChanged);
+    }
     if (oldWidget.storyId != widget.storyId ||
         oldWidget.server != widget.server ||
         !identical(oldWidget.api, widget.api)) {
@@ -571,14 +589,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
           });
         });
         if (!mounted || epoch != _epoch) return;
-        setState(() => _preparingIndex = true);
-        await _seek!.prepareIndex((completed, total) {
-          if (!mounted || epoch != _epoch) return;
-          setState(() {
-            _preparedIndexCommands = completed;
-            _preparationIndexCommands = total;
-          });
-        });
+        await _seek!.seed();
         if (!mounted || epoch != _epoch) return;
         await _player!.prepareInitialMedia();
         if (!mounted || epoch != _epoch) return;
@@ -588,7 +599,14 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
             _preparing = false;
             _preparingIndex = false;
           });
-          if (const bool.fromEnvironment('HANEOKA_NATIVE_STORY_AUTOPLAY')) {
+          if (widget.startAutomatically &&
+              _sequenceStartedId != widget.storyId) {
+            _sequenceStartedId = widget.storyId;
+            _player!.setAutoPlayback(widget.initialAutoAdvance);
+            _start();
+          } else if (const bool.fromEnvironment(
+            'HANEOKA_NATIVE_STORY_AUTOPLAY',
+          )) {
             _player!.setAutoPlayback(true);
             _start();
           }
@@ -2377,6 +2395,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
 
   Future<void> _seekTo(int position, {bool resume = false}) async {
     if (_seekBusy) return;
+    ++_sequenceCompletionRevision;
     final epoch = _epoch;
     await _seekReady;
     if (!mounted || epoch != _epoch || _seek == null) return;
@@ -2460,6 +2479,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
   }
 
   Future<void> _loadPosition() async {
+    ++_sequenceCompletionRevision;
     final envelope = _storedSave, seek = _seek, player = _player;
     if (_seekBusy || envelope == null || seek == null || player == null) return;
     final epoch = _epoch, resume = !player.paused && !player.completed;
@@ -2615,6 +2635,11 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
     final frame = _frameHost!.snapshotForColour(stamp);
     final front = _snapshot();
     final lower = _backgroundImage!;
+    final owner = _colourHost!;
+    final forcePostLutRebuild = !owner.hasWorldPostLut(
+      _viewport!.$1,
+      _viewport!.$2,
+    );
     final snapshot = composeStoryColour(
       lower: lower,
       backgroundClearColor: _world!.cameraClearColor,
@@ -2641,6 +2666,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
                       ) ??
                       _viewport!)
                   .$2,
+              forcePostLutRebuild: forcePostLutRebuild,
             )
           : null,
       width: _viewport!.$1,
@@ -2671,7 +2697,6 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
           ),
       ],
     );
-    final owner = _colourHost!;
     final movie = _player!.media.cues
         .where((c) => c.kind == StoryMediaKind.movie && c.video != null)
         .firstOrNull;
@@ -2749,6 +2774,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
                                   ) ??
                                   _viewport!)
                               .$2,
+                          forcePostLutRebuild: forcePostLutRebuild,
                         )
                       : null,
                   width: _viewport!.$1,
@@ -3007,8 +3033,33 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
         }
       }
       if (player.completed) {
+        final firstCompletion = !_completionPresented;
         _completionPresented = true;
         _ticker.stop();
+        final sequence = widget.sequence;
+        if (firstCompletion && _started && sequence != null) {
+          final id = widget.storyId;
+          final completionRevision = _sequenceCompletionRevision;
+          unawaited(
+            sequence.complete(
+              storyId: id,
+              epoch: epoch,
+              completionRevision: completionRevision,
+              automatic: player.autoPlayback,
+              isCurrent: () =>
+                  mounted &&
+                  epoch == _epoch &&
+                  completionRevision == _sequenceCompletionRevision &&
+                  !_seekBusy &&
+                  _seek?.seeking != true &&
+                  widget.storyId == id &&
+                  identical(sequence, widget.sequence) &&
+                  identical(player, _player) &&
+                  _completionPresented &&
+                  player.completed,
+            ),
+          );
+        }
       } else if (!_started && _uiFrames > 1) {
         _ticker.stop();
       }
@@ -3137,6 +3188,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
 
   @override
   void dispose() {
+    widget.sequence?.removeListener(_sequenceChanged);
     _rendering?.removeListener(_renderQualityChanged);
     _seek?.dispose();
     _logVoice?.dispose();
@@ -3490,6 +3542,17 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
     }
   }
 
+  Future<void> _sequenceAction(Future<void> Function() action) async {
+    try {
+      await action();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    }
+  }
+
   void _toggleUi() {
     if (_seekBusy) return;
     setState(() {
@@ -3544,8 +3607,10 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
   }
 
   Future<void> _openText() async {
+    ++_sequenceCompletionRevision;
     final navigator = Navigator.of(context);
-    if (await navigator.maybePop() || !mounted) return;
+    if (!widget.replaceTextMode && await navigator.maybePop()) return;
+    if (!mounted) return;
     final builder = widget.textModeBuilder;
     if (builder == null) return;
     await navigator.pushReplacement<void, void>(
@@ -3566,7 +3631,10 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
   @override
   Widget build(BuildContext context) => DisplayFrameRateScope(
     targetHz: 60,
-    child: PlayerOrientationScope(landscape: true, child: _buildPlayer(context)),
+    child: PlayerOrientationScope(
+      landscape: true,
+      child: _buildPlayer(context),
+    ),
   );
 
   Widget _buildPlayer(BuildContext context) {
@@ -3663,6 +3731,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
               onToggle: _toggleAuto,
               onScrubStart: () {
                 if (_seekBusy) return;
+                ++_sequenceCompletionRevision;
                 _scrubResume = _started && !player.paused;
                 unawaited(player.pause());
               },
@@ -3860,6 +3929,9 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
                                                 _starting,
                                             enabled: {
                                               'load': _storedSave != null,
+                                              'continuous':
+                                                  widget.sequence?.available ??
+                                                  false,
                                             },
                                             locale: state.locale
                                                 .toLanguageTag(),
@@ -3901,6 +3973,19 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
                                                   unawaited(_settings()),
                                               'replay': () =>
                                                   unawaited(_replay()),
+                                              if (widget.sequence
+                                                  case final sequence?) ...{
+                                                'continuous': () => unawaited(
+                                                  _sequenceAction(
+                                                    sequence.toggleContinuous,
+                                                  ),
+                                                ),
+                                                'interrupt': () => unawaited(
+                                                  _sequenceAction(
+                                                    sequence.interrupt,
+                                                  ),
+                                                ),
+                                              },
                                             },
                                             selected: {
                                               'auto': player.autoPlayback,
@@ -3913,6 +3998,9 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
                                                   )!.fullscreen,
                                               'progress':
                                                   _preferences!.expanded,
+                                              'continuous':
+                                                  widget.sequence?.continuous ??
+                                                  false,
                                             },
                                           ),
                                         if (_preparing ||

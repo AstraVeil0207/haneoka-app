@@ -321,8 +321,7 @@ final class ResourceFileCache {
       if (previous case final validator?) {
         request.headers[HttpHeaders.ifNoneMatchHeader] = validator.etag;
       }
-      final response = await netClient
-          .send(request)
+      final response = await sendFileRequest(request)
           .timeout(_networkIdleTimeout);
       final retained = previous;
       final reuse =
