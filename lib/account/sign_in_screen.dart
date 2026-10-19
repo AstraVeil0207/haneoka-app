@@ -98,6 +98,14 @@ class _SignInScreenState extends State<SignInScreen> {
         'Too many attempts. Try again later.',
       ),
       'invalid_email' => _t('invalidEmail', 'Enter a valid email address.'),
+      'account_not_linked' => _t(
+        'oauthAccountNotLinked',
+        'This sign-in method is not linked. Use your existing sign-in method.',
+      ),
+      'provider_unavailable' => _t(
+        'oauthProviderUnavailable',
+        'The sign-in service is temporarily unavailable. Try again later.',
+      ),
       _ => _t('authFailed', 'Authentication failed.'),
     };
   }

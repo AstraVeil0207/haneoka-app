@@ -3147,6 +3147,8 @@
       "passwordHint": "Use at least 12 characters.",
       "completeChallenge": "Complete the verification challenge.",
       "authFailed": "Authentication failed.",
+      "oauthAccountNotLinked": "This sign-in method is not linked. Use your existing sign-in method.",
+      "oauthProviderUnavailable": "The sign-in service is temporarily unavailable. Try again later.",
       "invalidEmail": "Enter a valid email address.",
       "invalidCredentials": "The email address or password is incorrect.",
       "emailNotVerified": "Verify your email address before signing in.",

@@ -3147,6 +3147,8 @@
       "passwordHint": "12자 이상을 사용하세요.",
       "completeChallenge": "인증 절차를 완료하세요.",
       "authFailed": "인증에 실패했습니다.",
+      "oauthAccountNotLinked": "이 로그인 방식은 연결되어 있지 않습니다. 기존 방식으로 로그인해 주세요.",
+      "oauthProviderUnavailable": "로그인 서비스를 일시적으로 이용할 수 없습니다. 잠시 후 다시 시도해 주세요.",
       "invalidEmail": "올바른 이메일 주소를 입력해 주세요.",
       "invalidCredentials": "이메일 주소 또는 비밀번호가 올바르지 않습니다.",
       "emailNotVerified": "로그인하기 전에 이메일 주소를 인증해 주세요.",

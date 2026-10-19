@@ -3147,6 +3147,8 @@
       "passwordHint": "请使用至少 12 个字符。",
       "completeChallenge": "请完成人机验证。",
       "authFailed": "身份验证失败。",
+      "oauthAccountNotLinked": "此登录方式尚未绑定，请使用原有方式登录。",
+      "oauthProviderUnavailable": "登录服务暂时不可用，请稍后重试。",
       "invalidEmail": "请输入有效的邮箱地址。",
       "invalidCredentials": "邮箱地址或密码不正确。",
       "emailNotVerified": "请先验证邮箱地址再登录。",

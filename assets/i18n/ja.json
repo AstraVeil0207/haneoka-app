@@ -3147,6 +3147,8 @@
       "passwordHint": "12文字以上を使用してください。",
       "completeChallenge": "本人確認を完了してください。",
       "authFailed": "認証に失敗しました。",
+      "oauthAccountNotLinked": "このログイン方法は未連携です。これまでの方法でログインしてください。",
+      "oauthProviderUnavailable": "ログインサービスは一時的に利用できません。しばらくしてから再試行してください。",
       "invalidEmail": "有効なメールアドレスを入力してください。",
       "invalidCredentials": "メールアドレスまたはパスワードが正しくありません。",
       "emailNotVerified": "ログインする前にメールアドレスを確認してください。",
