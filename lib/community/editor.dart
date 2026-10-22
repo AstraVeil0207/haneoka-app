@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
@@ -227,6 +228,8 @@ class MarkupToolbar extends StatelessWidget {
 /// One picked file on its way to becoming an attachment.
 class _Upload {
   _Upload(this.name, this.bytes, this.mediaType);
+  final String idempotencyKey =
+      'app-${base64Url.encode(List<int>.generate(18, (_) => Random.secure().nextInt(256)))}';
   final String name;
   final Uint8List bytes;
   final String mediaType;
@@ -240,7 +243,13 @@ class _Upload {
         'allow',
         'pending',
         'review',
-      }.contains(attachment!['moderationStatus']);
+      }.contains(attachment!['moderationStatus']) &&
+      (jsonMap(attachment!['processing']).isEmpty ||
+          const {
+            'queued',
+            'processing',
+            'ready',
+          }.contains(jsonMap(attachment!['processing'])['state']));
 }
 
 const _mediaTypes = {
@@ -384,6 +393,7 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
       final intent = await communityRequest(
         'POST',
         '/api/v1/community/uploads/intents',
+        headers: {'Idempotency-Key': upload.idempotencyKey},
         body: {
           'fileName': upload.name,
           'mediaType': upload.mediaType,
@@ -438,7 +448,11 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
             ? jsonMap(status['attachment'])
             : status;
         upload.attachment = attachment;
-        if (upload.ready || attachment['status'] == 'failed') break;
+        if (upload.ready ||
+            const {'deleted', 'rejected'}.contains(attachment['status']) ||
+            jsonMap(attachment['processing'])['state'] == 'failed') {
+          break;
+        }
         await Future<void>.delayed(const Duration(seconds: 2));
       }
       if (mounted) {
@@ -497,7 +511,7 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
       );
       return;
     }
-    if (_uploads.any((u) => !u.ready && u.error == null)) return;
+    if (_busy || _uploads.any((upload) => !upload.ready)) return;
     setState(() {
       _busy = true;
       _error = '';
@@ -513,8 +527,7 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
           'tags': tags,
           'forumId': _forumId,
           'attachmentIds': [
-            for (final upload in _uploads)
-              if (upload.ready) upload.attachment!['id'],
+            for (final upload in _uploads) upload.attachment!['id'],
           ],
         },
       );
@@ -674,7 +687,9 @@ class _PostEditorScreenState extends State<PostEditorScreen> {
                   ],
                   const SizedBox(height: 16),
                   FilledButton.icon(
-                    onPressed: _busy ? null : _publish,
+                    onPressed: _busy || _uploads.any((upload) => !upload.ready)
+                        ? null
+                        : _publish,
                     icon: const Icon(Symbols.send_rounded),
                     label: Text(
                       _busy

@@ -27,8 +27,15 @@ Future<Json> communityRequest(
   String method,
   String path, {
   Object? body,
-}) async =>
-    jsonMap(await HaneokaAccount.instance.request(method, path, body: body));
+  Map<String, String> headers = const {},
+}) async => jsonMap(
+  await HaneokaAccount.instance.request(
+    method,
+    path,
+    body: body,
+    headers: headers,
+  ),
+);
 
 String absoluteUrl(String path) =>
     path.startsWith('/') ? '$communityOrigin$path' : path;
