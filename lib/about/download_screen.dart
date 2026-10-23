@@ -37,7 +37,7 @@ class _DownloadScreenState extends State<DownloadScreen> {
     _release ??= _load();
   }
 
-  Future<Map> _load() async => await AppScope.of(context).api.json(
+  Future<Map> _load() async => await AppScope.of(context).api.live(
     'https://api.github.com/repos/haneoka-gakuen/haneoka-app/releases/latest',
   ) as Map;
   Future<void> _download(Map asset) async {
@@ -196,6 +196,13 @@ class _DownloadScreenState extends State<DownloadScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
+                              if (id == 'windows')
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 12),
+                                  child: Chip(
+                                    label: Text(t('windowsArmPackage')),
+                                  ),
+                                ),
                               for (final arch
                                   in id == 'android'
                                       ? ['arm64-v8a', 'x86_64', 'universal']

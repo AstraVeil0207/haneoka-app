@@ -203,8 +203,6 @@ jobs:
         include:
           - arch: x64
             runner: windows-latest
-          - arch: arm64
-            runner: windows-11-arm
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -213,33 +211,16 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ env.RUSTUP_TOOLCHAIN }}
-          targets: x86_64-pc-windows-msvc,aarch64-pc-windows-msvc
+          targets: x86_64-pc-windows-msvc
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - uses: subosito/flutter-action@v2
-        if: matrix.arch == 'x64'
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           architecture: x64
           cache: true
-      - name: Native ARM64 Flutter SDK
-        if: matrix.arch == 'arm64'
-        shell: pwsh
-        run: |
-          if ([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture -ne 'Arm64') {
-            throw 'Use native ARM64 PowerShell to bootstrap the ARM64 Flutter SDK.'
-          }
-          $sdk = Join-Path $env:RUNNER_TEMP 'flutter-native'
-          git clone --depth 1 --branch $env:FLUTTER_VERSION https://github.com/flutter/flutter.git $sdk
-          if ($LASTEXITCODE -ne 0) { throw 'Flutter checkout failed' }
-          & "$sdk/bin/flutter.bat" --version
-          if ($LASTEXITCODE -ne 0) { throw 'Flutter bootstrap failed' }
-          $dartVersion = & "$sdk/bin/cache/dart-sdk/bin/dart.exe" --version 2>&1
-          if ($dartVersion -notmatch 'windows_arm64') { throw 'Native ARM64 Dart SDK is required' }
-          Add-Content $env:GITHUB_ENV "FLUTTER_ROOT=$sdk"
-          Add-Content $env:GITHUB_PATH "$sdk/bin"
       - name: Version
         shell: bash
         run: |
@@ -248,7 +229,6 @@ jobs:
           echo "APP_VERSION=$version" >> "$GITHUB_ENV"
       - run: flutter pub get
       - name: Provision Cubism Core
-        if: matrix.arch == 'x64'
         run: dart run scripts/provision_cubism_core.dart --platform windows --arch x64
       - run: flutter build windows --release --build-name="${{ env.APP_VERSION }}" --build-number="${{ github.run_number }}"
       - name: Bundle Visual C++ runtime
@@ -313,6 +293,49 @@ jobs:
         with:
           name: windows-${{ matrix.arch }}
           path: dist/*
+
+  windows_arm_compatibility:
+    needs: windows
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-x64
+          path: dist
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          architecture: x64
+      - name: Validate native Core on Windows ARM
+        shell: pwsh
+        run: |
+          Expand-Archive dist/haneoka-windows-x64.zip -DestinationPath bundle
+          @'
+          import ctypes, json, os
+          from pathlib import Path
+          process, native = ctypes.c_ushort(), ctypes.c_ushort()
+          kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+          kernel.GetCurrentProcess.restype = ctypes.c_void_p
+          kernel.IsWow64Process2.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ushort), ctypes.POINTER(ctypes.c_ushort)]
+          if not kernel.IsWow64Process2(kernel.GetCurrentProcess(), ctypes.byref(process), ctypes.byref(native)):
+              raise ctypes.WinError(ctypes.get_last_error())
+          if native.value != 0xaa64 or process.value != 0x8664:
+              raise SystemExit('Expected x64 execution on Windows ARM64')
+          root = Path('bundle').resolve()
+          libraries = list(root.rglob('*CubismCore*.dll'))
+          if len(libraries) != 1:
+              raise SystemExit('The complete Windows package must include one Cubism Core')
+          with os.add_dll_directory(str(root)), os.add_dll_directory(str(libraries[0].parent)):
+              core = ctypes.CDLL(str(libraries[0]))
+              for name in ['csmReviveMocInPlace', 'csmInitializeModelInPlace', 'csmUpdateModel', 'csmGetParameterValues', 'csmGetDrawableVertexPositions']:
+                  getattr(core, name)
+              core.csmGetVersion.restype = ctypes.c_uint32
+              version = core.csmGetVersion()
+              if not version:
+                  raise SystemExit('Cubism Core returned no version')
+          print(json.dumps({'host': 'windows_arm64', 'package': 'windows_x64', 'coreVersion': version}))
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw 'Windows ARM Core execution failed' }
 
   apple:
     if: github.event_name != 'workflow_dispatch' || github.event.inputs.platform == 'all' || github.event.inputs.platform == 'apple' || github.event.inputs.platform == 'macos' || github.event.inputs.platform == 'ios'
@@ -391,7 +414,7 @@ jobs:
           path: dist/*
 
   release:
-    needs: [android, linux, windows, apple]
+    needs: [android, linux, windows, windows_arm_compatibility, apple]
     if: always() && !(github.event_name == 'workflow_dispatch' && inputs.only_arm64) && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
     steps:

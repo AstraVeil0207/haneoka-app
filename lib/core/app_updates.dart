@@ -230,9 +230,9 @@ class AppUpdates extends ChangeNotifier {
         'haneoka-linux-$arch.tar.gz',
       ],
       'windows' when arch != null => [
-        'haneoka-windows-$arch-setup.exe',
-        'haneoka-windows-$arch.msi',
-        'haneoka-windows-$arch.zip',
+        'haneoka-windows-x64-setup.exe',
+        'haneoka-windows-x64.msi',
+        'haneoka-windows-x64.zip',
       ],
       'macos' => [
         if (arch != null) ...[

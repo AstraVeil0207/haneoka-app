@@ -130,7 +130,7 @@ Future<void> main(List<String> arguments) async {
     'linux' => 'Core/dll/linux/x86_64/libLive2DCubismCore.so',
     'windows' when arch == 'arm64' => throw StateError(
       'Cubism Native R5 has no desktop Windows ARM64 Core; '
-      'keep the existing text story view on this target.',
+      'use the complete Windows x64 package on Windows 11 ARM64.',
     ),
     'windows' when arch == 'x86' => 'Core/dll/windows/x86/Live2DCubismCore.dll',
     'windows' => 'Core/dll/windows/x86_64/Live2DCubismCore.dll',
@@ -142,6 +142,21 @@ Future<void> main(List<String> arguments) async {
   final core = File('${sdk.path}/$requiredCore');
   if (!await core.exists()) {
     throw StateError('Pinned SDK misses $requiredCore');
+  }
+  final hostArch = switch (Abi.current()) {
+    Abi.linuxArm64 || Abi.macosArm64 || Abi.windowsArm64 => 'arm64',
+    Abi.windowsIA32 => 'x86',
+    _ => 'x64',
+  };
+  int? coreVersion;
+  if (platform == Platform.operatingSystem &&
+      arch == hostArch &&
+      platform != 'android') {
+    final library = DynamicLibrary.open(core.path);
+    coreVersion = library.lookupFunction<Uint32 Function(), int Function()>(
+      'csmGetVersion',
+    )();
+    if (coreVersion == 0) throw StateError('Cubism Core returned no version');
   }
   final result = await Process.start(Platform.resolvedExecutable, [
     provision.path,
@@ -161,6 +176,7 @@ Future<void> main(List<String> arguments) async {
       'platform': platform,
       'arch': arch,
       'coreSha256': (await sha256.bind(core.openRead()).first).toString(),
+      'coreVersion': coreVersion,
       'extracted': extracted,
     }),
   );

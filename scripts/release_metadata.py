@@ -71,10 +71,13 @@ def main():
                                    'Scope': 'user', 'InstallerUrl': base + files[name].name,
                                    'InstallerSha256': hashes[name].upper()})
     if architectures:
+        if '64bit' in architectures and 'arm64' not in architectures:
+            architectures['arm64'] = dict(architectures['64bit'])
         scoop = {'version': args.version, 'description': 'Our Notes catalogue and save reader',
                  'homepage': 'https://haneoka.org', 'license': 'MPL-2.0', 'architecture': architectures,
                  'shortcuts': [['haneoka.exe', 'Haneoka']],
-                 'checkver': {'github': f'https://github.com/{args.repository}'}}
+                 'checkver': {'github': f'https://github.com/{args.repository}'},
+                 'notes': 'Windows 11 on ARM uses the complete x64 package.'}
         (folder / 'scoop-haneoka.json').write_text(json.dumps(scoop, indent=2) + '\n')
     if installers:
         manifest = {'PackageIdentifier': 'Haneoka.Haneoka', 'PackageVersion': args.version,
@@ -108,6 +111,12 @@ def main():
         ET.SubElement(settings, f'{{{namespace}}}OnLaunch', HoursBetweenUpdateChecks='24', ShowPrompt='true', UpdateBlocksActivation='false')
         ET.SubElement(settings, f'{{{namespace}}}AutomaticBackgroundTask')
         ET.ElementTree(installer).write(folder / f'haneoka-windows-{arch}.appinstaller', encoding='utf-8', xml_declaration=True)
+    # Existing ARM update feeds migrate to the complete x64 package.
+    x64_installer = folder / 'haneoka-windows-x64.appinstaller'
+    if x64_installer.exists() and not (folder / 'haneoka-windows-arm64.appinstaller').exists():
+        tree = ET.parse(x64_installer)
+        tree.getroot().set('Uri', stable + 'haneoka-windows-arm64.appinstaller')
+        tree.write(folder / 'haneoka-windows-arm64.appinstaller', encoding='utf-8', xml_declaration=True)
     mac_arm = 'haneoka-macos-arm64.dmg'
     mac_intel = 'haneoka-macos-x64.dmg'
     if mac_arm in files and mac_intel in files:
