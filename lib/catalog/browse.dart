@@ -196,6 +196,7 @@ class BrowseScreen extends StatefulWidget {
     this.onRetry,
     this.rail,
     this.heading,
+    this.marks,
     this.switches = const [],
     this.queryEngine,
     this.sourcePath,
@@ -215,6 +216,7 @@ class BrowseScreen extends StatefulWidget {
 
   /// What the rail has selected, named (`BrowseHeading`).
   final Widget? heading;
+  final Widget? marks;
 
   /// Null while the collection loads.
   final List<Entry>? items;
@@ -357,7 +359,14 @@ class _BrowseScreenState extends State<BrowseScreen> {
   ) {
     return ShellPage(
       title: widget.title,
-      marks: _appliedCount == 0 ? null : _crumbs(context),
+      marks: widget.marks == null
+          ? (_appliedCount == 0 ? null : _crumbs(context))
+          : Row(
+              children: [
+                Flexible(child: widget.marks!),
+                if (_appliedCount > 0) Flexible(child: _crumbs(context)),
+              ],
+            ),
       search:
           widget.search ??
           ShellSearch(

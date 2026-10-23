@@ -228,6 +228,71 @@ class _AdminScreenState extends State<AdminScreen> {
     );
   }
 
+  String _filterLabel(String key) {
+    if (key.startsWith('geo') || key.startsWith('visited')) {
+      return t('analytics.filters.$key');
+    }
+    return key == 'forumId'
+        ? t('sections.forums')
+        : t(
+            'columns.${switch (key) {
+              'moderationStatus' => 'moderation',
+              'authorId' => 'author',
+              _ => key,
+            }}',
+          );
+  }
+
+  Widget? _filterMarks() {
+    final filters = c.query.entries
+        .where(
+          (entry) => const {
+            'role',
+            'status',
+            'moderationStatus',
+            'authorId',
+            'forumId',
+            'geoCountry',
+            'geoRegion',
+            'geoCity',
+            'geoCountryUnknown',
+            'geoRegionUnknown',
+            'geoCityUnknown',
+            'geoLat',
+            'geoLng',
+            'geoCoordinates',
+            'visitedFrom',
+            'visitedTo',
+          }.contains(entry.key),
+        )
+        .toList();
+    if (filters.isEmpty) return null;
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final entry in filters)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: InputChip(
+                label: Text(
+                  '${_filterLabel(entry.key)} · ${entry.key.startsWith('visited') ? _date(entry.value) : _value(entry.value)}',
+                ),
+                onDeleted: () {
+                  final next = {...c.query}..remove(entry.key);
+                  if (entry.key == 'geoLat' || entry.key == 'geoLng') {
+                    next.remove('geoLat');
+                    next.remove('geoLng');
+                  }
+                  unawaited(c.select(c.section, filters: next));
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Future<bool> _confirm(String title) async =>
       await showDialog<bool>(
         context: context,
@@ -956,6 +1021,7 @@ class _AdminScreenState extends State<AdminScreen> {
     }
     return BrowseScreen(
       title: t('sections.${c.section}'),
+      marks: _filterMarks(),
       heading: c.section == 'operations'
           ? AdminResources(key: ValueKey(c.ownerGeneration), controller: c)
           : null,

@@ -226,7 +226,7 @@ class AdminController extends ChangeNotifier {
     String value, {
     Map<String, String> filters = const {},
   }) async {
-    if (section == value && filters.isEmpty) return;
+    if (section == value && filters.isEmpty && query.isEmpty) return;
     if (onNavigate case final navigate?) {
       navigate(
         Uri(
