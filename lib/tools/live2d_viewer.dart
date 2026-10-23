@@ -53,7 +53,9 @@ class _NativeLive2DViewerState extends State<NativeLive2DViewer>
     _last = time;
     _model?.advance(delta.clamp(0, .1));
     final model = _model;
-    if (_posePreview && model != null && (model.duration <= 0 || model.position.value >= model.duration)) {
+    if (_posePreview &&
+        model != null &&
+        (model.duration <= 0 || model.position.value >= model.duration)) {
       _posePreview = false;
       model.applyPose(model.pose());
       _syncTicker();
@@ -88,7 +90,8 @@ class _NativeLive2DViewerState extends State<NativeLive2DViewer>
     final active =
         !_closed &&
         TickerMode.valuesOf(context).enabled &&
-        (_model?.playing ?? false) && !(_model?.manual ?? true);
+        (_model?.playing ?? false) &&
+        !(_model?.manual ?? true);
     if (active && !_ticker.isActive) {
       _last = null;
       _ticker.start();
@@ -202,6 +205,7 @@ class _NativeLive2DViewerState extends State<NativeLive2DViewer>
       _posePreview = false;
       _parameterMode = mode;
       if (mode == 'pose') {
+        _ticker.stop();
         model.loop = false;
         model.applyPose(model.pose());
       } else {
@@ -234,6 +238,7 @@ class _NativeLive2DViewerState extends State<NativeLive2DViewer>
   }
 
   void _applyPose(String id) {
+    _ticker.stop();
     setState(() {
       _pose = id;
       _parameterMode = 'pose';
@@ -302,6 +307,7 @@ class _NativeLive2DViewerState extends State<NativeLive2DViewer>
     final document = jsonDecode(utf8.decode(bytes)) as Map;
     if (!mounted || !identical(model, _model)) return;
     model.applyPose(document);
+    _ticker.stop();
     setState(() {
       _parameterMode = 'pose';
       _pose = '';
@@ -310,14 +316,17 @@ class _NativeLive2DViewerState extends State<NativeLive2DViewer>
 
   Future<void> _capture() async {
     final model = _model!, viewport = _transform.viewport;
-    final resume = _ticker.isActive, ratio = MediaQuery.devicePixelRatioOf(context);
+    final resume = _ticker.isActive,
+        ratio = MediaQuery.devicePixelRatioOf(context);
     _ticker.stop();
     try {
       model.configure(viewport, modelCaptureRatio(viewport));
       await model.render();
       if (!mounted || !identical(_model, model)) return;
       final bytes = await captureModelPng(_captureKey);
-      if (mounted && identical(_model, model)) await saveModelFile('${widget.id}.png', bytes);
+      if (mounted && identical(_model, model)) {
+        await saveModelFile('${widget.id}.png', bytes);
+      }
     } finally {
       if (mounted && identical(_model, model)) {
         model.configure(viewport, ratio);
@@ -332,15 +341,24 @@ class _NativeLive2DViewerState extends State<NativeLive2DViewer>
     final t = AppScope.of(context).text, model = _model;
     String label(String key) => t('media.models.labels.$key');
     return ShellPage(
-      title: [model?.detail['title'], model?.detail['live2dName'], model?.detail['characterName'], widget.title]
-          .map(t.text).where((value) => value.isNotEmpty).first,
-      search: _parametersExpanded ? ShellSearch(
-        label: t('common.actions.search'),
-        initial: _parameterQuery,
-        onChanged: (value) => setState(() => _parameterQuery = value.toLowerCase()),
-      ) : null,
-      status: SizedBox.square(dimension: 24,
-        child: _busy ? const CircularProgressIndicator(strokeWidth: 2) : null),
+      title: [
+        model?.detail['title'],
+        model?.detail['live2dName'],
+        model?.detail['characterName'],
+        widget.title,
+      ].map(t.text).where((value) => value.isNotEmpty).first,
+      search: _parametersExpanded
+          ? ShellSearch(
+              label: t('common.actions.search'),
+              initial: _parameterQuery,
+              onChanged: (value) =>
+                  setState(() => _parameterQuery = value.toLowerCase()),
+            )
+          : null,
+      status: SizedBox.square(
+        dimension: 24,
+        child: _busy ? const CircularProgressIndicator(strokeWidth: 2) : null,
+      ),
       actions: [
         BarAction(
           icon: _fullscreen
@@ -356,9 +374,7 @@ class _NativeLive2DViewerState extends State<NativeLive2DViewer>
         BarAction(
           icon: Symbols.photo_camera_rounded,
           label: label('screenshot'),
-          onPressed: model == null || _busy
-              ? null
-              : () => _action(_capture),
+          onPressed: model == null || _busy ? null : () => _action(_capture),
         ),
         BarAction(
           icon: Symbols.download_rounded,
@@ -561,7 +577,8 @@ class _NativeLive2DViewerState extends State<NativeLive2DViewer>
                       DetailFold(
                         title: label('parameters'),
                         open: _parametersExpanded,
-                        onExpansionChanged: (value) => setState(() => _parametersExpanded = value),
+                        onExpansionChanged: (value) =>
+                            setState(() => _parametersExpanded = value),
                         meta: '${model.host.model.parameters.length}',
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -677,19 +694,32 @@ class _NativeLive2DViewerState extends State<NativeLive2DViewer>
                               ],
                             ),
                             if (_parametersExpanded)
-                              ValueListenableBuilder<Map<String,double>>(valueListenable: model.parameters,
-                                builder: (context, values, _) => Column(children: [
-                                  for (final entry in model.host.model.parameters.entries)
-                                    if (entry.key.toLowerCase().contains(_parameterQuery))
-                                      _parameter(model, entry.key, entry.value, values),
-                                ])),
+                              ValueListenableBuilder<Map<String, double>>(
+                                valueListenable: model.parameters,
+                                builder: (context, values, _) => Column(
+                                  children: [
+                                    for (final entry
+                                        in model.host.model.parameters.entries)
+                                      if (entry.key.toLowerCase().contains(
+                                        _parameterQuery,
+                                      ))
+                                        _parameter(
+                                          model,
+                                          entry.key,
+                                          entry.value,
+                                          values,
+                                        ),
+                                  ],
+                                ),
+                              ),
                           ],
                         ),
                       ),
                       DetailFold(
                         title: label('partsVisibility'),
                         open: _partsExpanded,
-                        onExpansionChanged: (value) => setState(() => _partsExpanded = value),
+                        onExpansionChanged: (value) =>
+                            setState(() => _partsExpanded = value),
                         meta: '${model.host.model.parts.length}',
                         child: Column(
                           children: [
@@ -741,11 +771,17 @@ class _NativeLive2DViewerState extends State<NativeLive2DViewer>
     );
   }
 
-  Widget _parameter(NativeLive2DModel model, String id, int index, Map<String,double> values) {
+  Widget _parameter(
+    NativeLive2DModel model,
+    String id,
+    int index,
+    Map<String, double> values,
+  ) {
     final t = AppScope.of(context).text;
     final minimum = model.host.parameters.minimum[index],
         maximum = model.host.parameters.maximum[index];
-    final value = model.locked[id] ?? values[id] ?? model.host.parameters.values[index];
+    final value =
+        model.locked[id] ?? values[id] ?? model.host.parameters.values[index];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -759,7 +795,10 @@ class _NativeLive2DViewerState extends State<NativeLive2DViewer>
               onPressed: _parameterMode != 'pose'
                   ? null
                   : () => setState(() {
-                      model.setParameter(id, model.host.parameters.defaults[index]);
+                      model.setParameter(
+                        id,
+                        model.host.parameters.defaults[index],
+                      );
                     }),
             ),
           ],
