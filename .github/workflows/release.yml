@@ -9,7 +9,11 @@ on:
         description: Platform to build
         type: choice
         default: all
-        options: [all, android, linux, windows, apple, macos, ios]
+        options: [all, android, linux, windows, windows-compatibility, apple, macos, ios]
+      artifact_run:
+        description: Existing run supplying the Windows compatibility package
+        type: string
+        default: ""
       only_arm64:
         description: Build only the ARM64 installation-test APK
         type: boolean
@@ -17,6 +21,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 env:
   FLUTTER_VERSION: 3.47.7
@@ -296,12 +301,15 @@ jobs:
 
   windows_arm_compatibility:
     needs: windows
+    if: ${{ !cancelled() && (needs.windows.result == 'success' || inputs.platform == 'windows-compatibility') }}
     runs-on: windows-11-arm
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: windows-x64
           path: dist
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.artifact_run || github.run_id }}
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
@@ -311,7 +319,7 @@ jobs:
         run: |
           Expand-Archive dist/haneoka-windows-x64.zip -DestinationPath bundle
           @'
-          import ctypes, json, os
+          import ctypes, json, os, struct, sys
           from pathlib import Path
           process, native = ctypes.c_ushort(), ctypes.c_ushort()
           kernel = ctypes.WinDLL('kernel32', use_last_error=True)
@@ -319,12 +327,24 @@ jobs:
           kernel.IsWow64Process2.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ushort), ctypes.POINTER(ctypes.c_ushort)]
           if not kernel.IsWow64Process2(kernel.GetCurrentProcess(), ctypes.byref(process), ctypes.byref(native)):
               raise ctypes.WinError(ctypes.get_last_error())
-          if native.value != 0xaa64 or process.value != 0x8664:
-              raise SystemExit('Expected x64 execution on Windows ARM64')
+          if os.environ['RUNNER_ARCH'].upper() != 'ARM64':
+              raise SystemExit('Expected a Windows ARM64 runner')
+          def machine(path):
+              with path.open('rb') as file:
+                  header = file.read(64)
+                  file.seek(struct.unpack_from('<I', header, 60)[0])
+                  signature = file.read(6)
+              if signature[:4] != b'PE\0\0':
+                  raise SystemExit('Expected a PE binary')
+              return struct.unpack_from('<H', signature, 4)[0]
+          if machine(Path(sys.executable)) != 0x8664:
+              raise SystemExit('Expected the x64 Python executable')
           root = Path('bundle').resolve()
           libraries = list(root.rglob('*CubismCore*.dll'))
           if len(libraries) != 1:
               raise SystemExit('The complete Windows package must include one Cubism Core')
+          if machine(libraries[0]) != 0x8664 or machine(root / 'haneoka.exe') != 0x8664:
+              raise SystemExit('Expected the complete x64 application and Core')
           with os.add_dll_directory(str(root)), os.add_dll_directory(str(libraries[0].parent)):
               core = ctypes.CDLL(str(libraries[0]))
               for name in ['csmReviveMocInPlace', 'csmInitializeModelInPlace', 'csmUpdateModel', 'csmGetParameterValues', 'csmGetDrawableVertexPositions']:
@@ -333,7 +353,8 @@ jobs:
               version = core.csmGetVersion()
               if not version:
                   raise SystemExit('Cubism Core returned no version')
-          print(json.dumps({'host': 'windows_arm64', 'package': 'windows_x64', 'coreVersion': version}))
+          print(json.dumps({'host': 'windows_arm64', 'package': 'windows_x64', 'coreVersion': version,
+                            'processMachine': hex(process.value), 'nativeMachine': hex(native.value)}))
           '@ | python -
           if ($LASTEXITCODE -ne 0) { throw 'Windows ARM Core execution failed' }
 
@@ -415,7 +436,7 @@ jobs:
 
   release:
     needs: [android, linux, windows, windows_arm_compatibility, apple]
-    if: always() && !(github.event_name == 'workflow_dispatch' && inputs.only_arm64) && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    if: always() && !(github.event_name == 'workflow_dispatch' && (inputs.only_arm64 || inputs.platform == 'windows-compatibility')) && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
