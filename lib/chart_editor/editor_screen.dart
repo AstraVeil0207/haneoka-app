@@ -26,6 +26,7 @@ import 'project.dart';
 import 'publication.dart';
 import 'usc.dart';
 import 'native_compile.dart';
+import 'diagnostics.dart';
 
 class ChartEditorScreen extends StatefulWidget {
   const ChartEditorScreen({super.key, this.initialQuery = const {}});
@@ -161,6 +162,59 @@ class _ChartEditorScreenState extends State<ChartEditorScreen> {
   Future<void> _export(String format) async {
     await c.audio.pause();
     final captured = c.history.value;
+    if (format != 'backup') {
+      final check = validateChartExport(captured, format);
+      if (check.errors.isNotEmpty || check.warnings.isNotEmpty) {
+        if (!mounted) return;
+        final issues = [...check.errors, ...check.warnings];
+        final accepted = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(
+              '${t('creation.export_chart')} · ${format.toUpperCase()}',
+            ),
+            content: SizedBox(
+              width: 560,
+              height: math.min(360, issues.length * 96).toDouble(),
+              child: ListView.builder(
+                itemCount: issues.length,
+                itemBuilder: (context, index) {
+                  final issue = issues[index];
+                  final label = t(
+                    'creation.export_${issue.code.split('.').last}',
+                  );
+                  return ListTile(
+                    leading: Icon(
+                      issue.warning
+                          ? Symbols.warning_rounded
+                          : Symbols.error_rounded,
+                    ),
+                    title: Text(
+                      label.isEmpty ? t('creation.invalid_edit') : label,
+                    ),
+                    subtitle: SelectableText(issue.path),
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: Text(AppScope.of(context).text('common.actions.cancel')),
+              ),
+              if (check.errors.isEmpty)
+                FilledButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  child: Text(
+                    AppScope.of(context).text('common.actions.export'),
+                  ),
+                ),
+            ],
+          ),
+        );
+        if (accepted != true || !mounted) return;
+      }
+    }
     final name = '${captured.meta['title']}'.trim().replaceAll(
       RegExp(r'[\\/:*?"<>|\x00-\x1f]'),
       '_',

@@ -3,6 +3,7 @@ import '../rendering/visual_profiles.dart';
 import 'editing.dart';
 import 'formats.dart';
 import 'project.dart';
+import 'diagnostics.dart';
 
 typedef NativeEditorCompilation = ({
   RuntimeChart chart,
@@ -10,6 +11,8 @@ typedef NativeEditorCompilation = ({
 });
 
 NativeEditorCompilation compileNativeEditorChart(ChartProject project) {
+  final check = validateChartExport(project, 'ss');
+  if (check.errors.isNotEmpty) throw ChartProjectError(check.errors);
   final root = projectToSs(project),
       rows = ((root['score'] as Map)['notes'] as List).cast<Map>();
   final collections = chartCollections(project),
