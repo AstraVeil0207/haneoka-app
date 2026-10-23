@@ -433,6 +433,7 @@ class EngineRequest {
     this.cutoff,
     this.seedOnly = false,
     this.seeded = false,
+    this.rewardPhase,
   });
   factory EngineRequest.fromJson(Map<String, Object?> json) => EngineRequest(
     members: [
@@ -483,6 +484,9 @@ class EngineRequest {
         : null,
     seedOnly: json['seedOnly'] == true,
     seeded: json['seeded'] == true,
+    rewardPhase: json['rewardPhase'] is Map
+        ? objectRow(json['rewardPhase'])
+        : null,
   );
 
   /// Other songs' Top-K key. Only a pt-only k=1 request may prove this song
@@ -515,6 +519,7 @@ class EngineRequest {
   final RewardCutoff? cutoff;
   final bool seedOnly;
   final bool seeded;
+  final Doc? rewardPhase;
 
   /// The same request for one shard, a time limit, other floors or songs.
   EngineRequest copyWith({
@@ -532,6 +537,7 @@ class EngineRequest {
     RewardCutoff? cutoff,
     bool? seedOnly,
     bool? seeded,
+    Doc? rewardPhase,
   }) => EngineRequest(
     members: members,
     snaps: snaps,
@@ -553,6 +559,7 @@ class EngineRequest {
     cutoff: cutoff ?? this.cutoff,
     seedOnly: seedOnly ?? this.seedOnly,
     seeded: seeded ?? this.seeded,
+    rewardPhase: rewardPhase ?? this.rewardPhase,
   );
 
   EngineRequest withGoal(
@@ -589,6 +596,7 @@ class EngineRequest {
     if (cutoff != null) 'cutoff': cutoff!.toJson(),
     'seedOnly': seedOnly,
     'seeded': seeded,
+    if (rewardPhase != null) 'rewardPhase': rewardPhase,
     'noFloor': noFloor,
     if (rewardCutoff != null) 'rewardCutoff': rewardCutoff,
     'shard': shard == null
@@ -608,6 +616,7 @@ class HitScore {
     required this.bestOrder,
     required this.orders,
     required this.ranks,
+    this.rangeScores,
   });
   factory HitScore.fromJson(Map<String, Object?> json) => HitScore(
     mean: numOf(json['mean']),
@@ -621,6 +630,7 @@ class HitScore {
       for (final key in json['bestOrder'] as List? ?? const []) '$key',
     ],
     orders: intListOf(json['orders']),
+    rangeScores: (json['rangeScores'] as List?)?.map(numOf).toList(),
     ranks: {
       for (final entry in objectRow(json['ranks']).entries)
         int.parse(entry.key): intOf(entry.value),
@@ -638,6 +648,7 @@ class HitScore {
   /// Score of every skill order, indexed like [orders].
   final List<int> orders;
   final Map<int, int> ranks;
+  final List<double>? rangeScores;
   Map<String, Object?> toJson() => {
     'mean': mean,
     'min': min,
@@ -646,6 +657,7 @@ class HitScore {
     'worstOrder': worstOrder,
     'bestOrder': bestOrder,
     'orders': orders,
+    'rangeScores': ?rangeScores,
     'ranks': {for (final e in ranks.entries) '${e.key}': e.value},
   };
 }
@@ -662,6 +674,7 @@ class HitEvent {
     this.orders,
     this.directMean,
     this.convertedMean,
+    this.otherMean,
   });
   factory HitEvent.fromJson(Map<String, Object?> json) => HitEvent(
     mean: numOf(json['mean']),
@@ -674,6 +687,7 @@ class HitEvent {
     orders: (json['orders'] as num?)?.toInt(),
     directMean: (json['directMean'] as num?)?.toDouble(),
     convertedMean: (json['convertedMean'] as num?)?.toDouble(),
+    otherMean: (json['otherMean'] as num?)?.toDouble(),
   );
 
   /// Exact order sums of the strict trial; mean includes CP conversion.
@@ -682,6 +696,7 @@ class HitEvent {
   final int? orders;
   final double? directMean;
   final double? convertedMean;
+  final double? otherMean;
   final double mean;
   final double bonusPercent;
   final double challengePoints;
@@ -698,6 +713,7 @@ class HitEvent {
     'orders': ?orders,
     'directMean': ?directMean,
     'convertedMean': ?convertedMean,
+    'otherMean': ?otherMean,
   };
 }
 
@@ -725,6 +741,7 @@ class EngineHit {
             ? HitScore.fromJson(objectRow(json['score']))
             : null
         ..skipScore = (json['skipScore'] as num?)?.toInt()
+        ..comboBonus = (json['comboBonus'] as num?)?.toInt()
         ..event = json['event'] is Map
             ? HitEvent.fromJson(objectRow(json['event']))
             : null
@@ -745,6 +762,7 @@ class EngineHit {
   final double key;
   HitScore? score;
   int? skipScore;
+  int? comboBonus;
   HitEvent? event;
   PotentialDetail? potential;
   Map<String, Object?>? gekiso;
@@ -756,6 +774,7 @@ class EngineHit {
     'power': power,
     'slotPowers': slotPowers,
     'key': key,
+    'comboBonus': ?comboBonus,
     'score': score?.toJson(),
     'skipScore': skipScore,
     'event': event?.toJson(),
@@ -776,6 +795,7 @@ class SongResult {
     this.excludedBelow,
     this.floor,
     this.exclusion,
+    this.rewardPhase,
   });
   factory SongResult.fromJson(Map<String, Object?> json) => SongResult(
     song: json['song'] is Map
@@ -786,6 +806,7 @@ class SongResult {
         EngineHit.fromJson(objectRow(hit)),
     ],
     proven: json['proven'] == true,
+    rewardPhase: json['rewardPhase'] as String?,
     bound: (json['bound'] as num?)?.toDouble(),
     stats: SearchStats.fromJson(objectRow(json['stats'])),
     floor: (json['floor'] as num?)?.toDouble(),
@@ -797,6 +818,7 @@ class SongResult {
   final SongRef? song;
   List<EngineHit> hits;
   bool proven;
+  final String? rewardPhase;
   double? bound;
   final SearchStats stats;
 
@@ -810,6 +832,7 @@ class SongResult {
   Map<String, Object?> toJson() => {
     'song': song?.toJson(),
     'proven': proven,
+    if (rewardPhase != null) 'rewardPhase': rewardPhase,
     'bound': bound?.isFinite == true ? bound : null,
     'exclusion': exclusion?.toJson(),
     'excludedBelow': ?excludedBelow,
@@ -1225,9 +1248,11 @@ double _rewardMean(Object? detail) => switch (detail) {
   _ => 0,
 };
 
-/// Higher key first; equal keys prefer the higher mean score.
+/// Higher key first, then the other reward, then mean score.
 int compareHits(EngineHit a, EngineHit b) {
   var d = b.key.compareTo(a.key);
+  if (d != 0) return d;
+  d = (b.event?.otherMean ?? 0).compareTo(a.event?.otherMean ?? 0);
   if (d != 0) return d;
   d = (b.score?.mean ?? 0).compareTo(a.score?.mean ?? 0);
   if (d != 0) return d;
