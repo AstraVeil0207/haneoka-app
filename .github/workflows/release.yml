@@ -311,6 +311,7 @@ jobs:
           github-token: ${{ github.token }}
           run-id: ${{ inputs.artifact_run || github.run_id }}
       - uses: actions/setup-python@v6
+        id: python_x64
         with:
           python-version: "3.12"
           architecture: x64
@@ -355,7 +356,7 @@ jobs:
                   raise SystemExit('Cubism Core returned no version')
           print(json.dumps({'host': 'windows_arm64', 'package': 'windows_x64', 'coreVersion': version,
                             'processMachine': hex(process.value), 'nativeMachine': hex(native.value)}))
-          '@ | python -
+          '@ | & "${{ steps.python_x64.outputs.python-path }}" -
           if ($LASTEXITCODE -ne 0) { throw 'Windows ARM Core execution failed' }
 
   apple:
