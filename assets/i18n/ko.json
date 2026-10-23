@@ -3235,7 +3235,7 @@
         "export_midpointFlickUnsupported": "중간 플릭이 슬라이드 중간 노트로 변환됩니다",
         "export_guideJudgementsUnsupported": "가이드 연결점의 판정이 제외됩니다",
         "export_nonEndFlickUnsupported": "슬라이드 끝점만 플릭 방향을 유지합니다",
-        "export_alphaReserved": "원본 투명도 설정을 유지합니다",
+        "export_alphaReserved": "미리 보기에서 투명도 애니메이션 없음",
         "export_eventBudget": "타이밍 항목은 최대 4096개",
         "export_eventObject": "잘못된 타이밍 항목",
         "export_bpm": "BPM은 0 초과 10000 이하",

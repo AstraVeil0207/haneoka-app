@@ -3235,7 +3235,7 @@
         "export_midpointFlickUnsupported": "中間滑動音符轉換為連接音符",
         "export_guideJudgementsUnsupported": "不包含引導線節點的判定",
         "export_nonEndFlickUnsupported": "僅滑條終點保留滑動方向",
-        "export_alphaReserved": "保留來源透明度設定",
+        "export_alphaReserved": "預覽不套用透明度動畫",
         "export_eventBudget": "時間點不能超過4096個",
         "export_eventObject": "時間點格式無效",
         "export_bpm": "BPM必須大於0且不超過10000",

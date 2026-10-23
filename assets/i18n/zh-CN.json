@@ -3235,7 +3235,7 @@
         "export_midpointFlickUnsupported": "中间划键转换为连接音符",
         "export_guideJudgementsUnsupported": "不包含引导线节点的判定",
         "export_nonEndFlickUnsupported": "仅滑条终点保留划动方向",
-        "export_alphaReserved": "保留来源透明度设置",
+        "export_alphaReserved": "预览不应用透明度动画",
         "export_eventBudget": "时间点不能超过4096个",
         "export_eventObject": "时间点格式无效",
         "export_bpm": "BPM必须大于0且不超过10000",

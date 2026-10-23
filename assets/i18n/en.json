@@ -3235,7 +3235,7 @@
         "export_midpointFlickUnsupported": "Interior flicks become slide ticks",
         "export_guideJudgementsUnsupported": "Guide point judgements are omitted",
         "export_nonEndFlickUnsupported": "Only slide tails retain flick direction",
-        "export_alphaReserved": "Source transparency is retained",
+        "export_alphaReserved": "Transparency animation is not previewed",
         "export_eventBudget": "At most 4096 timing entries",
         "export_eventObject": "Invalid timing entry",
         "export_bpm": "BPM must exceed 0 and be at most 10000",
