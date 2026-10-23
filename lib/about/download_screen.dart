@@ -199,8 +199,12 @@ class _DownloadScreenState extends State<DownloadScreen> {
                               if (id == 'windows')
                                 Padding(
                                   padding: const EdgeInsets.only(bottom: 12),
-                                  child: Chip(
+                                  child: ActionChip(
                                     label: Text(t('windowsArmPackage')),
+                                    onPressed: () => openLink(
+                                      context,
+                                      'https://learn.microsoft.com/windows/arm/apps-on-arm-x86-emulation',
+                                    ),
                                   ),
                                 ),
                               for (final arch
