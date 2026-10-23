@@ -46,6 +46,7 @@ class AdminController extends ChangeNotifier {
       (_account.user?['id'], _account.authorization['Authorization']);
   String section;
   final Map<String, String> query;
+  ValueChanged<String>? onNavigate;
   ChartMap staff = {}, document = {};
   List<ChartMap> servers = [], forums = [], groups = [];
   ChartMap? readyPackage;
@@ -65,6 +66,12 @@ class AdminController extends ChangeNotifier {
       section == 'posts' && contentKind != 'posts' ? 'creations' : section;
   List<ChartMap> get records => chartRows(document[recordsKey] ?? const []);
   void selectContent(String kind) {
+    if (onNavigate case final navigate?) {
+      navigate(
+        Uri(path: '/admin/posts', queryParameters: {'kind': kind}).toString(),
+      );
+      return;
+    }
     query['kind'] = kind;
     for (final key in ['status', 'moderationStatus', 'forumId', 'cursor']) {
       query.remove(key);
@@ -220,6 +227,15 @@ class AdminController extends ChangeNotifier {
     Map<String, String> filters = const {},
   }) async {
     if (section == value && filters.isEmpty) return;
+    if (onNavigate case final navigate?) {
+      navigate(
+        Uri(
+          path: '/admin/$value',
+          queryParameters: filters.isEmpty ? null : filters,
+        ).toString(),
+      );
+      return;
+    }
     section = value;
     document = {};
     query

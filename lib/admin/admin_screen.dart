@@ -47,6 +47,12 @@ class _AdminScreenState extends State<AdminScreen> {
     unawaited(c.load());
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    c.onNavigate = ShellScope.of(context)?.navigate;
+  }
+
   void _changed() {
     if (!mounted) return;
     setState(() {});

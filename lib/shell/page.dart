@@ -136,6 +136,7 @@ class ShellPage extends StatefulWidget {
 
 class _ShellPageState extends State<ShellPage> {
   bool _scrolled = false;
+  bool _nextScrolled = false, _scrollScheduled = false;
   bool _searching = false;
   late final _searchController = TextEditingController(
     text: widget.search?.initial,
@@ -149,8 +150,18 @@ class _ShellPageState extends State<ShellPage> {
 
   bool _onScroll(ScrollNotification notification) {
     if (notification.depth == 0 && notification.metrics.axis == Axis.vertical) {
-      final scrolled = notification.metrics.pixels > 2;
-      if (scrolled != _scrolled) setState(() => _scrolled = scrolled);
+      _nextScrolled = notification.metrics.pixels > 2;
+      if (_nextScrolled != _scrolled && !_scrollScheduled) {
+        _scrollScheduled = true;
+        final binding = WidgetsBinding.instance;
+        binding.addPostFrameCallback((_) {
+          _scrollScheduled = false;
+          if (mounted && _scrolled != _nextScrolled) {
+            setState(() => _scrolled = _nextScrolled);
+          }
+        });
+        binding.ensureVisualUpdate();
+      }
     }
     return false;
   }
