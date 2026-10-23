@@ -159,7 +159,7 @@ class _ChartEditorScreenState extends State<ChartEditorScreen> {
     }
   }
 
-  Future<void> _export(String format) async {
+  Future<void> _export(String format) => c.perform(() async {
     await c.audio.pause();
     final captured = c.history.value;
     if (format != 'backup') {
@@ -199,12 +199,20 @@ class _ChartEditorScreenState extends State<ChartEditorScreen> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context, false),
+                onPressed: () {
+                  if (ModalRoute.of(context)?.isCurrent == true) {
+                    Navigator.pop(context, false);
+                  }
+                },
                 child: Text(AppScope.of(context).text('common.actions.cancel')),
               ),
               if (check.errors.isEmpty)
                 FilledButton(
-                  onPressed: () => Navigator.pop(context, true),
+                  onPressed: () {
+                    if (ModalRoute.of(context)?.isCurrent == true) {
+                      Navigator.pop(context, true);
+                    }
+                  },
                   child: Text(
                     AppScope.of(context).text('common.actions.export'),
                   ),
@@ -220,24 +228,22 @@ class _ChartEditorScreenState extends State<ChartEditorScreen> {
       '_',
     );
     final base = name.isEmpty ? 'chart' : name;
-    await c.perform(() async {
-      if (format == 'backup') {
-        await c.save();
-        final bytes = await c.store.exportArchive(c.id);
-        await FilePicker.saveFile(fileName: '$base.zip', bytes: bytes);
-        return;
-      }
-      final text = switch (format) {
-        'ss' => serializeSsChart(captured),
-        'usc' => serializeUscChart(captured, wrapped: true),
-        _ => serializeChartProject(captured),
-      };
-      await FilePicker.saveFile(
-        fileName: '$base${format == 'project' ? '.project' : '.$format'}.json',
-        bytes: Uint8List.fromList(utf8.encode(text)),
-      );
-    });
-  }
+    if (format == 'backup') {
+      await c.save();
+      final bytes = await c.store.exportArchive(c.id);
+      await FilePicker.saveFile(fileName: '$base.zip', bytes: bytes);
+      return;
+    }
+    final text = switch (format) {
+      'ss' => serializeSsChart(captured),
+      'usc' => serializeUscChart(captured, wrapped: true),
+      _ => serializeChartProject(captured),
+    };
+    await FilePicker.saveFile(
+      fileName: '$base${format == 'project' ? '.project' : '.$format'}.json',
+      bytes: Uint8List.fromList(utf8.encode(text)),
+    );
+  });
 
   Future<void> _files() async {
     final text = AppScope.of(context).text;
