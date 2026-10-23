@@ -314,7 +314,7 @@ class EngineClient {
         if (!_pending.containsKey(id)) return;
         if (generation != _generation) {
           _pending.remove(id);
-          if (request is EngineRequest) {
+          if (request is EngineRequest && kind == 'run') {
             call.completer.complete(
               emptyResponse(request)..stopReason = 'cancelled',
             );
@@ -349,6 +349,14 @@ class EngineClient {
     ),
     progress,
     snapshot,
+  );
+  Future<Doc> growth(
+    EngineRequest request,
+    void Function(int, int)? progress,
+  ) => _call(
+    'growth',
+    request.copyWith(keepTimeLimit: false, deadline: double.infinity),
+    progress,
   );
   Future<List<TeamEvaluation>> evaluate(EvaluateRequest request) =>
       _call('evaluate', request);
@@ -467,6 +475,7 @@ void _displayBridge(
             TeamEvaluation.fromJson(objectRow(value)),
         ],
         'timeline' => Timeline.fromJson(objectRow(row['result'])),
+        'growth' => objectRow(row['result']),
         _ => null,
       };
       if (result != null) ui.send((id, 'result', result));
@@ -521,7 +530,7 @@ void _displayBridge(
       final port = await boot;
       if (disposed || aborted.remove(id)) return;
       if (current != generation) {
-        if (request is EngineRequest) {
+        if (request is EngineRequest && kind == 'run') {
           ui.send((
             id,
             'result',
@@ -778,6 +787,22 @@ void _engineHostWorker((SendPort, SendPort) ports) {
           );
           requests.remove(id);
           send(id, 'result', result.toJson());
+        case 'growth':
+          send(
+            id,
+            'result',
+            await current.growth(
+              EngineRequest.fromJson(input),
+              (done, total) => reply.send(
+                jsonEncode({
+                  'id': id,
+                  'kind': 'progress',
+                  'done': done,
+                  'total': total,
+                }),
+              ),
+            ),
+          );
         case 'evaluate':
           send(id, 'result', [
             for (final value in await current.evaluate(
@@ -1203,9 +1228,22 @@ class _EngineCoordinator {
   EngineRequest _of(EngineRequest request, SongRef song, double deadline) =>
       request.copyWith(
         goal: switch (request.goal) {
-          ScoreGoal(:final criterion, :final play, :final challengeEventId) =>
-            ScoreGoal([song], criterion, play, challengeEventId),
+          ScoreGoal(
+            :final criterion,
+            :final play,
+            :final challengeEventId,
+            :final target,
+          ) =>
+            ScoreGoal(
+              [song],
+              criterion,
+              play,
+              challengeEventId,
+              target: target,
+            ),
           GekisoGoal(
+            :final minComboBonus,
+            :final opponents,
             :final criterion,
             :final accuracy,
             :final rank,
@@ -1217,6 +1255,8 @@ class _EngineCoordinator {
               accuracy: accuracy,
               rank: rank,
               seeds: seeds,
+              minComboBonus: minComboBonus,
+              opponents: opponents,
             ),
           final EventGoal goal => goal.copyWith(songs: [song]),
           final goal => goal,
@@ -1376,6 +1416,9 @@ class _EngineCoordinator {
       }
       if (completeResponse(latest)) return latest;
       final gekiso = request.goal is GekisoGoal;
+      final opponents =
+          request.goal is GekisoGoal &&
+          (request.goal as GekisoGoal).opponents != null;
       final songs = requestSongs(request);
       final eventGoal = request.goal;
       final missions =
@@ -1394,17 +1437,27 @@ class _EngineCoordinator {
       final wholeReward =
           missions.isNotEmpty &&
           missions.every((kind) => kind == 2 || kind == 3);
+      final weightedLive =
+          eventGoal is EventGoal &&
+          eventGoal.gekiso == null &&
+          eventGoal.route != RouteKind.skip &&
+          eventGoal.measure != 'challenge-points' &&
+          eventGoal.weights != null &&
+          request.k == 1 &&
+          eventGoal.songs.length == 1;
       final phasedReward =
           nativeLuckAvailable &&
-          missions.isNotEmpty &&
-          missions.every((kind) => kind == 1);
+          (weightedLive ||
+              missions.isNotEmpty && missions.every((kind) => kind == 1));
       final parallel =
           !wholeReward &&
           _pool.length > 1 &&
           request.members.length >= _parallelMinMembers &&
           request.goal is! PlanGoal &&
-          !(gekiso && request.constraints.leader != null && songs.length == 1);
-      if (!parallel) return send(_idlest(), request);
+          !(gekiso &&
+              songs.length == 1 &&
+              (request.constraints.leader != null || opponents));
+      if (!parallel) return send(_idlest(), request, opponents ? (_) {} : null);
       if (songs.length > 1 && songs.every((song) => song != null)) {
         final parts = [...latest.results];
         EngineResponse merged() => EngineResponse(
@@ -1429,6 +1482,7 @@ class _EngineCoordinator {
               math.min(deadline, executionClock() + share),
             );
             final response = await send(worker, task, (value) {
+              if (opponents) return;
               if (stopped ||
                   value.contextKey != request.contextKey ||
                   value.requestId != request.requestId) {
@@ -1460,7 +1514,8 @@ class _EngineCoordinator {
           );
           publish(seeding);
           seeds = [for (final r in seeding.results) ...r.hits];
-        } else if (!request.noFloor && stage < 0) {
+        } else if (!request.noFloor &&
+            (stage < 0 || weightedLive && stage == 0)) {
           final quick = await send(
             _idlest(),
             request.copyWith(
@@ -1475,7 +1530,7 @@ class _EngineCoordinator {
         final goal = request.goal;
         final sampledRewards = goal is EventGoal && goal.gekiso != null;
         final nominalGekiso = goal is GekisoGoal && goal.seeds == 0;
-        final workers = request.rewardPhase != null
+        final workers = request.rewardPhase != null && !weightedLive
             ? _pool.take(4).toList()
             : nominalGekiso
             ? _pool.take(5).toList()
@@ -1688,6 +1743,17 @@ class _EngineCoordinator {
     return queued;
   }
 
+  Future<Doc> growth(
+    EngineRequest request,
+    void Function(int, int)? progress,
+  ) => _enqueue(
+    () async => _pool.first.call(
+      'growth',
+      request,
+      await _charts(requestSongs(request).whereType<SongRef>().toList()),
+      progress,
+    ),
+  );
   Future<List<TeamEvaluation>> evaluate(EvaluateRequest request) => _enqueue(
     () async =>
         _pool.first.call('evaluate', request, await _charts(request.songs)),
@@ -1731,6 +1797,7 @@ class EvaluateRequest {
     required this.play,
     required this.challengeEventId,
     required this.event,
+    this.gekiso,
   });
   factory EvaluateRequest.fromJson(Map<String, Object?> json) =>
       EvaluateRequest(
@@ -1751,6 +1818,7 @@ class EvaluateRequest {
         ],
         play: PlayModel.fromJson(objectRow(json['play'])),
         challengeEventId: (json['challengeEventId'] as num?)?.toInt(),
+        gekiso: json['gekiso'] is Map ? objectRow(json['gekiso']) : null,
         event: json['event'] is Map
             ? (
                 eventId: intOf(objectRow(json['event'])['eventId']),
@@ -1769,6 +1837,7 @@ class EvaluateRequest {
     'team': team.toJson(),
     'songs': [for (final r in songs) r.toJson()],
     'play': play.toJson(),
+    'gekiso': ?gekiso,
     'challengeEventId': challengeEventId,
     'event': event == null
         ? null
@@ -1786,6 +1855,7 @@ class EvaluateRequest {
   final List<SongRef> songs;
   final PlayModel play;
   final int? challengeEventId;
+  final Doc? gekiso;
   final ({int eventId, RouteKind route, int consumption})? event;
 }
 
@@ -1918,6 +1988,24 @@ void _main((SendPort, String, Map<String, String>, int?) args) {
             onProgress: (done, total) =>
                 reply.send((id, 'progress', (done, total))),
             onSnapshot: (snapshot) => reply.send((id, 'snapshot', snapshot)),
+          );
+        case 'growth':
+          final r = request as EngineRequest;
+          if (native == null) throw UnsupportedError('native-engine-required');
+          result = native.run(
+            r.toJson(),
+            await nativeSources(requestSongs(r).whereType<SongRef>().toList()),
+            (value) {
+              final progress = objectRow(value['growth']);
+              if (progress.isNotEmpty) {
+                reply.send((
+                  id,
+                  'progress',
+                  (intOf(progress['done']), intOf(progress['total'])),
+                ));
+              }
+            },
+            operation: 'growth',
           );
         case 'evaluate':
           final r = request as EvaluateRequest;

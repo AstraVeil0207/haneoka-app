@@ -35,6 +35,8 @@ import 'native_chart_intro_sounds.dart';
 import 'native_chart_intro_resources.dart';
 import 'chart_native_snapshot.dart';
 import 'native_chart_document.dart';
+import 'native_chart_input.dart';
+import 'visual_time.dart';
 import 'native_chart_preferences.dart';
 import 'native_chart_effect_source.dart';
 import 'native_chart_effects.dart';
@@ -322,6 +324,7 @@ final class NativeChartPlayback extends ChangeNotifier {
   NativeChartDocument? document;
   CassiopeiaRenderSession? session;
   RuntimeChart? _chart;
+  ChartVisualTimeMap? _visualTime;
   Map<String, Object?>? _archive;
   NativeHoldMaterialStyle? _holdStyle;
   NativeChartHud? _hud;
@@ -528,7 +531,7 @@ final class NativeChartPlayback extends ChangeNotifier {
       return Uri.parse('haneoka-asset:${path.substring(6)}');
     }
     final doc = selected ?? document!;
-    final uri = doc.scoreUri.resolve(path);
+    final uri = (doc.resourceBase ?? doc.scoreUri).resolve(path);
     return uri.replace(
       queryParameters: {...uri.queryParameters, 'release': doc.source.release},
     );
@@ -597,7 +600,9 @@ final class NativeChartPlayback extends ChangeNotifier {
         await audio.loadPaused(selected.track);
         if (_disposed || generation != _generation) return;
       }
-      final bytes = await fetch(selected.scoreUri);
+      final bytes = selected.chart == null
+          ? await fetch(selected.scoreUri)
+          : Uint8List(0);
       final archive = Map<String, Object?>.from(
         jsonDecode(
           await loadHaneokaProfileString(
@@ -605,7 +610,16 @@ final class NativeChartPlayback extends ChangeNotifier {
           ),
         ) as Map,
       );
-      final chart = RuntimeChart.fromBytes(bytes, includeVisualSource: true);
+      final chart = shiftNativeChart(
+        selected.chart ?? RuntimeChart.fromBytes(bytes, includeVisualSource: true),
+        selected.audioOffsetMs,
+      );
+      final visualTime = selected.timeScaleChanges.isEmpty
+          ? null
+          : ChartVisualTimeMap([
+              for (final e in selected.timeScaleChanges)
+                (timeMs: e.timeMs + selected.audioOffsetMs, scale: e.scale),
+            ]);
       final convertedCount = chart.notes.where((note) => note.judged).length;
       if (selected.masterNoteCount != null &&
           selected.masterNoteCount != convertedCount) {
@@ -765,6 +779,7 @@ final class NativeChartPlayback extends ChangeNotifier {
       }
       _sounds = sounds;
       _chart = chart;
+      _visualTime = visualTime;
       _archive = archive;
       _holdStyle = holdStyle;
       _hud = hud;
@@ -1096,6 +1111,8 @@ final class NativeChartPlayback extends ChangeNotifier {
       logicalHeight: logicalHeight,
       mediaUs: positionUs,
       stageProjection: projection,
+      visualTime: _visualTime,
+      visualProfiles: document!.visualProfiles,
       intro: intro,
       introTexturePaths: _introTexturePaths,
       introDataTextures: _introDataTextures,

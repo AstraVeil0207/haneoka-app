@@ -1,3 +1,5 @@
+import '../core/catalog_source.dart';
+
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:intl/intl.dart';
@@ -21,7 +23,13 @@ import 'song_presentation.dart';
 /// tiles with the live attribute and genre on the artwork, band emblems
 /// before the artist, a play button, and Play all in the bar.
 class SongsScreen extends StatefulWidget {
-  const SongsScreen({super.key, this.onOpen, this.api, this.title});
+  const SongsScreen({
+    super.key,
+    this.onOpen,
+    this.api,
+    this.title,
+    this.extraActions = const [],
+  });
 
   /// Opens a song's page.
   final void Function(BuildContext context, Entry song)? onOpen;
@@ -30,6 +38,7 @@ class SongsScreen extends StatefulWidget {
   /// release's and the other's merged when null.
   final HaneokaApi? api;
   final String? title;
+  final List<BarAction> extraActions;
 
   @override
   State<SongsScreen> createState() => _SongsScreenState();
@@ -48,7 +57,7 @@ class _SongsScreenState extends State<SongsScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final key = AppScope.of(context).publicDataKey;
+    final key = CatalogSourceScope.keyOf(context);
     if (_dataKey != key) {
       _dataKey = key;
       _data = _load();
@@ -57,9 +66,8 @@ class _SongsScreenState extends State<SongsScreen> {
   }
 
   Future<void> _loadMeta() async {
-    final state = AppScope.of(context);
     final apis = widget.api == null
-        ? state.catalogApis
+        ? CatalogSourceScope.apisOf(context)
         : {widget.api!.server: widget.api!};
     await Future.wait([
       for (final MapEntry(key: server, value: api) in apis.entries)
@@ -95,14 +103,16 @@ class _SongsScreenState extends State<SongsScreen> {
   }
 
   Future<(List<Entry>, CatalogVisuals, PerformerRegistry?)> _load() async {
-    final state = AppScope.of(context);
+    final scopedApi = CatalogSourceScope.apiOf(context),
+        scopedApis = CatalogSourceScope.apisOf(context),
+        selected = CatalogSourceScope.serverOf(context);
     await CatalogQueryEngine.loadAliases();
     if (widget.api case final api?) {
       final (document, visuals, formal) = await (
         api.catalog('songs'),
         CatalogVisuals.of(api),
         api is ProviderApi && api.provider == 'bestdori'
-            ? CatalogVisuals.of(state.api).then<CatalogVisuals?>(
+            ? CatalogVisuals.of(scopedApi).then<CatalogVisuals?>(
                 (value) => value,
                 onError: (Object _) => null,
               )
@@ -127,11 +137,11 @@ class _SongsScreenState extends State<SongsScreen> {
     final (songs, visuals) = await (
       crossServerCollection(
         resource: 'songs',
-        selected: state.server,
-        apis: state.catalogApis,
+        selected: selected,
+        apis: scopedApis,
         rowsPath: null,
       ),
-      CatalogVisuals.of(state.api),
+      CatalogVisuals.of(scopedApi),
     ).wait;
     return (songs, visuals, null);
   }
@@ -146,7 +156,7 @@ class _SongsScreenState extends State<SongsScreen> {
         final data = snapshot.data;
         final songs = data?.$1;
         final visuals = data?.$2;
-        final api = widget.api ?? state.api;
+        final api = widget.api ?? CatalogSourceScope.apiOf(context);
         final song = _SongText(t, visuals, api, state.songTitle, data?.$3);
         // A new list once the metrics arrive, so a metric sort reorders.
         if (!identical(songs, _source) || _metaSeen != _meta.length) {
@@ -158,6 +168,7 @@ class _SongsScreenState extends State<SongsScreen> {
         String server(Entry song) => '${song[serverKey] ?? api.server}';
         String text(Object? value) => t.text(value);
         return BrowseScreen(
+          sourcePath: widget.api == null ? '/catalog/songs' : null,
           title: widget.title ?? t('navigation.songs', 'Songs'),
           items: items,
           onOpen: widget.onOpen,
@@ -349,6 +360,7 @@ class _SongsScreenState extends State<SongsScreen> {
           ],
           defaultSort: 'release',
           actions: (visible) => [
+            ...widget.extraActions,
             BarAction(
               icon: Symbols.playlist_play_rounded,
               label: t.label('playAll'),

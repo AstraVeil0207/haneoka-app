@@ -52,6 +52,35 @@ class TeamCatalog extends ChangeNotifier {
   final String? server;
   final Doc data;
   final EngineMaster master;
+  late final fullGrowthInputs = (
+    members: [
+      for (final card in master.members.values)
+        () {
+          final growth = maxMemberGrowth(master, card);
+          return MemberInput(
+            key: 'm${card.id}',
+            cardId: card.id,
+            level: growth.level,
+            awake: growth.awake,
+            rank: growth.rank,
+            liveSkillLevel: growth.liveSkillLevel,
+            gekisoSkillLevel: growth.gekisoSkillLevel,
+          );
+        }(),
+    ],
+    snaps: [
+      for (final card in master.snaps.values)
+        () {
+          final growth = maxSnapGrowth(master, card);
+          return SnapInput(
+            key: 's${card.id}',
+            cardId: card.id,
+            level: growth.level,
+            rank: growth.rank,
+          );
+        }(),
+    ],
+  );
   final CatalogVisuals? visuals;
   late final cardQueryEngine = CatalogQueryEngine(
     visuals: visuals,
@@ -98,6 +127,13 @@ class TeamCatalog extends ChangeNotifier {
   bool has(bool members, int id) => card(members, id).isNotEmpty;
 
   Doc get _cross => objectRow(data['crossServer']);
+
+  bool available(String collection, int id) =>
+      _cross.isEmpty ||
+      (objectRow(objectRow(_cross['availability'])[collection])['$id']
+                  as List? ??
+              const [])
+          .contains(server);
 
   /// An entity only one server has carries that server's mark.
   (String, String)? mark(String collection, int id) {

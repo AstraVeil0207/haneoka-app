@@ -17,6 +17,7 @@ list(APPEND FLUTTER_FFI_PLUGIN_LIST
   cassiopeia_runtime
   flutter_soloud
   jni
+  spine_flutter
   vega_plugin_cubism
   vega_runtime_ffi
 )

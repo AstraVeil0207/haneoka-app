@@ -24,6 +24,9 @@ import 'engine/objectives.dart';
 import 'engine_client.dart';
 import 'pt_controller.dart';
 import 'settings.dart';
+import 'song_comparison.dart';
+import 'result_comparison.dart';
+import 'pt_recommendation.dart' show PtJob;
 
 Future<EngineMaster> _compileMaster(Doc data) =>
     Isolate.run(() => compileTeamData(data));
@@ -45,6 +48,22 @@ class ManualTeam {
       );
 }
 
+class _TaskResults {
+  const _TaskResults(
+    this.results,
+    this.settings,
+    this.input,
+    this.fingerprint,
+    this.session,
+    this.compared,
+  );
+  final EngineResponse? results;
+  final BuildSettings? settings;
+  final EngineRequest? input;
+  final String fingerprint, session;
+  final List<ComparedResult> compared;
+}
+
 class TeamBuilderController extends ChangeNotifier {
   TeamBuilderController(this.state, {this.serverOverride});
   final AppState state;
@@ -59,18 +78,193 @@ class TeamBuilderController extends ChangeNotifier {
   Object? loadError;
   String _server = '';
   bool _disposed = false;
-  int _boxVersion = -1;
+  Object? _boxVersion;
 
   EngineResponse? results;
   BuildSettings? resultSettings;
   EngineRequest? resultInputs;
-  bool activity = false;
-  BuildSettings get _contextSettings =>
-      activity && settings.rewardMode != 'recommendation'
-      ? settings.forGoal(
-          settings.rewardMode == 'plan' ? GoalKind.plan : GoalKind.event,
+  bool _activity = false;
+  bool get activity => _activity;
+  set activity(bool value) {
+    if (_activity == value) return;
+    _saveTaskResults();
+    _activity = value;
+    _restoreTaskResults();
+    _checkActiveContext();
+  }
+
+  String resultSession = '';
+  List<ComparedResult> compared = [];
+  List<ComparedResult> ptCompared = [];
+  String ptComparisonSession = '';
+  int comparisonCandidate = 1;
+  final _taskResults = <String, _TaskResults>{};
+  String get _taskKey => !activity
+      ? 'build'
+      : settings.rewardMode == 'plan'
+      ? 'plan'
+      : 'event';
+  void _saveTaskResults([String? key]) {
+    _taskResults[key ?? _taskKey] = _TaskResults(
+      results,
+      resultSettings,
+      resultInputs,
+      resultsFor,
+      resultSession,
+      compared,
+    );
+  }
+
+  void _restoreTaskResults() {
+    final previous = _taskResults[_taskKey];
+    results = previous?.results;
+    resultSettings = previous?.settings;
+    resultInputs = previous?.input;
+    resultsFor = previous?.fingerprint ?? '';
+    resultSession = previous?.session ?? '';
+    compared = previous?.compared ?? [];
+  }
+
+  BuildSettings settingsForHit(EngineHit hit) {
+    final s = resultSettings ?? settings;
+    if (s.goal != GoalKind.plan) return s;
+    final challenge = identical(results?.plan?.challenge, hit);
+    return s
+        .copyWith({
+          'route': challenge ? 'challenge' : 'live',
+          'measure': 'points',
+          'boosts': s.planBoostsPerLive,
+          'ptCycle': false,
+        })
+        .forGoal(GoalKind.event);
+  }
+
+  ComparedResult? ptCompareEntry(EngineHit hit, PtJob job, int position) {
+    final task = job.tasks
+        .where(
+          (task) =>
+              task.result?.hits.any((candidate) => identical(candidate, hit)) ==
+              true,
         )
-      : settings;
+        .firstOrNull;
+    if (task == null) return null;
+    final goal = job.request.goal as EventGoal;
+    final s = BuildSettings({
+      'goal': 'event',
+      'eventId': goal.eventId,
+      'measure': task.measure,
+      'route': task.route.name,
+      'boosts': goal.consumption,
+      'challengePoints': job.cycle?.consumption ?? 200,
+      'ptCycle': job.cycle != null,
+      'ptMode': goal.gekiso == null ? 'solo' : 'gekiso',
+      'minComboBonus': goal.minComboBonus,
+    }).forGoal(GoalKind.event);
+    return ComparedResult(
+      hit: EngineHit.fromJson(hit.toJson()),
+      settings: s,
+      input: job.request,
+      identity: job.dataFingerprint,
+      session: job.id,
+      position: position,
+    );
+  }
+
+  void syncPtCompared(PtJob job) {
+    if (ptComparisonSession != job.id) {
+      ptComparisonSession = job.id;
+      ptCompared = [];
+    }
+    final hits = job.tasks
+        .expand((task) => task.result?.hits ?? <EngineHit>[])
+        .toList();
+    ptCompared = [
+      for (final old in ptCompared)
+        () {
+          final hit = hits
+              .where((hit) => ptCompareEntry(hit, job, 0)?.id == old.id)
+              .firstOrNull;
+          return hit == null
+              ? (old..listed = false)
+              : ptCompareEntry(hit, job, old.position)!;
+        }(),
+    ];
+  }
+
+  void togglePtCompared(EngineHit hit, PtJob job, int position) {
+    syncPtCompared(job);
+    final entry = ptCompareEntry(hit, job, position);
+    if (entry == null) return;
+    final old = ptCompared.indexWhere((row) => row.id == entry.id);
+    if (old >= 0) {
+      ptCompared.removeAt(old);
+    } else if (ptCompared.length < 3) {
+      ptCompared.add(entry);
+    } else {
+      error = tb(
+        'comparisonLimit',
+        'Select up to 3 candidates from this search.',
+      );
+    }
+    changed();
+  }
+
+  ComparedResult? compareEntry(EngineHit hit, int position) {
+    final input = resultInputs, s = settingsForHit(hit);
+    if (input == null) return null;
+    return ComparedResult(
+      hit: EngineHit.fromJson(hit.toJson()),
+      settings: BuildSettings(s.toJson()).forGoal(s.goal),
+      input: input,
+      identity: catalog?.data['identity'],
+      session: resultSession,
+      position: position,
+      placements: results?.results
+          .where((row) => row.song == hit.song)
+          .firstOrNull
+          ?.placements,
+    );
+  }
+
+  void toggleCompared(EngineHit hit, int position) {
+    final entry = compareEntry(hit, position);
+    if (entry == null) return;
+    final existing = compared.indexWhere((row) => row.id == entry.id);
+    if (existing >= 0) {
+      compared.removeAt(existing);
+    } else if (compared.length < 3) {
+      compared.add(entry);
+    } else {
+      error = tb(
+        'comparisonLimit',
+        'Select up to 3 candidates from this search.',
+      );
+    }
+    changed();
+  }
+
+  void syncCompared() {
+    final hits = results?.plan != null
+        ? [?results!.plan!.normal, ?results!.plan!.challenge]
+        : results?.results.expand((row) => row.hits).toList() ?? <EngineHit>[];
+    compared = [
+      for (final selected in compared)
+        () {
+          final hit = hits
+              .where((row) => compareEntry(row, 0)?.id == selected.id)
+              .firstOrNull;
+          return hit == null
+              ? (selected..listed = false)
+              : compareEntry(hit, hits.indexOf(hit) + 1)!;
+        }(),
+    ];
+  }
+
+  BuildSettings get _contextSettings => !activity
+      ? settings
+      : settings.rewardMode == 'plan'
+      ? settings.forGoal(GoalKind.plan)
+      : settings.forFarming();
 
   List<int>? get allowedSongIds {
     final s = _contextSettings, catalog = this.catalog;
@@ -92,6 +286,15 @@ class TeamBuilderController extends ChangeNotifier {
     return normalEvent ? catalog.normalEventSongIds(s.eventId) : null;
   }
 
+  bool hasMission(int mission, [List<SongRef>? selected]) =>
+      (selected ?? settings.songs).any(
+        (song) =>
+            catalog?.master.songs[song.songId]?.gekisoMissions.contains(
+              mission,
+            ) ==
+            true,
+      );
+
   BuildSettings get searchSettings {
     final s = _contextSettings, catalog = this.catalog;
     if (catalog == null || s.eventId == null) return s;
@@ -102,7 +305,11 @@ class TeamBuilderController extends ChangeNotifier {
     return s.copyWith({
       'songs': [
         for (final song in s.songs)
-          if (allowed == null || allowed.contains(song.songId)) song.toJson(),
+          if ((allowed == null || allowed.contains(song.songId)) &&
+              catalog.available('songs', song.songId) &&
+              catalog.difficultyRow(song.songId, song.difficulty)?['file']
+                  is String)
+            song.toJson(),
       ],
       'planChallengeSongs': [
         for (final song in s.planChallengeSongs)
@@ -116,12 +323,123 @@ class TeamBuilderController extends ChangeNotifier {
   int runGeneration = 0;
   (int, int)? progress;
   String? error;
+  Doc? growth;
+  String growthContext = '';
+  (int, int) growthProgress = (0, 0);
+  bool growthRunning = false;
+  bool get currentGrowth => growthContext == _fingerprint();
 
   late final pt = PtController(this);
+  late final comparison = SongComparison(this);
 
   ManualTeam manual = const ManualTeam();
   List<TeamEvaluation>? manualResults;
   bool manualBusy = false;
+  ({int slot, List<EngineHit> hits})? manualSuggestions;
+  int manualSuggesting = -1;
+  String? manualSuggestionsContext;
+  int manualGeneration = 0;
+  bool _manualSuggestion = false;
+  String? activeManualContext;
+  String? _manualResultsContext;
+  List<SongRef> get manualSongs => settings.songs
+      .where(
+        (song) =>
+            catalog?.available('songs', song.songId) == true &&
+            catalog?.difficultyRow(song.songId, song.difficulty)?['file']
+                is String,
+      )
+      .toList();
+  String get manualContext {
+    if (view == null || catalog == null) return '';
+    final selected = manualInputs();
+    return jsonEncode([
+      store?.owner,
+      catalog?.data['identity'],
+      catalog?.data['crossServer'],
+      manual.members,
+      manual.snaps,
+      manual.leader,
+      selected.members.map((row) => row.toJson()).toList(),
+      selected.snaps.map((row) => row.toJson()).toList(),
+      selected.player.toJson(),
+      goalJson(manualGoal()!),
+    ]);
+  }
+
+  String get manualSuggestionContext => jsonEncode([
+    manualContext,
+    engineCards().members.map((row) => row.toJson()).toList(),
+    engineCards().snaps.map((row) => row.toJson()).toList(),
+    view?.engineInputs(true).members.map((row) => row.toJson()).toList(),
+    view?.engineInputs(true).snaps.map((row) => row.toJson()).toList(),
+  ]);
+  int beginManual({bool suggestion = false}) {
+    _manualSuggestion = suggestion;
+    activeManualContext = suggestion ? manualSuggestionContext : manualContext;
+    if (!suggestion) _manualResultsContext = manualContext;
+    manualBusy = running = true;
+    return ++manualGeneration;
+  }
+
+  void endManual(int generation) {
+    if (generation == manualGeneration) {
+      manualBusy = running = false;
+      activeManualContext = null;
+      changed();
+    }
+  }
+
+  ({
+    List<MemberInput> members,
+    List<SnapInput> snaps,
+    PlayerInput player,
+    UnknownPolicy policy,
+  })
+  manualInputs() {
+    final owned = view!.engineInputs(true), all = catalog!.fullGrowthInputs;
+    return (
+      members: [
+        for (final id in manual.members)
+          if (id != null)
+            ?owned.members.where((row) => row.cardId == id).firstOrNull ??
+                (settings.theoretical
+                    ? all.members.where((row) => row.cardId == id).firstOrNull
+                    : null),
+      ],
+      snaps: [
+        for (final id in manual.snaps)
+          if (id != null)
+            ?owned.snaps.where((row) => row.cardId == id).firstOrNull ??
+                (settings.theoretical
+                    ? all.snaps.where((row) => row.cardId == id).firstOrNull
+                    : null),
+      ],
+      player: view!.player,
+      policy: settings.unknownPolicy == 'min'
+          ? UnknownPolicy.min
+          : UnknownPolicy.max,
+    );
+  }
+
+  Goal? manualGoal() => settings.manualScoreMode == 'gekiso'
+      ? GekisoGoal(
+          songs: manualSongs,
+          criterion: Criterion.mean,
+          accuracy: Accuracy(
+            great: settings.allPerfect ? 0 : settings.great / 100,
+            just: hasMission(3, manualSongs) ? settings.just / 100 : 1,
+            missEvery: settings.allPerfect ? 0 : settings.missEvery,
+          ),
+          rank: settings.gekisoRank,
+          seeds: hasMission(2, manualSongs) ? settings.gekisoSeeds : 0,
+        )
+      : ScoreGoal(
+          manualSongs,
+          Criterion.mean,
+          play,
+          settings.challengeRules ? settings.eventId : null,
+        );
 
   String tb(
     String key,
@@ -179,8 +497,9 @@ class TeamBuilderController extends ChangeNotifier {
   void _adopt() {
     final box = store;
     if (box == null) return;
-    if (box.version != _boxVersion) {
-      _boxVersion = box.version;
+    final version = (box, box.owner, box.version);
+    if (version != _boxVersion) {
+      _boxVersion = version;
       view = BoxView.read(box.entries);
       final stored = view!.prefs['build'];
       if (stored is Map) {
@@ -189,6 +508,8 @@ class TeamBuilderController extends ChangeNotifier {
     }
     notifyListeners();
     pt.restore();
+    comparison.restore();
+    _checkActiveContext();
   }
 
   @override
@@ -198,6 +519,7 @@ class TeamBuilderController extends ChangeNotifier {
     _server = '';
     ++runGeneration;
     pt.dispose();
+    comparison.stop();
     store?.removeListener(_adopt);
     store?.dispose();
     engine?.dispose();
@@ -218,7 +540,25 @@ class TeamBuilderController extends ChangeNotifier {
   }
 
   void updateSettings(Doc patch) {
+    final task = _taskKey;
+    _saveTaskResults(task);
+    if (activity &&
+        settings.rewardMode != 'plan' &&
+        !patch.containsKey('rewardMode')) {
+      final farm = {
+        ...settings.farming,
+        ...objectRow(patch['farming']),
+        for (final key in BuildSettings.farmingDefaults.keys)
+          if (patch.containsKey(key)) key: patch[key],
+        if (patch.containsKey('route'))
+          'play': patch['route'] == 'live' ? 'solo' : patch['route'],
+        if (patch.containsKey('ptMode')) 'play': patch['ptMode'],
+      };
+      patch = {...patch, 'farming': farm};
+    }
     settings = settings.copyWith(patch);
+    if (_taskKey != task) _restoreTaskResults();
+    _checkActiveContext();
     write([('pref.build', settings.toJson())]);
     notifyListeners();
   }
@@ -228,23 +568,38 @@ class TeamBuilderController extends ChangeNotifier {
     final catalog = this.catalog, view = this.view;
     if (catalog == null || view == null) return (members: [], snaps: []);
     final master = catalog.master;
-    final s = settings;
-    final base = s.theoretical
-        ? theoreticalInputs(master)
-        : view.engineInputs();
+    final s = _contextSettings;
+    final base = s.theoretical ? catalog.fullGrowthInputs : view.engineInputs();
+    final fixedMembers = <int>{
+      if (!s.theoretical)
+        ...view.members.values
+            .where((row) => row.use && row.lock)
+            .map((row) => row.cardId),
+      ...s.bindings.map((pair) => pair.$1),
+      if (s.leader != null) s.leader!,
+    };
+    final fixedSnaps = <int>{
+      if (!s.theoretical)
+        ...view.snaps.values
+            .where((row) => row.use && row.lock)
+            .map((row) => row.cardId),
+      for (final pair in s.bindings) ?pair.$2,
+    };
     bool memberOk(int id) {
       final card = master.members[id];
       return card != null &&
-          (s.attributes.isEmpty || s.attributes.contains(card.cardType)) &&
-          (s.bands.isEmpty || s.bands.contains(card.bandId)) &&
-          card.rarity >= s.minRarity;
+          (fixedMembers.contains(id) ||
+              (s.attributes.isEmpty || s.attributes.contains(card.cardType)) &&
+                  (s.bands.isEmpty || s.bands.contains(card.bandId)) &&
+                  card.rarity >= s.minRarity);
     }
 
     bool snapOk(int id) {
       final card = master.snaps[id];
       return card != null &&
-          (s.attributes.isEmpty || s.attributes.contains(card.cardType)) &&
-          card.rarity >= s.minRarity;
+          (fixedSnaps.contains(id) ||
+              (s.attributes.isEmpty || s.attributes.contains(card.cardType)) &&
+                  card.rarity >= s.minRarity);
     }
 
     return (
@@ -259,16 +614,139 @@ class TeamBuilderController extends ChangeNotifier {
     );
   }
 
-  PlayModel get play => settings.allPerfect
-      ? ap
-      : PlayModel(
-          great: settings.great / 100,
-          good: settings.good / 100,
-          miss: settings.miss / 100,
-          missEvery: settings.missEvery.toDouble(),
+  PlayModel get play {
+    final s = _contextSettings;
+    return s.allPerfect
+        ? ap
+        : PlayModel(
+            great: s.great / 100,
+            good: s.good / 100,
+            miss: s.miss / 100,
+            missEvery: s.missEvery.toDouble(),
+          );
+  }
+
+  String? get inputIssue {
+    final s = searchSettings;
+    if (s.goal == GoalKind.power && s.powerSong && s.songs.isEmpty) {
+      return tb('needSongs', 'Choose at least one song.');
+    }
+    if (view != null && catalog != null) {
+      final cards = engineCards();
+      final fixed = <int>{
+        if (!s.theoretical)
+          ...view!.members.values
+              .where((row) => row.use && row.lock)
+              .map((row) => row.cardId),
+        ...s.bindings.map((pair) => pair.$1),
+        if (s.leader != null) s.leader!,
+      };
+      final snaps = <int>{
+        if (!s.theoretical)
+          ...view!.snaps.values
+              .where((row) => row.use && row.lock)
+              .map((row) => row.cardId),
+        for (final pair in s.bindings) ?pair.$2,
+      };
+      final characters = fixed
+          .map((id) => catalog!.master.members[id]?.characterId)
+          .toList();
+      if (fixed.length > 5 || characters.toSet().length != characters.length) {
+        return tb(
+          'fixedConflict',
+          'Fixed members must be at most five different characters',
         );
+      }
+      if (fixed.any((id) => !cards.members.any((row) => row.cardId == id)) ||
+          snaps.any((id) => !cards.snaps.any((row) => row.cardId == id))) {
+        return tb(
+          'fixedUnavailable',
+          'A fixed card is unavailable in this selection',
+        );
+      }
+      if (snaps.length > 5 ||
+          s.bindings.map((pair) => pair.$1).toSet().length !=
+              s.bindings.length ||
+          s.bindings.map((pair) => pair.$2).whereType<int>().toSet().length !=
+              s.bindings.where((pair) => pair.$2 != null).length) {
+        return tb(
+          'fixedBindingConflict',
+          'Fixed Snapshots or bindings conflict',
+        );
+      }
+      if (s.noSnaps && snaps.isNotEmpty) {
+        return tb(
+          'fixedSnapConflict',
+          'Remove fixed Snapshots or allow Snapshots',
+        );
+      }
+    }
+    if (s.goal == GoalKind.score &&
+        s.scoreTarget != 'none' &&
+        (s.targetScore == null || s.targetScore! <= 0)) {
+      return tb('needTargetScore', 'Enter a positive target score');
+    }
+    if (s.goal == GoalKind.gekiso) {
+      if (s.opponentsMode && hasMission(2, s.songs)) {
+        return tb(
+          'opponentsLuck',
+          'This chart does not support opponent scores',
+        );
+      }
+      if (s.minComboBonus < 1) {
+        return tb('invalidCombo', 'Enter a positive integer');
+      }
+      if (s.opponentsMode) {
+        final ranges = s.opponentDrafts
+            .map(
+              (text) => text.trim().isEmpty
+                  ? <String>[]
+                  : text.trim().split(RegExp(r'[\s,，、]+')),
+            )
+            .toList();
+        if (ranges.every((range) => range.isEmpty)) {
+          return tb('needOpponents', 'Enter opponent scores');
+        }
+        if (ranges.any(
+          (range) =>
+              range.length > 4 ||
+              range.any(
+                (token) =>
+                    double.tryParse(token) == null ||
+                    !double.parse(token).isFinite ||
+                    double.parse(token) <= 0,
+              ),
+        )) {
+          return tb(
+            'invalidOpponents',
+            'Use up to four positive scores per range',
+          );
+        }
+      }
+    }
+    if (activity && s.goal == GoalKind.event && s.ptCycle) {
+      return tb(
+        'farm.conversionConflict',
+        'CP conversion requires {condition}',
+        {'condition': tb('farm.primaryRanking', 'Primary reward ranking')},
+      );
+    }
+    if (s.goal == GoalKind.event &&
+        s.weighted &&
+        (s.weights!.values.any(
+              (value) => !numOf(value).isFinite || numOf(value) < 0,
+            ) ||
+            s.weights!.values.every((value) => numOf(value) <= 0))) {
+      return tb(
+        'needRewardWeight',
+        'Enter at least one positive reward weight',
+      );
+    }
+    return null;
+  }
 
   Goal? goal() {
+    if (inputIssue != null) return null;
     final s = searchSettings;
     final challengeId = s.challengeRules && s.eventId != null
         ? s.eventId
@@ -282,7 +760,15 @@ class TeamBuilderController extends ChangeNotifier {
       case GoalKind.score:
         return s.songs.isEmpty
             ? null
-            : ScoreGoal(s.songs, criterion, play, challengeId);
+            : ScoreGoal(
+                s.songs,
+                criterion,
+                play,
+                challengeId,
+                target: s.scoreTarget != 'none' && s.targetScore != null
+                    ? {'kind': s.scoreTarget, 'score': s.targetScore}
+                    : null,
+              );
       case GoalKind.gekiso:
         return s.songs.isEmpty
             ? null
@@ -291,17 +777,27 @@ class TeamBuilderController extends ChangeNotifier {
                 criterion: criterion,
                 accuracy: Accuracy(
                   great: s.allPerfect ? 0 : s.great / 100,
-                  just: s.just / 100,
+                  just: hasMission(3, s.songs) ? s.just / 100 : 1,
                   missEvery: s.allPerfect ? 0 : s.missEvery,
                 ),
                 rank: s.gekisoRank,
+                seeds: hasMission(2, s.songs) ? s.gekisoSeeds : 0,
+                minComboBonus: hasMission(1, s.songs) ? s.minComboBonus : 1,
+                opponents: s.opponents,
               );
       case GoalKind.event:
         if (s.eventId == null) return null;
         if (s.route != 'skip' && s.songs.isEmpty) return null;
         return EventGoal(
           ranking: s.fullRanking ? null : 'primary',
-          measure: s.measure,
+          weights: s.weights,
+          measure: s.weighted
+              ? numOf(s.weights!['points']) > 0
+                    ? 'points'
+                    : numOf(s.weights!['items']) > 0
+                    ? 'items'
+                    : 'challenge-points'
+              : s.measure,
           route: RouteKind.values.byName(s.route),
           eventId: s.eventId!,
           songs: s.route == 'skip' ? const [] : s.songs,
@@ -329,12 +825,12 @@ class TeamBuilderController extends ChangeNotifier {
     }
   }
 
-  EngineRequest? request() {
-    final goal = this.goal();
+  EngineRequest? request({Goal? overrideGoal}) {
+    final goal = overrideGoal ?? this.goal();
     final view = this.view;
     if (goal == null || view == null) return null;
     final cards = engineCards();
-    final s = settings;
+    final s = searchSettings;
     final memberKeys = {for (final row in cards.members) row.key};
     final snapKeys = {for (final row in cards.snaps) row.key};
     List<String> locked(bool members) => s.theoretical
@@ -349,7 +845,23 @@ class TeamBuilderController extends ChangeNotifier {
     return EngineRequest(
       members: cards.members,
       snaps: cards.snaps,
-      player: view.player,
+      player:
+          activity &&
+              settings.rewardMode != 'plan' &&
+              settings.farmingConditions['includeMemory'] == false
+          ? PlayerInput(
+              characterRanks: view.player.characterRanks,
+              characterTotalRank: view.player.characterTotalRank,
+              bandItems: view.player.bandItems,
+              vipRank: view.player.vipRank,
+              characterMemory: {
+                for (final id in catalog!.master.characters.keys) '$id': 0,
+              },
+              musicMemory: {
+                for (final id in catalog!.master.songs.keys) '$id': 0,
+              },
+            )
+          : view.player,
       unknownPolicy: s.theoretical || s.unknownPolicy == 'max'
           ? UnknownPolicy.max
           : UnknownPolicy.min,
@@ -383,6 +895,50 @@ class TeamBuilderController extends ChangeNotifier {
     );
   }
 
+  String? _activeContext;
+  String? _resultOwner;
+  void _checkActiveContext() {
+    final context = manualContext;
+    if (_manualResultsContext != null && context != _manualResultsContext) {
+      manualResults = null;
+    }
+    if (activeManualContext != null &&
+        (_manualSuggestion ? manualSuggestionContext : context) !=
+            activeManualContext) {
+      ++manualGeneration;
+      engine?.cancel();
+      manualBusy = running = false;
+      activeManualContext = null;
+    }
+    final owner = jsonEncode([store?.owner, server, catalog?.data['identity']]);
+    if (_resultOwner != null && _resultOwner != owner) {
+      results = null;
+      resultSettings = null;
+      resultInputs = null;
+      resultsFor = '';
+      manualResults = null;
+      manual = const ManualTeam();
+      manualSuggestions = null;
+      manualSuggesting = -1;
+      manualSuggestionsContext = null;
+      _taskResults.clear();
+      ptCompared.clear();
+      growth = null;
+      growthContext = '';
+      compared.clear();
+      resultSession = '';
+    }
+    _resultOwner = owner;
+    if (_activeContext != null && _activeContext != _fingerprint()) {
+      ++runGeneration;
+      engine?.cancel();
+      running = false;
+      progress = null;
+      growthRunning = false;
+      _activeContext = null;
+    }
+  }
+
   Object? _contextStamp;
   String _contextValue = '';
 
@@ -409,6 +965,7 @@ class TeamBuilderController extends ChangeNotifier {
     final engine = this.engine;
     if (request == null || engine == null || running) return;
     final fingerprint = _fingerprint();
+    _activeContext = fingerprint;
     if (resume) {
       request = request.copyWith(
         deadline: double.infinity,
@@ -423,6 +980,10 @@ class TeamBuilderController extends ChangeNotifier {
     }
     final settings = searchSettings;
     final generation = ++runGeneration;
+    if (!resume) {
+      resultSession = DateTime.now().microsecondsSinceEpoch.toString();
+      compared = [];
+    }
     running = true;
     error = null;
     progress = (0, 1);
@@ -450,6 +1011,7 @@ class TeamBuilderController extends ChangeNotifier {
           resultsFor = fingerprint;
           resultSettings = settings;
           resultInputs = request;
+          syncCompared();
           notifyListeners();
         },
       );
@@ -463,6 +1025,7 @@ class TeamBuilderController extends ChangeNotifier {
         resultsFor = fingerprint;
         resultSettings = settings;
         resultInputs = request;
+        syncCompared();
       }
     } on EngineCancelled {
       // Cancelled by the reader.
@@ -473,19 +1036,64 @@ class TeamBuilderController extends ChangeNotifier {
     } finally {
       if (generation == runGeneration) {
         running = false;
+        _activeContext = null;
         progress = null;
         notifyListeners();
       }
     }
   }
 
+  Future<void> recommendGrowth() async {
+    final input = request(), engine = this.engine;
+    if (input == null || engine == null || running) return;
+    final fingerprint = _fingerprint(), generation = ++runGeneration;
+    growthContext = fingerprint;
+    growth = null;
+    growthProgress = (0, 0);
+    running = growthRunning = true;
+    _activeContext = fingerprint;
+    changed();
+    try {
+      final result = await engine.growth(input, (done, total) {
+        if (generation == runGeneration && fingerprint == _fingerprint()) {
+          growthProgress = (done, total);
+          changed();
+        }
+      });
+      if (generation == runGeneration && fingerprint == _fingerprint()) {
+        growth = result;
+      }
+    } on EngineCancelled {
+      // The next request owns the engine.
+    } catch (failure) {
+      if (generation == runGeneration) {
+        error = tb('searchFailed', 'The search failed: {reason}', {
+          'reason': '$failure',
+        });
+      }
+    } finally {
+      if (generation == runGeneration) {
+        running = growthRunning = false;
+        _activeContext = null;
+        changed();
+      }
+    }
+  }
+
   void cancel() {
+    if (manualBusy) running = false;
+    ++manualGeneration;
+    manualBusy = false;
+    activeManualContext = null;
+    comparison.stop();
     pt.stop();
     engine?.cancel();
   }
 
   /// Repaints after a change made outside the controller's own methods.
   void changed() {
+    comparison.sync();
+    _checkActiveContext();
     if (!_disposed) notifyListeners();
   }
 

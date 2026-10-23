@@ -154,6 +154,7 @@ sealed class Goal {
         criterion(),
         play(),
         (json['challengeEventId'] as num?)?.toInt(),
+        target: json['target'] is Map ? objectRow(json['target']) : null,
       ),
       'event' => EventGoal(
         measure: '${json['measure']}',
@@ -164,6 +165,8 @@ sealed class Goal {
         play: play(),
         ptOnly: json['ranking'] == 'pt-only',
         ranking: json['ranking'] as String?,
+        weights: json['weights'] is Map ? objectRow(json['weights']) : null,
+        minComboBonus: intOf(objectRow(json['gekiso'])['minComboBonus'], 1),
         cpExchange: json['cpExchange'] is Map
             ? CpExchange(
                 intOf(objectRow(json['cpExchange'])['numerator']),
@@ -187,6 +190,13 @@ sealed class Goal {
         ),
         rank: intOf(json['rank'], 1),
         seeds: intOf(json['seeds']),
+        minComboBonus: intOf(json['minComboBonus'], 1),
+        opponents: json['opponents'] is List
+            ? [
+                for (final range in json['opponents'] as List)
+                  [for (final score in range as List) numOf(score)],
+              ]
+            : null,
       ),
       'potential' => PotentialGoal(numOf(json['windowSeconds'], 100)),
       'plan' => PlanGoal(
@@ -214,7 +224,14 @@ class PowerGoal extends Goal {
 }
 
 class ScoreGoal extends Goal {
-  const ScoreGoal(this.songs, this.criterion, this.play, this.challengeEventId);
+  const ScoreGoal(
+    this.songs,
+    this.criterion,
+    this.play,
+    this.challengeEventId, {
+    this.target,
+  });
+  final Doc? target;
   final List<SongRef> songs;
   final Criterion criterion;
   final PlayModel play;
@@ -231,6 +248,8 @@ class EventGoal extends Goal {
     required this.play,
     this.ptOnly = false,
     this.ranking,
+    this.weights,
+    this.minComboBonus = 1,
     this.cpExchange,
     this.gekiso,
   });
@@ -239,6 +258,8 @@ class EventGoal extends Goal {
   /// reward-only ordering (`ranking: "pt-only"`).
   final bool ptOnly;
   final String? ranking;
+  final Doc? weights;
+  final int minComboBonus;
   bool get primaryOnly => ptOnly || ranking != null;
 
   /// Best challenge payout per CP for this objective (solo trial only).
@@ -263,6 +284,8 @@ class EventGoal extends Goal {
     play: play,
     ptOnly: ptOnly,
     ranking: ranking,
+    weights: weights,
+    minComboBonus: minComboBonus,
     cpExchange: cpExchange ?? this.cpExchange,
     gekiso: dropGekiso ? null : gekiso,
   );
@@ -275,11 +298,17 @@ class EventGoal extends Goal {
     'songs': [for (final song in songs) song.toJson()],
     'consumption': consumption,
     'play': play.toJson(),
+    if (weights != null) 'weights': weights,
     if (primaryOnly) 'ranking': ptOnly ? 'pt-only' : ranking,
     if (cpExchange case final cp?)
       'cpExchange': {'numerator': cp.numerator, 'denominator': cp.denominator},
     if (gekiso case final g?)
-      'gekiso': {'just': g.just, 'luckSamples': g.luckSamples, 'rank': 1},
+      'gekiso': {
+        'just': g.just,
+        'luckSamples': g.luckSamples,
+        'rank': 1,
+        'minComboBonus': minComboBonus,
+      },
   };
 
   /// `points`, `items` or `challenge-points`.
@@ -300,6 +329,8 @@ class GekisoGoal extends Goal {
     required this.accuracy,
     this.rank = 1,
     this.seeds = 0,
+    this.minComboBonus = 1,
+    this.opponents,
   });
   final List<SongRef> songs;
   final Criterion criterion;
@@ -313,6 +344,8 @@ class GekisoGoal extends Goal {
   /// Luck ranges: 0 takes the exact nominal lottery expectation; n > 0
   /// averages n native lottery seeds instead.
   final int seeds;
+  final int minComboBonus;
+  final List<List<double>>? opponents;
 }
 
 class PotentialGoal extends Goal {
@@ -351,6 +384,7 @@ Map<String, Object?> goalJson(Goal goal) => switch (goal) {
     'challengeEventId': challengeEventId,
   },
   ScoreGoal(
+    :final target,
     :final songs,
     :final criterion,
     :final play,
@@ -358,12 +392,15 @@ Map<String, Object?> goalJson(Goal goal) => switch (goal) {
   ) =>
     {
       'kind': 'score',
+      'target': ?target,
       'songs': [for (final song in songs) song.toJson()],
       'criterion': criterion.name,
       'play': play.toJson(),
       'challengeEventId': challengeEventId,
     },
   GekisoGoal(
+    :final minComboBonus,
+    :final opponents,
     :final songs,
     :final criterion,
     :final accuracy,
@@ -372,6 +409,8 @@ Map<String, Object?> goalJson(Goal goal) => switch (goal) {
   ) =>
     {
       'kind': 'gekiso',
+      'minComboBonus': minComboBonus,
+      'opponents': ?opponents,
       'songs': [for (final song in songs) song.toJson()],
       'criterion': criterion.name,
       'accuracy': {
@@ -796,6 +835,7 @@ class SongResult {
     this.floor,
     this.exclusion,
     this.rewardPhase,
+    this.placements,
   });
   factory SongResult.fromJson(Map<String, Object?> json) => SongResult(
     song: json['song'] is Map
@@ -807,6 +847,9 @@ class SongResult {
     ],
     proven: json['proven'] == true,
     rewardPhase: json['rewardPhase'] as String?,
+    placements: json['placements'] is List
+        ? intListOf(json['placements'])
+        : null,
     bound: (json['bound'] as num?)?.toDouble(),
     stats: SearchStats.fromJson(objectRow(json['stats'])),
     floor: (json['floor'] as num?)?.toDouble(),
@@ -816,6 +859,7 @@ class SongResult {
         : null,
   );
   final SongRef? song;
+  final List<int>? placements;
   List<EngineHit> hits;
   bool proven;
   final String? rewardPhase;
@@ -831,6 +875,7 @@ class SongResult {
   double? floor;
   Map<String, Object?> toJson() => {
     'song': song?.toJson(),
+    'placements': ?placements,
     'proven': proven,
     if (rewardPhase != null) 'rewardPhase': rewardPhase,
     'bound': bound?.isFinite == true ? bound : null,
@@ -861,18 +906,18 @@ class PlanSummary {
         ? EngineHit.fromJson(objectRow(json['challenge']))
         : null,
     normalLives: intOf(json['normalLives']),
-    challengeLives: intOf(json['challengeLives']),
-    challengePointsEarned: intOf(json['challengePointsEarned']),
-    leftoverChallengePoints: intOf(json['leftoverChallengePoints']),
+    challengeLives: numOf(json['challengeLives']),
+    challengePointsEarned: numOf(json['challengePointsEarned']),
+    leftoverChallengePoints: numOf(json['leftoverChallengePoints']),
     eventPoints: numOf(json['eventPoints']),
     perBoost: numOf(json['perBoost']),
   );
   final EngineHit? normal;
   final EngineHit? challenge;
   final int normalLives;
-  final int challengeLives;
-  final int challengePointsEarned;
-  final int leftoverChallengePoints;
+  final double challengeLives;
+  final double challengePointsEarned;
+  final double leftoverChallengePoints;
   final double eventPoints;
 
   /// Event points per boost spent, over the whole cycle.
@@ -2536,10 +2581,10 @@ Future<EngineResponse> _runPlan(
       normal: bestNormal,
       challenge: bestChallenge,
       normalLives: lives,
-      challengeLives: challengeLives,
-      challengePointsEarned: earned,
+      challengeLives: challengeLives.toDouble(),
+      challengePointsEarned: earned.toDouble(),
       leftoverChallengePoints:
-          pool - challengeLives * goal.challengePointsPerLive,
+          (pool - challengeLives * goal.challengePointsPerLive).toDouble(),
       eventPoints: eventPointsTotal,
       perBoost: goal.boostBudget != 0
           ? eventPointsTotal /

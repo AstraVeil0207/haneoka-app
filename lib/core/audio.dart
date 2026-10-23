@@ -7,6 +7,9 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'audio_output.dart';
+import 'account_resource.dart';
+import 'resource_file_cache.dart';
+import 'media_lifecycle.dart';
 import 'audio_track.dart';
 import 'playback_focus.dart';
 export 'audio_track.dart';
@@ -26,6 +29,10 @@ class AudioService extends ChangeNotifier {
   int _generation = 0;
   Object? error;
   Future<void> _requests = Future.value();
+  ResourceFileLease? _trackLease;
+  Completer<void>? _preparation;
+  String? _resourceOwner;
+  Future<void>? _closing;
   final _subscriptions = <StreamSubscription<dynamic>>[];
 
   /// Position and length of the current track, for the progress ring and seek row.
@@ -42,6 +49,13 @@ class AudioService extends ChangeNotifier {
   Duration _restoredPosition = Duration.zero;
   AudioService([this._prefs]) {
     _restore();
+    _resourceOwner = AccountResources.instance.owner;
+    _subscriptions.add(
+      AccountResources.instance.changes.listen((_) {
+        unawaited(_ownerChanged());
+      }),
+    );
+    MediaLifecycle.register(this, close);
     _subscriptions.add(
       _player.errors.listen((exception) {
         if (_disposed) return;
@@ -104,7 +118,12 @@ class AudioService extends ChangeNotifier {
     Future<void> Function() operation, {
     bool replace = false,
   }) {
-    if (replace) _player.cancelPendingLoad();
+    if (replace) {
+      _player.cancelPendingLoad();
+      final p = _preparation;
+      _preparation = null;
+      if (p != null && !p.isCompleted) p.complete();
+    }
     final generation = replace ? ++_generation : _generation;
     return _requests = _requests.then((_) async {
       if (_disposed || generation != _generation) return;
@@ -130,7 +149,30 @@ class AudioService extends ChangeNotifier {
     _completed = false;
     _loadedUrl = null;
     Future<void> start() => _perform(() async {
-      await _player.play(UrlSource(track.url), shouldPlay: shouldPlay);
+      final generation = _generation, uri = Uri.parse(track.url);
+      ResourceFileLease? lease;
+      try {
+        if (isAccountResource(uri)) {
+          final preparation = _preparation = Completer<void>();
+          lease = await resourceFileCache.acquire(
+            uri,
+            kind: ResourceFileKind.media,
+            cancelled: preparation.future,
+          );
+        }
+        if (_disposed || generation != _generation) return;
+        await _player.play(
+          UrlSource(lease?.file.uri.toString() ?? track.url),
+          shouldPlay: shouldPlay,
+        );
+        if (_disposed || generation != _generation) return;
+        final previous = _trackLease;
+        _trackLease = lease;
+        lease = null;
+        await previous?.release();
+      } finally {
+        await lease?.release();
+      }
       await _player.setVolume(volume);
       _loadedUrl = track.url;
       if (_restoredPosition == Duration.zero) _persist();
@@ -349,14 +391,51 @@ class AudioService extends ChangeNotifier {
     }
   }
 
+  Future<void> _ownerChanged() async {
+    final owner = AccountResources.instance.owner;
+    if (owner == _resourceOwner || _disposed) return;
+    _resourceOwner = owner;
+    final previous = current,
+        private =
+            previous != null && isAccountResource(Uri.parse(previous.url));
+    if (!_queue.any((t) => isAccountResource(Uri.parse(t.url)))) return;
+    _queue = List.unmodifiable(
+      _queue.where((t) => !isAccountResource(Uri.parse(t.url))),
+    );
+    _index = previous == null
+        ? -1
+        : _queue.indexWhere((t) => _key(t) == _key(previous));
+    if (_index < 0 && _queue.isNotEmpty) _index = 0;
+    if (private) {
+      _loadedUrl = null;
+      _playing = false;
+      position.value = Duration.zero;
+      duration.value = Duration.zero;
+      await _perform(_player.stop, replace: true);
+      await _trackLease?.release();
+      _trackLease = null;
+    }
+    if (!_disposed) {
+      _persist();
+      notifyListeners();
+    }
+  }
+
   void _persist() {
     if (_prefs == null) return;
+    final publicQueue = _queue
+            .where((t) => !isAccountResource(Uri.parse(t.url)))
+            .toList(),
+        selected = current;
+    final publicIndex = selected == null
+        ? -1
+        : publicQueue.indexWhere((t) => _key(t) == _key(selected));
     unawaited(
       _prefs.setString(
         'audio:v2',
         jsonEncode({
           'queue': [
-            for (final track in _queue)
+            for (final track in publicQueue)
               {
                 'id': track.id,
                 'url': track.url,
@@ -366,15 +445,16 @@ class AudioService extends ChangeNotifier {
                 'artwork': track.artwork,
               },
           ],
-          'index': _index,
+          'index': publicIndex < 0 ? 0 : publicIndex,
           'volume': volume,
           'mode': mode.name,
           'collapsed': collapsed,
-          'position':
-              (_restoredPosition > Duration.zero
-                      ? _restoredPosition
-                      : position.value)
-                  .inMilliseconds,
+          'position': publicIndex < 0
+              ? 0
+              : (_restoredPosition > Duration.zero
+                        ? _restoredPosition
+                        : position.value)
+                    .inMilliseconds,
         }),
       ),
     );
@@ -416,20 +496,32 @@ class AudioService extends ChangeNotifier {
     notifyListeners();
     _persist();
     await _perform(_player.stop, replace: true);
+    await _trackLease?.release();
+    _trackLease = null;
   }
 
-  @override
-  void dispose() {
+  Future<void> close() => _closing ??= _close();
+  Future<void> _close() async {
     _persist();
     _disposed = true;
     _focus.close();
     _generation++;
+    final preparation = _preparation;
+    if (preparation != null && !preparation.isCompleted) preparation.complete();
     for (final subscription in _subscriptions) {
-      subscription.cancel();
+      await subscription.cancel();
     }
-    _player.dispose();
+    await _player.dispose();
+    await _trackLease?.release();
+    _trackLease = null;
     position.dispose();
     duration.dispose();
+    MediaLifecycle.unregister(this);
+  }
+
+  @override
+  void dispose() {
+    unawaited(close());
     super.dispose();
   }
 }

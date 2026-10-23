@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 
 import 'net.dart';
+import 'account_resource.dart';
 import 'storage.dart';
 
 enum ResourceFileKind { media, renderResource }
@@ -20,12 +21,16 @@ final class ResourceCacheCancelled implements Exception {
 
 /// The original URI remains the resource identity; resource consumers use [file].
 final class ResourceFileLease {
-  ResourceFileLease._(this.uri, this.file, this._lease);
+  ResourceFileLease._(this.uri, this.file, this._lease, [this._release]);
   final Uri uri;
   final File file;
   final StorageLease? _lease;
+  final Future<void> Function()? _release;
   Future<Uint8List> readBytes() => file.readAsBytes();
-  Future<void> release() async => _lease?.release();
+  Future<void> release() async {
+    await _lease?.release();
+    await _release?.call();
+  }
 }
 
 final class _ResourceDownload {
@@ -169,6 +174,17 @@ final class ResourceFileCache {
     required ResourceFileKind kind,
     Future<void>? cancelled,
   }) async {
+    if (isAccountResource(uri)) {
+      try {
+        final lease = await AccountResources.instance.acquire(
+          uri,
+          cancelled: cancelled,
+        );
+        return ResourceFileLease._(uri, lease.file, null, lease.release);
+      } on AccountResourceCancelled {
+        throw const ResourceCacheCancelled();
+      }
+    }
     if (uri.scheme == 'file') {
       return ResourceFileLease._(uri, File.fromUri(uri), null);
     }

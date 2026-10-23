@@ -19,6 +19,7 @@ import 'package:render_kernel_flutter/render_kernel_flutter.dart'
     show DisplayFrameRateScope;
 
 import '../core/api.dart';
+import '../core/catalog_source.dart';
 import '../core/app_state.dart';
 import '../core/render_preferences.dart';
 import '../core/resource_file_cache.dart';
@@ -43,11 +44,13 @@ class NativeChartPlayerScreen extends StatefulWidget {
     required this.difficulty,
     this.songId,
     this.server,
+    this.document,
   });
   final Map? song;
   final HaneokaApi? api;
   final int difficulty;
   final String? songId, server;
+  final NativeChartDocument? document;
   @override
   State<NativeChartPlayerScreen> createState() =>
       _NativeChartPlayerScreenState();
@@ -193,15 +196,20 @@ class _NativeChartPlayerScreenState extends State<NativeChartPlayerScreen>
     _clearFrameDebt();
     final load = ++_load, state = AppScope.of(context);
     try {
-      final api = widget.api ?? state.apiFor(widget.server ?? state.server);
-      final song =
-          widget.song ?? await api.catalog('songs', widget.songId) as Map;
-      final doc = await NativeChartDocument.fromSong(
-        song,
-        widget.difficulty,
-        api,
-        state.songTitle(song['musicTitle']),
-      );
+      final NativeChartDocument doc;
+      if (widget.document case final document?) {
+        doc = document;
+      } else {
+        final api = CatalogSourceScope.resolve(context, api: widget.api, server: widget.server);
+        final song =
+            widget.song ?? await api.catalog('songs', widget.songId) as Map;
+        doc = await NativeChartDocument.fromSong(
+          song,
+          widget.difficulty,
+          api,
+          state.songTitle(song['musicTitle']),
+        );
+      }
       if (!mounted || load != _load) return;
       setState(() {
         _document = doc;

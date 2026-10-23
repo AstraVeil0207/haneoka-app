@@ -7,12 +7,14 @@ import 'audio_track.dart';
 import 'audio_output.dart';
 import 'playback_focus.dart';
 import 'resource_file_cache.dart';
+import 'account_resource.dart';
 
 /// Page-owned transport. It has no queue, persistence or system media item.
 final class PageAudio extends ChangeNotifier {
   PageAudio({this.onFocusInterrupted, bool pollPosition = true})
     : _output = AudioOutput(pollPosition: pollPosition) {
     _subscriptions.addAll([
+      AccountResources.instance.changes.listen((_) => _accountChanged()),
       _output.onPlayerStateChanged.listen((state) {
         if (_disposed) return;
         playing = state == PlayerState.playing;
@@ -46,6 +48,7 @@ final class PageAudio extends ChangeNotifier {
   final position = ValueNotifier(Duration.zero);
   final duration = ValueNotifier(Duration.zero);
   Track? current;
+  Track? _requested;
   bool playing = false, completed = false, loop = false, _disposed = false;
   double volume = 1;
   int revision = 0, _generation = 0;
@@ -68,6 +71,22 @@ final class PageAudio extends ChangeNotifier {
   String get clockBackend => _output.clockBackend;
   Future<void> _requests = Future.value();
 
+  void _accountChanged() {
+    if (_disposed || ![current, _requested].any((track) => track != null && isAccountResource(Uri.parse(track.url)))) return;
+    _cancelSourcePreparation();
+    _output.cancelPendingLoad();
+    current = _requested = null;
+    _loadedUrl = null;
+    playing = completed = false;
+    position.value = duration.value = Duration.zero;
+    ++revision;
+    final lease = _sourceLease; _sourceLease = null;
+    unawaited(_perform(() async {
+      try { await _output.stop(); } finally { await lease?.release(); }
+    }, replace: true));
+    notifyListeners();
+  }
+
   Future<void> _perform(
     Future<void> Function() operation, {
     bool replace = false,
@@ -89,6 +108,7 @@ final class PageAudio extends ChangeNotifier {
   }
 
   Future<void> loadPaused(Track track) {
+    _requested = track;
     _cancelSourcePreparation();
     final preparation = _sourcePreparation = Completer<void>();
     if (!_disposed) notifyListeners();

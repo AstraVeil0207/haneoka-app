@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../core/app_state.dart';
@@ -20,6 +21,8 @@ import 'format.dart';
 import 'profiles.dart';
 import 'visuals.dart';
 import 'song_presentation.dart';
+import 'voice_catalog.dart';
+import 'cross_server.dart';
 
 List<Map> _values(Object? value, [String? key]) {
   final source = key != null && value is Map ? value[key] : value;
@@ -45,65 +48,6 @@ String _storyCategory(Map entry) {
   if (key.contains('afterlive')) return 'afterlive';
   if (key.contains('tutorial')) return 'tutorial';
   return 'band';
-}
-
-const _voiceGroups = [
-  ('talk', 0, 'sourceTalk'),
-  ('characterVoice', 1, 'sourceCharacterVoice'),
-  ('memberCard', 2, 'sourceMemberCard'),
-  ('liveCharacter', 3, 'sourceLiveCharacter'),
-  ('liveGekisouVoice', 4, 'sourceLiveGekisouVoice'),
-  ('liveDialogueCommon', 5, 'sourceLiveDialogueCommon'),
-  ('liveDialogueFixedPair', 6, 'sourceLiveDialogueFixedPair'),
-  ('liveStartCharacterVoice', 7, 'sourceLiveStartCharacterVoice'),
-  ('unknown', -1, 'sourceUnknown'),
-];
-
-int _voiceGroup(Map entry) {
-  final type = entry['masterType'];
-  final index = _voiceGroups.indexWhere((g) => g.$2 == type);
-  return index < 0 ? _voiceGroups.length - 1 : index;
-}
-
-/// The message key of a voice's own title (`voiceTitleKey`).
-String _voiceTitleKey(Map entry) {
-  String at(List<String> names, Object? index, String fallback) =>
-      names.elementAtOrNull(_num(index).toInt()) ?? fallback;
-  return switch (entry['masterType']) {
-    0 =>
-      _num(entry['birthdayCharacterId']) > 0
-          ? 'birthday'
-          : entry['seasonStartAt'] != null || entry['seasonEndAt'] != null
-          ? 'seasonal'
-          : 'normal',
-    1 => at(
-      const [
-        'levelUp',
-        'awaken',
-        'skillUp',
-        'rankUp',
-        'clear',
-        'fullCombo',
-        'allPerfect',
-        'result',
-        'battleFirst',
-        'battleHigh',
-        'battleLow',
-      ],
-      entry['characterVoiceType'],
-      'live',
-    ),
-    2 => 'gacha',
-    3 => 'skill',
-    4 => at(
-      const ['gekisouCombo', 'gekisouJust', 'gekisouLuck', 'gekisouTop'],
-      entry['gekisouVoiceType'],
-      'live',
-    ),
-    5 || 6 => entry['dialogueType'] == 2 ? 'skill' : 'combo',
-    7 => 'start',
-    _ => 'other',
-  };
 }
 
 /// The measured portrait and ribbon positions of the game's friendship board
@@ -1031,17 +975,11 @@ class _CharacterDetailState extends State<CharacterDetail> {
           );
         }
         final entries =
-            _values(snapshot.data).where((e) => _ids(e).contains(id)).toList()
-              ..sort((a, b) {
-                for (final compare in [
-                  _voiceGroup(a).compareTo(_voiceGroup(b)),
-                  _num(a['masterType']).compareTo(_num(b['masterType'])),
-                  _num(a['masterId']).compareTo(_num(b['masterId'])),
-                ]) {
-                  if (compare != 0) return compare;
-                }
-                return '${a['voiceKey']}'.compareTo('${b['voiceKey']}');
-              });
+            _values(snapshot.data)
+                .map(preferredVoiceRecording)
+                .where((e) => _ids(e).contains(id))
+                .toList()
+              ..sort((a, b) => compareVoices(a, b, id));
         if (entries.isEmpty) return _empty();
         String v(String key, [Object? value]) =>
             t('media.voice.$key', key, {'0': value});
@@ -1052,7 +990,7 @@ class _CharacterDetailState extends State<CharacterDetail> {
           final type = entry['masterType'];
           return [
             switch (t.text(entry['title'])) {
-              '' => v(_voiceTitleKey(entry)),
+              '' => v(voiceKind(entry)),
               final title => title,
             },
             if (type == 1 && entry['characterVoiceType'] == 7 && rank > 0)
@@ -1062,7 +1000,8 @@ class _CharacterDetailState extends State<CharacterDetail> {
                 v('call')
               else if (entry['dialogueCallType'] == 2)
                 v('response'),
-            if (type == 6) _ids(entry).map(_name).join(' → '),
+            if (type == 6 || voiceKind(entry) == 'resultPair')
+              _ids(entry).map(_name).join(' → '),
           ].where((s) => s.isNotEmpty).join(' · ');
         }
 
@@ -1088,6 +1027,13 @@ class _CharacterDetailState extends State<CharacterDetail> {
               : '';
           return [
             season.isNotEmpty ? season : date,
+            if (entry['startAt'] is num && (entry['startAt'] as num) > 0)
+              DateFormat.yMMMMd(t.locale).format(
+                DateTime.fromMillisecondsSinceEpoch(
+                  (entry['startAt'] as num).toInt(),
+                  isUtc: true,
+                ).add(const Duration(hours: 9)),
+              ),
             unlock,
           ].where((value) => value.isNotEmpty).join(' · ');
         }
@@ -1098,43 +1044,48 @@ class _CharacterDetailState extends State<CharacterDetail> {
           builder: (context, _) => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              for (final (index, (_, _, label)) in _voiceGroups.indexed)
-                if (entries.where((e) => _voiceGroup(e) == index).toList()
+              for (final group in voiceTabs)
+                if (entries.where((e) => voiceTab(e) == group).toList()
                     case final items when items.isNotEmpty)
-                  _section$(
-                    Symbols.mic_rounded,
-                    v(label),
-                    items.length,
-                    Column(
+                  DetailFold(
+                    key: ValueKey('voice-group-$group'),
+                    title: v('groups.$group'),
+                    meta: '${items.length}',
+                    open: group == 'comment',
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        for (final (position, entry) in items.indexed) ...[
-                          if (position > 0)
-                            const SizedBox(height: DialogueRow.spacing),
-                          if (entry['lines'] is List &&
-                                  (entry['lines'] as List).length > 1 ||
-                              position == 0 ||
-                              title(entry) != title(items[position - 1]) ||
-                              condition(entry) !=
-                                  condition(items[position - 1]) ||
-                              entry['cardId'] != items[position - 1]['cardId'])
-                            if (position > 0) const SizedBox(height: 16),
-                          _voiceEntry(
-                            entry,
-                            title(entry),
-                            condition(entry),
-                            entry['lines'] is List &&
-                                    (entry['lines'] as List).length > 1 ||
-                                position == 0 ||
-                                title(entry) != title(items[position - 1]) ||
-                                condition(entry) !=
-                                    condition(items[position - 1]) ||
-                                entry['cardId'] !=
-                                    items[position - 1]['cardId'],
-                            audio,
-                            v,
-                          ),
-                        ],
+                        for (final kind in voiceKinds)
+                          if (items.where((e) => voiceKind(e) == kind).toList()
+                              case final subset when subset.isNotEmpty) ...[
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              child: Text(
+                                v(kind),
+                                style: theme.textTheme.titleSmall,
+                              ),
+                            ),
+                            for (final (position, entry) in subset.indexed) ...[
+                              if (position > 0)
+                                const SizedBox(height: DialogueRow.spacing),
+                              _voiceEntry(
+                                entry,
+                                title(entry),
+                                condition(entry),
+                                entry['lines'] is List &&
+                                        (entry['lines'] as List).length > 1 ||
+                                    position == 0 ||
+                                    title(entry) !=
+                                        title(subset[position - 1]) ||
+                                    condition(entry) !=
+                                        condition(subset[position - 1]) ||
+                                    entry['cardId'] !=
+                                        subset[position - 1]['cardId'],
+                                audio,
+                                v,
+                              ),
+                            ],
+                          ],
                       ],
                     ),
                   ),
@@ -1188,11 +1139,11 @@ class _CharacterDetailState extends State<CharacterDetail> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         InkWell(
-          onTap: entry['cardId'] == null
+          onTap: entry['cardId'] == null && entry['storyId'] == null
               ? null
               : () => openLink(
                   context,
-                  '/${state.server}/${t.locale}/member-cards/${entry['cardId']}/',
+                  '/${entry['sourceServer'] ?? state.server}/${t.locale}/${entry['cardId'] != null ? 'member-cards' : 'stories'}/${entry['cardId'] ?? entry['storyId']}/',
                 ),
           child: Text(
             title,
@@ -1279,15 +1230,34 @@ class _CharacterDetailState extends State<CharacterDetail> {
         : (_ids(entry).firstOrNull ?? id);
     final playing = audio.isPlaying(_voiceKey(entry, index));
     final text = t.text(line['text']);
-    final face = _face(speaker);
+    final face = _num(line['characterId']) > 0 || _ids(entry).length == 1
+        ? _face(speaker)
+        : null;
+    final mark = entry['sourcesComplete'] == true
+        ? serverMark({'_servers': entry['sourceServers']}, t.call)
+        : null;
     return DialogueRow(
-      name: _name(speaker),
+      name: _num(line['characterId']) > 0
+          ? _name(speaker)
+          : _ids(entry).map(_name).join(' · '),
+      marks: mark == null
+          ? null
+          : Tooltip(
+              message: mark.$2,
+              child: SvgPicture.asset(mark.$1, width: 20, height: 20),
+            ),
       faces: [?face],
       playing: playing,
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(text.isEmpty ? v('noText') : text.replaceAll('\r', '')),
+          Text(
+            text.isEmpty
+                ? voiceGroup(entry) == 'title'
+                      ? v(voiceKind(entry))
+                      : v('noText')
+                : text.replaceAll('\r', ''),
+          ),
           if (clip == null)
             Text(
               v('unavailable'),

@@ -7,6 +7,8 @@ import 'dart:typed_data';
 import 'package:cassiopeia_plugin_our_notes/render_profile.dart';
 
 import '../chart/runtime_chart.dart';
+import 'visual_time.dart';
+import 'visual_profiles.dart';
 import 'native_chart_effects.dart';
 
 final _noteGeometries = Expando<ChartNoteGeometry>();
@@ -42,6 +44,8 @@ ChartGpuSnapshot buildChartSnapshot(
   (int, int)? worldViewport,
   required int mediaUs,
   NativeChartProjection? stageProjection,
+  ChartVisualTimeMap? visualTime,
+  NativeChartVisualProfiles? visualProfiles,
   int epoch = 2,
   int? outputBuffer,
   String noteSkin = 'skin001',
@@ -498,8 +502,20 @@ ChartGpuSnapshot buildChartSnapshot(
     );
   }
   final timeMs = mediaUs / 1000, viewMs = projection.viewTimeMs;
+  double renderTime(double t) => visualTime?.scaled(t) ?? t;
+  final renderNow = renderTime(timeMs),
+      renderMediaUs = (renderNow * 1000).round();
+  int renderUs(int t, [double? profileView]) =>
+      ((renderNow +
+                  (renderTime(t / 1000) - renderNow) *
+                      viewMs /
+                      (profileView ?? viewMs)) *
+              1000)
+          .round();
+  final maximumView = visualProfiles?.maximumViewTime(viewMs) ?? viewMs;
   double displayedLane(double lane, double width) =>
       mirror ? 24 - lane - width : lane;
+  bool passed(RuntimeVisualNote note) => chart.enumeration[note.sourceOrdinal].judged && note.timeMicroseconds < mediaUs;
   int displayedDirection(int direction) => !mirror
       ? direction
       : switch (direction) {
@@ -525,8 +541,12 @@ ChartGpuSnapshot buildChartSnapshot(
   final visible = _sortedNotes[chart] ??= [
     for (final i in chart.visualTimeSortedIndices) chart.visualNotes[i],
   ];
-  final firstVisibleMs = timeMs - viewMs * .16;
-  final lastVisibleMs = timeMs + viewMs * 1.1;
+  final firstVisibleMs =
+      visualTime?.time(renderNow - maximumView * .16) ??
+      timeMs - maximumView * .16;
+  final lastVisibleMs =
+      visualTime?.time(renderNow + maximumView * 1.1) ??
+      timeMs + maximumView * 1.1;
   var first = 0, upper = visible.length;
   while (first < upper) {
     final middle = first + ((upper - first) >> 1);
@@ -552,7 +572,7 @@ ChartGpuSnapshot buildChartSnapshot(
       continue;
     }
     // Core watch.advance processes judged notes strictly before current time.
-    if (isJudgementNote(note.operateType) && note.timeMicroseconds < mediaUs) {
+    if (passed(note)) {
       continue;
     }
     final direction = displayedDirection(note.direction);
@@ -567,7 +587,10 @@ ChartGpuSnapshot buildChartSnapshot(
       });
       continue;
     }
-    final approach = (note.timeMicroseconds / 1000 - timeMs) / viewMs;
+    final approach =
+        (renderTime(note.timeMicroseconds / 1000) - renderNow) /
+        (visualProfiles?.noteViewTime(note.id, viewMs) ?? viewMs);
+    if (approach < -.16 || approach > 1.1) continue;
     final alpha = approach < 0 ? math.max(0.0, 1 + approach / .16) : 1.0;
     final progress = projection.progress(approach);
     if (geometryObservations) {
@@ -665,7 +688,9 @@ ChartGpuSnapshot buildChartSnapshot(
       ...line.endComboEvents.map((p) => p.timeMicroseconds),
     ];
     final start = spanTimes.reduce(math.min), end = spanTimes.reduce(math.max);
-    if (end < mediaUs || start > mediaUs + (viewMs * 1100).round()) continue;
+    final lineView =
+        visualProfiles?.lineViewTime(line.nativeLineId, viewMs) ?? viewMs;
+    if (end < mediaUs || start > (lastVisibleMs * 1000).round()) continue;
     final active =
         line.family == RuntimeVisualLineFamily.line &&
         start <= mediaUs &&
@@ -677,15 +702,15 @@ ChartGpuSnapshot buildChartSnapshot(
           for (final p in points)
             NativeHoldSourcePoint(
               nativeId: p.id,
-              timeUs: p.timeMicroseconds,
-              lane: displayedLane(p.lane.toDouble(), p.width.toDouble()),
-              width: p.width.toDouble(),
+              timeUs: renderUs(p.timeMicroseconds, lineView),
+              lane: displayedLane(p.visualLane, p.visualWidth),
+              width: p.visualWidth,
               leftEase: mirror ? p.easeR : p.ease,
               rightEase: mirror ? p.ease : p.easeR,
             ),
         ],
         projection,
-        mediaUs,
+        renderMediaUs,
         widthScale: holdStyle?.widthScale ?? .9,
         glowRangeScale: holdStyle?.glowRange ?? 2.5,
       );
@@ -748,7 +773,7 @@ ChartGpuSnapshot buildChartSnapshot(
       meshes[key] = nativeHoldProjectedMesh(
         prepared,
         projection,
-        mediaUs,
+        renderMediaUs,
         opacity: line.family == RuntimeVisualLineFamily.guide
             ? guideAlpha
             : longAlpha,
@@ -817,31 +842,48 @@ ChartGpuSnapshot buildChartSnapshot(
     group.sort((a, b) => a.sourceOrdinal.compareTo(b.sourceOrdinal));
     for (var i = 1; i < group.length; i++) {
       final a = group[i - 1], b = group[i];
-      if (a.timeMicroseconds < mediaUs || b.timeMicroseconds < mediaUs) {
+      if (passed(a) || passed(b)) {
         continue;
       }
-      final approach = (b.timeMicroseconds / 1000 - timeMs) / viewMs;
-      if (approach < -.16 || approach > 1.1) continue;
-      final ac =
-              displayedLane(a.lane.toDouble(), a.width.toDouble()) +
-              a.width / 2,
-          bc =
-              displayedLane(b.lane.toDouble(), b.width.toDouble()) +
-              b.width / 2;
+      final approach =
+          (renderTime(b.timeMicroseconds / 1000) - renderNow) /
+          (visualProfiles?.noteViewTime(b.id, viewMs) ?? viewMs);
+      final approachA =
+          (renderTime(a.timeMicroseconds / 1000) - renderNow) /
+          (visualProfiles?.noteViewTime(a.id, viewMs) ?? viewMs);
+      if ((approach < -.16 || approach > 1.1) &&
+          (approachA < -.16 || approachA > 1.1)) {
+        continue;
+      }
+      final ac = displayedLane(a.visualLane, a.visualWidth) + a.visualWidth / 2,
+          bc = displayedLane(b.visualLane, b.visualWidth) + b.visualWidth / 2;
       if (ac == bc) continue;
-      final progress = projection.progress(approach);
-      final left = projection.laneX(math.min(ac, bc)) * progress;
-      final right = projection.laneX(math.max(ac, bc)) * progress;
+      final progress = projection.progress(approach),
+          progressA = projection.progress(approachA);
+      final ax = projection.laneX(ac) * progressA,
+          bx = projection.laneX(bc) * progress;
+      final ay = projection.y(progressA), by = projection.y(progress);
       final key = 'pair:${a.sourceOrdinal}:${b.sourceOrdinal}';
       add(
         key,
         '',
-        quad(
-          (left + right) / 2,
-          projection.y(progress),
-          right - left,
-          .02500000037252903,
-          z: 10.6077995,
+        NativeSpriteGeometry(
+          positions: Float32List.fromList([
+            ax,
+            ay - .012500000186264515,
+            10.6077995,
+            bx,
+            by - .012500000186264515,
+            10.6077995,
+            ax,
+            ay + .012500000186264515,
+            10.6077995,
+            bx,
+            by + .012500000186264515,
+            10.6077995,
+          ]),
+          uv: Float32List.fromList([0, 1, 1, 1, 0, 0, 1, 0]),
+          indices: Uint16List.fromList([0, 1, 2, 2, 1, 3]),
         ),
         projection.screenClip,
         [1, 1, 1, 1],

@@ -1,14 +1,17 @@
+import '../core/catalog_source.dart';
+
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../catalog/browse.dart';
+import '../catalog/cross_server.dart';
 import '../catalog/visuals.dart';
 import '../core/app_state.dart';
 import '../core/i18n.dart';
-import '../shell/page.dart';
 import '../ui/app_image.dart';
-import '../ui/detail.dart';
 import '../ui/tile.dart';
+import 'spine_viewer.dart';
+import 'model_catalog.dart';
 
 /// `modelTitle`: the source path's last part without `_SkeletonData`.
 String spineTitle(Entry model) {
@@ -38,52 +41,52 @@ class SpineScreen extends StatefulWidget {
 
 class _SpineScreenState extends State<SpineScreen> {
   Future<List<Entry>>? _models;
+  Object? _dataKey;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _models ??= _load();
+    final key = CatalogSourceScope.keyOf(context);
+    if (_dataKey != key) { _dataKey = key; _models = _load(); }
   }
 
   Future<List<Entry>> _load() async {
-    final document = await AppScope.of(context).api.catalog('spine');
-    final data = (document as Map?) ?? const {};
-    final models = (data['models'] as Map?) ?? const {};
-    final order = [
-      for (final id in data['modelOrder'] as List? ?? models.keys.toList())
-        '$id',
-    ];
-    return [
-      for (final id in order)
-        if (models[id] case final Map model)
-          {'_key': id, ...model.cast<String, Object?>()},
-    ];
+    return crossServerCollection(resource: 'spine', selected: CatalogSourceScope.serverOf(context),
+      apis: CatalogSourceScope.apisOf(context), rowsPath: 'models');
   }
 
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final t = state.text;
-    String? preview(Entry model) => switch ((model['preview']
-        as Map?)?['url']) {
-      final String url when url.isNotEmpty => state.api.asset(url).toString(),
-      _ => null,
-    };
+    String? preview(Entry model) =>
+        switch ((model['preview'] as Map?)?['url']) {
+          final String url when url.isNotEmpty => CatalogSourceScope.apiOf(
+            context,
+          ).asset(url).toString(),
+          _ => null,
+        };
+    final apis = CatalogSourceScope.apisOf(context), current = CatalogSourceScope.serverOf(context);
+    apiFor(Entry row) => apis['${row[serverKey] ?? current}']!;
     void open(Entry model) => Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => SpineModelScreen(model: model, preview: preview(model)),
+        builder: (_) => CatalogSourceScope(
+          api: apiFor(model),
+          child: SpineModelScreen(model: model, preview: preview(model)),
+        ),
       ),
     );
     return FutureBuilder(
       future: _models,
       builder: (context, snapshot) => BrowseScreen(
+        sourcePath: '/catalog/spine',
         onOpen: (context, model) => open(model),
         title: t('navigation.spine', 'Spine'),
         items: snapshot.data,
         error: snapshot.error,
         onRetry: () => setState(() => _models = _load()),
         searchText: (m) =>
-            '${m['id'] ?? m['_key']} ${m['sourcePathKey'] ?? ''} ${m['family'] ?? ''}',
+            '${m['id'] ?? m['_key']} ${m['sourcePathKey'] ?? ''} ${m['family'] ?? ''} ${m['animations'] ?? ''}',
         // `spine-workspace` sorts: order (the id), model, family and
         // version, ascending.
         itemId: (model) => '${model['id'] ?? ''}',
@@ -118,6 +121,7 @@ class _SpineScreenState extends State<SpineScreen> {
           aspectRatio: 1,
           fit: BoxFit.contain,
           placeholder: Symbols.link_rounded,
+          serverMark: serverMark(model, (key, fallback) => t(key, fallback)),
           onTap: () => open(model),
         ),
         listRow: (context, model) => ListTile(
@@ -143,6 +147,7 @@ class _SpineScreenState extends State<SpineScreen> {
                 '${m['animationCount'] ?? (m['animations'] as List?)?.length ?? 0}',
             numeric: true,
           ),
+          TableColumn(t('media.models.labels.version'), (model) => '${model['spineVersion'] ?? ''}'),
         ],
         facets: [
           FacetSpec(
@@ -151,68 +156,25 @@ class _SpineScreenState extends State<SpineScreen> {
             values: (m) => ['${m['family'] ?? ''}'],
             option: (value) => FacetOption(_family(t, value)),
           ),
+          FacetSpec(key: 'version', label: t('media.models.labels.version'),
+            values: (model) => ['${model['spineVersion'] ?? ''}'], option: (value) => FacetOption(value)),
+          ...modelMetadataFacets(snapshot.data ?? const [], t),
         ],
       ),
     );
   }
 }
 
-/// One Spine model: its setup-pose preview and animations.
+/// The native model viewer also accepts direct entity routes.
 class SpineModelScreen extends StatelessWidget {
   const SpineModelScreen({super.key, required this.model, this.preview});
   final Entry model;
   final String? preview;
   @override
   Widget build(BuildContext context) {
-    final t = AppScope.of(context).text;
-    final theme = Theme.of(context);
-    final animations = [
-      for (final a in model['animations'] as List? ?? const []) '$a',
-    ];
-    return ShellPage(
+    return NativeSpineViewer(
+      id: '${model['id'] ?? model['_key']}',
       title: spineTitle(model),
-      body: DetailLayout(
-        media: preview == null
-            ? null
-            : ImageGallery(images: [preview!], aspectRatio: 1),
-        sections: [
-          DetailSection(
-            title: t('catalog.labels.details', 'Details'),
-            icon: Symbols.info_rounded,
-            child: SpecList(
-              facts: [
-                Fact(
-                  t('media.models.labels.family', 'Category'),
-                  _family(t, model['family']),
-                ),
-                if (model['spineVersion'] != null)
-                  Fact(
-                    t('media.models.labels.version', 'Version'),
-                    '${model['spineVersion']}',
-                  ),
-                Fact(
-                  t('media.models.labels.animations', 'Animations'),
-                  '${animations.length}',
-                ),
-              ],
-            ),
-          ),
-          if (animations.isNotEmpty)
-            DetailFold(
-              title: t('media.models.labels.animations', 'Animations'),
-              meta: '${animations.length}',
-              open: true,
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final name in animations)
-                    Chip(label: Text(name, style: theme.textTheme.bodySmall)),
-                ],
-              ),
-            ),
-        ],
-      ),
     );
   }
 }

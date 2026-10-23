@@ -95,6 +95,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   late var _observer = _PageNavigationObserver(_routeChanged);
   bool _nestedCanPop = false;
   bool _drawerCollapsed = false;
+  bool _navigationOpen = false;
   bool _handlingBack = false;
   (String, String)? _dataKey;
   void _routeChanged(String value) {
@@ -183,6 +184,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         (uri.path == '/chart-simulator' ||
             uri.path == '/catalog/live2d' ||
             uri.path == '/catalog/spine' ||
+            uri.path.startsWith('/catalog/live2d/') ||
+            uri.path.startsWith('/catalog/spine/') ||
             uri.queryParameters['view'] == 'play');
   }
 
@@ -339,6 +342,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             back: () => unawaited(_back()),
             canGoBack: _nestedCanPop || _route != '/',
             compact: compact,
+            navigationOpen: _navigationOpen,
             openNavigation: () => _scaffold.currentState?.openDrawer(),
             navigate: _navigate,
             child: compact
@@ -353,6 +357,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           if (compact) {
             return Scaffold(
               key: _scaffold,
+              onDrawerChanged: (open) => setState(() => _navigationOpen = open),
               drawer: Drawer(
                 width: ShellMetrics.drawer + 40,
                 child: drawer(true),
@@ -363,6 +368,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           if (width < ShellMetrics.expanded || _drawerCollapsed) {
             return Scaffold(
               key: _scaffold,
+              onDrawerChanged: (open) => setState(() => _navigationOpen = open),
               drawer: Drawer(
                 width: ShellMetrics.drawer + 40,
                 child: drawer(true),

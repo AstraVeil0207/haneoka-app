@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+
+import 'source_picker.dart';
+
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:intl/intl.dart';
 
@@ -195,8 +198,12 @@ class BrowseScreen extends StatefulWidget {
     this.heading,
     this.switches = const [],
     this.queryEngine,
+    this.sourcePath,
+    this.search,
   });
   final String title;
+  final ShellSearch? search;
+  final String? sourcePath;
   final CatalogQueryEngine? queryEngine;
   final void Function(BuildContext context, Entry item)? onOpen;
 
@@ -351,11 +358,13 @@ class _BrowseScreenState extends State<BrowseScreen> {
     return ShellPage(
       title: widget.title,
       marks: _appliedCount == 0 ? null : _crumbs(context),
-      search: ShellSearch(
-        label: t('common.actions.search', 'Search'),
-        onChanged: (value) =>
-            setState(() => _query = value.trim().toLowerCase()),
-      ),
+      search:
+          widget.search ??
+          ShellSearch(
+            label: t('common.actions.search', 'Search'),
+            onChanged: (value) =>
+                setState(() => _query = value.trim().toLowerCase()),
+          ),
       status: Center(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -369,6 +378,8 @@ class _BrowseScreenState extends State<BrowseScreen> {
       ),
       actions: [
         ...widget.actions(visible),
+        if (widget.sourcePath != null)
+          catalogSourceAction(context, widget.sourcePath!),
         if (widget.facets.isNotEmpty || widget.sorts.any((s) => !s.hidden))
           BarAction(
             icon: Symbols.filter_alt_rounded,

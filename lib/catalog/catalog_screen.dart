@@ -1,3 +1,5 @@
+import '../core/catalog_source.dart';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -56,7 +58,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final key = AppScope.of(context).publicDataKey;
+    final key = CatalogSourceScope.keyOf(context);
     if (_dataKey != key) {
       _dataKey = key;
       _data = _load();
@@ -64,16 +66,17 @@ class _CatalogScreenState extends State<CatalogScreen> {
   }
 
   Future<(List<Entry>, CatalogVisuals)> _load() async {
-    final state = AppScope.of(context);
+    final api = CatalogSourceScope.apiOf(context),
+        apis = CatalogSourceScope.apisOf(context),
+        selected = CatalogSourceScope.serverOf(context);
     await CatalogQueryEngine.loadAliases();
-    final api = state.api;
     final profile = widget.profile;
     if (crossCatalogIds.containsKey(profile.resource)) {
       final (rows, visuals) = await (
         crossServerCollection(
           resource: profile.resource,
-          selected: state.server,
-          apis: state.catalogApis,
+          selected: selected,
+          apis: apis,
           rowsPath: profile.document,
         ),
         CatalogVisuals.of(api),
@@ -105,7 +108,7 @@ class _CatalogScreenState extends State<CatalogScreen> {
     List<Entry> items,
     CatalogVisuals visuals,
   ) {
-    final api = AppScope.of(context).api;
+    final api = CatalogSourceScope.apiOf(context);
     final profile = widget.profile;
     final owned = widget.owned;
     if (owned == null) return (items, visuals);
@@ -128,7 +131,12 @@ class _CatalogScreenState extends State<CatalogScreen> {
       future: _data,
       builder: (context, snapshot) {
         final visuals = snapshot.data?.$2;
-        final kit = CatalogKit(profile, t, state.api, visuals);
+        final kit = CatalogKit(
+          profile,
+          t,
+          CatalogSourceScope.apiOf(context),
+          visuals,
+        );
         var items = snapshot.data?.$1;
         BrowseRail? rail;
         Widget? heading;
@@ -167,11 +175,14 @@ class _CatalogScreenState extends State<CatalogScreen> {
           heading = _BandHeading(
             band: visuals.bands[int.tryParse(band)],
             t: t,
-            api: state.api,
+            api: CatalogSourceScope.apiOf(context),
           );
         }
         return BrowseScreen(
           key: ValueKey(profile.resource),
+          sourcePath: widget.owned == null
+              ? '/catalog/${profile.resource == 'cards' ? 'member-cards' : profile.resource}'
+              : null,
           title: widget.title ?? t(profile.label, profile.resource),
           items: items,
           error: snapshot.error,

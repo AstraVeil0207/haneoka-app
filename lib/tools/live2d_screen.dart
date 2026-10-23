@@ -1,14 +1,17 @@
+import '../core/catalog_source.dart';
+
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../catalog/browse.dart';
+import '../catalog/cross_server.dart';
 import '../catalog/visuals.dart';
 import '../core/app_state.dart';
 import '../core/i18n.dart';
-import '../shell/page.dart';
 import '../ui/app_image.dart';
-import '../ui/detail.dart';
 import '../ui/tile.dart';
+import 'live2d_viewer.dart';
+import 'model_catalog.dart';
 
 /// `modelTitle`: the model's title, its Live2D name, then its key.
 String _title(SiteText t, Entry model) {
@@ -41,35 +44,33 @@ class Live2DScreen extends StatefulWidget {
 }
 
 class _Live2DScreenState extends State<Live2DScreen> {
-  Future<(List<Entry>, CatalogVisuals)>? _data;
+  Future<(List<Entry>, List<CatalogVisuals>)>? _data;
+  Object? _dataKey;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _data ??= _load();
+    final key = CatalogSourceScope.keyOf(context);
+    if (_dataKey != key) { _dataKey = key; _data = _load(); }
   }
 
-  Future<(List<Entry>, CatalogVisuals)> _load() async {
-    final api = AppScope.of(context).api;
-    final (document, visuals) = await (
-      api.catalog('live2d'),
-      CatalogVisuals.of(api),
-    ).wait;
-    final rows = document is Map ? document : const {};
-    return (
-      [
-        for (final MapEntry(:key, :value) in rows.entries)
-          if (value is Entry) {'_key': '$key', ...value},
-      ],
-      visuals,
-    );
+  Future<(List<Entry>, List<CatalogVisuals>)> _load() async {
+    final apis = CatalogSourceScope.apisOf(context), selected = CatalogSourceScope.serverOf(context);
+    final visuals = <CatalogVisuals>[];
+    final (models, _) = await (crossServerCollection(resource: 'live2d', selected: selected, apis: apis, rowsPath: null),
+      Future.wait([for (final api in apis.values) () async {
+        try { visuals.add(await CatalogVisuals.of(api)); } catch (_) {}
+      }()])).wait;
+    visuals.sort((a, b) => (a.api.server == selected ? 0 : 1).compareTo(b.api.server == selected ? 0 : 1));
+    return (models, visuals);
   }
 
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final t = state.text;
-    final api = state.api;
+    final apis = CatalogSourceScope.apisOf(context), current = CatalogSourceScope.serverOf(context);
+    apiFor(Entry row) => apis['${row[serverKey] ?? current}']!;
     String label(String key, String fallback) =>
         t('media.models.labels.$key', fallback);
     String subtitle(Entry model) {
@@ -83,15 +84,20 @@ class _Live2DScreenState extends State<Live2DScreen> {
       final runtime =
           (model['preview'] as Map?)?['runtime'] ?? model['thumbnailImage'];
       return runtime is String && runtime.isNotEmpty
-          ? api.asset(runtime).toString()
+          ? apiFor(model).asset(runtime).toString()
           : null;
     }
 
     String? face(Entry model) => model['faceImage'] is String
-        ? api.asset(model['faceImage'] as String).toString()
+        ? apiFor(model).asset(model['faceImage'] as String).toString()
         : null;
     void open(Entry model) => Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => Live2DModelScreen(model: model)),
+      MaterialPageRoute<void>(
+        builder: (_) => CatalogSourceScope(
+          api: apiFor(model),
+          child: Live2DModelScreen(model: model),
+        ),
+      ),
     );
     String type(Entry model) =>
         model['modelType'] == 'live' || model['mode'] == 'live'
@@ -101,8 +107,12 @@ class _Live2DScreenState extends State<Live2DScreen> {
       future: _data,
       builder: (context, snapshot) {
         final data = snapshot.data;
-        final visuals = data?.$2;
+        final sources = data?.$2 ?? const <CatalogVisuals>[];
+        Entry? character(int? id) => sources.map((v) => v.characters[id]).whereType<Entry>().firstOrNull;
+        Entry? band(int? id) => sources.map((v) => v.bands[id]).whereType<Entry>().firstOrNull;
+        String? bandIcon(int? id) => sources.where((v) => v.bands.containsKey(id)).firstOrNull?.bandIcon(id);
         return BrowseScreen(
+          sourcePath: '/catalog/live2d',
           onOpen: (context, model) => open(model),
           title: t('navigation.live2d', 'Live2D'),
           items: data?.$1,
@@ -112,6 +122,7 @@ class _Live2DScreenState extends State<Live2DScreen> {
             _title(t, model),
             subtitle(model),
             '${model['live2dKey'] ?? ''}',
+            t.text(band((model['bandId'] as num?)?.toInt())?['bandName']),
           ].join(' '),
           // `live2d-workspace` sorts: order (the model key), title, type,
           // character and band, ascending.
@@ -155,6 +166,7 @@ class _Live2DScreenState extends State<Live2DScreen> {
             fit: BoxFit.cover,
             alignment: Alignment.topCenter,
             placeholder: Symbols.animation_rounded,
+            serverMark: serverMark(model, (key, fallback) => t(key, fallback)),
             onTap: () => open(model),
           ),
           listRow: (context, model) => ListTile(
@@ -173,22 +185,20 @@ class _Live2DScreenState extends State<Live2DScreen> {
             TableColumn(t.label('character'), subtitle),
             TableColumn(label('model', 'Model'), type),
           ],
-          facets: visuals == null
-              ? const []
-              : [
+          facets: [
                   FacetSpec(
                     key: 'character',
                     label: t.label('character'),
                     values: (m) => ['${m['characterId'] ?? ''}'],
                     option: (value) {
-                      final character = visuals.characters[int.tryParse(value)];
-                      final image = character?['faceImage'];
+                      final person = character(int.tryParse(value));
+                      final image = person?['faceImage'];
                       return FacetOption(
-                        t.text(character?['characterName']).isEmpty
+                        t.text(person?['characterName']).isEmpty
                             ? value
-                            : t.text(character?['characterName']),
+                            : t.text(person?['characterName']),
                         image: image is String
-                            ? api.asset(image).toString()
+                            ? CatalogSourceScope.apiOf(context).asset(image).toString()
                             : null,
                       );
                     },
@@ -198,8 +208,8 @@ class _Live2DScreenState extends State<Live2DScreen> {
                     label: t.label('band'),
                     values: (m) => [if (m['bandId'] != null) '${m['bandId']}'],
                     option: (value) => FacetOption(
-                      t.text(visuals.bands[int.tryParse(value)]?['bandName']),
-                      image: visuals.bandIcon(int.tryParse(value)),
+                      t.text(band(int.tryParse(value))?['bandName']),
+                      image: bandIcon(int.tryParse(value)),
                     ),
                   ),
                   FacetSpec(
@@ -208,6 +218,7 @@ class _Live2DScreenState extends State<Live2DScreen> {
                     values: (m) => [type(m)],
                     option: FacetOption.new,
                   ),
+                  ...modelMetadataFacets(data?.$1 ?? const [], t),
                 ],
         );
       },
@@ -215,109 +226,12 @@ class _Live2DScreenState extends State<Live2DScreen> {
   }
 }
 
-/// One model: its rendered preview, what it is, and the motions and
-/// expressions it carries.
-class Live2DModelScreen extends StatefulWidget {
+class Live2DModelScreen extends StatelessWidget {
   const Live2DModelScreen({super.key, required this.model});
   final Entry model;
   @override
-  State<Live2DModelScreen> createState() => _Live2DModelScreenState();
-}
-
-class _Live2DModelScreenState extends State<Live2DModelScreen> {
-  Future<Object?>? _detail;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _detail ??= AppScope.of(context).api.catalog(
-      'live2d',
-      '${widget.model['live2dKey'] ?? widget.model['_key']}',
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final state = AppScope.of(context);
-    final t = state.text;
-    final theme = Theme.of(context);
-    String label(String key, String fallback) =>
-        t('media.models.labels.$key', fallback);
-    return FutureBuilder(
-      future: _detail,
-      builder: (context, snapshot) {
-        final model = {
-          ...widget.model,
-          if (snapshot.data case final Map data)
-            ...data.cast<String, Object?>(),
-        };
-        final preview = (model['preview'] as Map?)?['runtime'];
-        final motions = [
-          for (final m in model['motions'] as List? ?? const [])
-            if (m is Map) '${m['name']}',
-        ];
-        final expressions = [
-          for (final e in model['expressions'] as List? ?? const [])
-            if (e is Map) '${e['name']}',
-        ];
-        Widget names(List<String> values) => Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final name in values)
-              Chip(label: Text(name, style: theme.textTheme.bodySmall)),
-          ],
-        );
-        return ShellPage(
-          title: _title(t, model),
-          body: DetailLayout(
-            media: preview is String
-                ? ImageGallery(
-                    images: [state.api.asset(preview).toString()],
-                    aspectRatio: 1,
-                  )
-                : null,
-            sections: [
-              DetailSection(
-                title: t('catalog.labels.details', 'Details'),
-                icon: Symbols.info_rounded,
-                child: SpecList(
-                  facts: [
-                    Fact(t.label('character'), t.text(model['characterName'])),
-                    Fact(
-                      label('model', 'Model'),
-                      '${model['live2dKey'] ?? ''}',
-                    ),
-                    Fact(
-                      label('family', 'Category'),
-                      model['modelType'] == 'live'
-                          ? t('media.models.types.live2dTypeLive', 'Live')
-                          : t('media.models.types.live2dTypeAdv', 'ADV'),
-                    ),
-                    if (model['quality'] != null)
-                      Fact(
-                        label('quality', 'Graphics quality'),
-                        '${model['quality']}',
-                      ),
-                  ],
-                ),
-              ),
-              if (motions.isNotEmpty)
-                DetailFold(
-                  title: label('motion', 'Motion'),
-                  meta: '${motions.length}',
-                  child: names(motions),
-                ),
-              if (expressions.isNotEmpty)
-                DetailFold(
-                  title: label('expression', 'Expression'),
-                  meta: '${expressions.length}',
-                  child: names(expressions),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+  Widget build(BuildContext context) => NativeLive2DViewer(
+    id: '${model['live2dKey'] ?? model['_key']}',
+    title: _title(AppScope.of(context).text, model),
+  );
 }

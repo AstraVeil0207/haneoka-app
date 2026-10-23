@@ -4,9 +4,9 @@ import 'api.dart';
 /// records (`origin: "bestdori"` / `"sekai"`): GBP through Bestdori, and
 /// Project Sekai. The region follows the reading language.
 class ProviderApi extends HaneokaApi {
-  ProviderApi({required this.provider, required this.locale})
-    : region = _regions[locale] ?? 'jp',
-      super(server: '$provider-${_regions[locale] ?? 'jp'}-$locale');
+  ProviderApi({required this.provider, required this.locale, String? region})
+    : region = region ?? _regions[locale] ?? 'jp',
+      super(server: '$provider-${region ?? _regions[locale] ?? 'jp'}-$locale');
 
   static const _regions = {
     'zh-TW': 'tw',

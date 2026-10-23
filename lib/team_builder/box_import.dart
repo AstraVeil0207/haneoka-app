@@ -106,8 +106,8 @@ class BoxCandidate {
   int? vipRank;
   final List<BoxImportNotice> notices = [];
 
-  /// A declared foreign server is rejected; a missing one binds on confirm.
-  final String? declaredServer;
+  /// Formal-server records are copied into the reviewed target library.
+  String? declaredServer;
 }
 
 int _nextCandidate = 0;
@@ -720,9 +720,22 @@ BoxPreview previewBoxImport(
   Doc data,
   String server,
 ) {
-  if (candidate.declaredServer != null && candidate.declaredServer != server) {
-    throw const BoxImportError('box_review_context');
+  final copying =
+      candidate.declaredServer != null && candidate.declaredServer != server;
+  if (copying &&
+      ![
+        candidate.declaredServer,
+        server,
+      ].every((source) => source == 'jp' || source == 'intl')) {
+    throw const BoxImportError('box_incompatible_server');
   }
+  final cross = objectRow(data['crossServer']);
+  bool inTarget(String collection, int id) =>
+      cross.isEmpty ||
+      (objectRow(objectRow(cross['availability'])[collection])['$id']
+                  as List? ??
+              const [])
+          .contains(server);
   final progression = objectRow(data['progression']);
   final issues = <BoxIssue>[];
   final cards = <String, BoxCardProposal>{};
@@ -736,6 +749,10 @@ BoxPreview previewBoxImport(
     final levelGroup = members
         ? master.members[cardId]?.levelGroup
         : master.snaps[cardId]?.levelGroup;
+    if (copying && (levelGroup == null || !inTarget(kind, cardId))) {
+      issues.add(BoxIssue(kind, cardId, 'cardId', 'unavailable_target_card'));
+      return;
+    }
     if (levelGroup == null) {
       issues.add(BoxIssue(kind, cardId, 'cardId', 'unknown_current_card'));
       return;
@@ -826,6 +843,11 @@ BoxPreview previewBoxImport(
     final known = characters
         ? master.characters.containsKey(id)
         : objectRow(objectRow(data['bandItems'])['$id']).isNotEmpty;
+    if (copying &&
+        (!known || !inTarget(characters ? 'characters' : 'bandItems', id))) {
+      issues.add(BoxIssue(kind, id, 'id', 'unavailable_target_entity'));
+      return;
+    }
     if (!known) {
       issues.add(BoxIssue(kind, id, 'id', 'unknown_current_entity'));
       return;

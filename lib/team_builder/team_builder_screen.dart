@@ -21,12 +21,20 @@ import 'build_tab.dart';
 import 'controller.dart';
 import 'pt_tab.dart';
 import 'teams_tab.dart';
+import 'song_comparison_view.dart';
+import 'results_view.dart' show showResultComparison;
 import 'widgets.dart';
 
-enum _Tab { build, pt, box, account, teams }
+enum _Tab { build, pt, comparison, box, account, teams }
 
 class TeamBuilderScreen extends StatefulWidget {
-  const TeamBuilderScreen({super.key, this.importSave});
+  const TeamBuilderScreen({
+    super.key,
+    this.importSave,
+    this.initialTab,
+    this.returnTab,
+  });
+  final String? initialTab, returnTab;
   final GameSave? importSave;
 
   @override
@@ -36,9 +44,33 @@ class TeamBuilderScreen extends StatefulWidget {
 class _TeamBuilderScreenState extends State<TeamBuilderScreen> {
   TeamBuilderController? _controller;
   _Tab _tab = _Tab.build;
+  _Tab _returnTab = _Tab.build;
+  bool _manualBuild = false;
+  void _selectTab(_Tab tab) {
+    if (const [_Tab.box, _Tab.account, _Tab.teams].contains(tab) &&
+        const [_Tab.build, _Tab.pt, _Tab.comparison].contains(_tab)) {
+      _returnTab = _tab;
+    }
+    setState(() {
+      _tab = tab;
+      _controller?.activity = tab == _Tab.pt;
+    });
+  }
+
   String _query = '';
   String? _errorShown;
   bool _importOpened = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _tab =
+        _Tab.values.where((tab) => tab.name == widget.initialTab).firstOrNull ??
+        _Tab.build;
+    _returnTab =
+        _Tab.values.where((tab) => tab.name == widget.returnTab).firstOrNull ??
+        _Tab.build;
+  }
 
   @override
   void didChangeDependencies() {
@@ -131,24 +163,10 @@ class _TeamBuilderScreenState extends State<TeamBuilderScreen> {
         null,
       ),
       (
-        _Tab.box,
-        Symbols.style_rounded,
-        c.tb('tabBox', 'My cards'),
-        ready && c.view!.members.length + c.view!.snaps.length > 0
-            ? c.view!.members.length + c.view!.snaps.length
-            : null,
-      ),
-      (
-        _Tab.account,
-        Symbols.trending_up_rounded,
-        c.tb('tabAccount', 'Account bonuses'),
+        _Tab.comparison,
+        Symbols.monitoring_rounded,
+        c.tb('sc.tab', 'Gekiso songs'),
         null,
-      ),
-      (
-        _Tab.teams,
-        Symbols.bookmark_rounded,
-        c.tb('tabTeams', 'Teams'),
-        ready && c.view!.teams.isNotEmpty ? c.view!.teams.length : null,
       ),
     ];
     final Widget body;
@@ -179,29 +197,65 @@ class _TeamBuilderScreenState extends State<TeamBuilderScreen> {
       body = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: PillTabs<_Tab>(
-              value: _tab,
-              tabs: tabs,
-              onSelected: (tab) => setState(() {
-                _tab = tab;
-                c.activity = tab == _Tab.pt;
-              }),
+          if (const [_Tab.build, _Tab.pt, _Tab.comparison].contains(_tab))
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              child: PillTabs<_Tab>(
+                value: _tab,
+                tabs: tabs,
+                onSelected: _selectTab,
+              ),
             ),
-          ),
           Expanded(
             child: switch (_tab) {
-              _Tab.build => BuildTab(controller: c),
+              _Tab.build => Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                    child: Segmented<bool>(
+                      value: _manualBuild,
+                      options: [
+                        Choice(false, c.tb('automaticTeam', 'Find a team')),
+                        Choice(
+                          true,
+                          c.tb('manualTeam', 'Build a team by hand'),
+                        ),
+                      ],
+                      onSelected: (value) =>
+                          setState(() => _manualBuild = value),
+                    ),
+                  ),
+                  Expanded(
+                    child: _manualBuild
+                        ? TeamsTab(
+                            controller: c,
+                            showSaved: false,
+                            onCompare: () => _selectTab(_Tab.comparison),
+                          )
+                        : BuildTab(controller: c),
+                  ),
+                ],
+              ),
+              _Tab.comparison => SongComparisonTab(controller: c),
               _Tab.pt => PtTab(
                 controller: c,
-                openTab: (name) => setState(
-                  () => _tab = name == 'account' ? _Tab.account : _Tab.box,
-                ),
+                openTab: (name) =>
+                    _selectTab(name == 'account' ? _Tab.account : _Tab.box),
               ),
               _Tab.box => BoxTab(controller: c, query: _query),
               _Tab.account => AccountTab(controller: c),
-              _Tab.teams => TeamsTab(controller: c),
+              _Tab.teams => TeamsTab(
+                controller: c,
+                showEditor: false,
+                onEdit: () {
+                  _manualBuild = true;
+                  _selectTab(_Tab.build);
+                },
+                onCompare: () => setState(() {
+                  _tab = _Tab.comparison;
+                  c.activity = false;
+                }),
+              ),
             },
           ),
           _Credit(controller: c),
@@ -210,8 +264,20 @@ class _TeamBuilderScreenState extends State<TeamBuilderScreen> {
     }
     return ShellPage(
       showBack: widget.importSave != null,
+      onBack: const [_Tab.box, _Tab.account, _Tab.teams].contains(_tab)
+          ? () => _selectTab(_returnTab)
+          : null,
       key: ValueKey(_tab == _Tab.box),
-      title: widget.importSave?.release == null
+      title: const [_Tab.box, _Tab.account, _Tab.teams].contains(_tab)
+          ? c.tb(
+              _tab == _Tab.box
+                  ? 'tabBox'
+                  : _tab == _Tab.account
+                  ? 'tabAccount'
+                  : 'tabTeams',
+              '',
+            )
+          : widget.importSave?.release == null
           ? c.tb('title', 'Team builder')
           : '${c.tb('title', 'Team builder')} · ${widget.importSave!.release!.label(AppLocalizations.of(context))}',
       search: ready && _tab == _Tab.box
@@ -222,6 +288,57 @@ class _TeamBuilderScreenState extends State<TeamBuilderScreen> {
             )
           : null,
       actions: [
+        if (ready) ...[
+          if (_tab == _Tab.build || _tab == _Tab.pt)
+            BarAction(
+              icon: Symbols.compare_arrows_rounded,
+              label: c.tb('compareTeams', 'Compare teams'),
+              badge: c.activity && c.settings.rewardMode == 'recommendation'
+                  ? c.ptCompared.length
+                  : c.compared.length,
+              onPressed: () => showResultComparison(
+                context,
+                c,
+                rewards:
+                    c.activity && c.settings.rewardMode == 'recommendation',
+              ),
+            ),
+          for (final (tab, icon, key) in const [
+            (_Tab.box, Symbols.style_rounded, 'tabBox'),
+            (_Tab.account, Symbols.trending_up_rounded, 'tabAccount'),
+            (_Tab.teams, Symbols.bookmark_rounded, 'tabTeams'),
+          ])
+            BarAction(
+              icon: icon,
+              label: c.tb(key, ''),
+              selected: _tab == tab,
+              onPressed: () => _selectTab(tab),
+            ),
+          if (_tab == _Tab.box && widget.importSave == null)
+            BarAction.choice(
+              label: t('common.fields.server', 'Server'),
+              options: [
+                for (final server in const ['jp', 'intl'])
+                  BarChoice(
+                    icon: Symbols.public_rounded,
+                    label: c.tb('boxImport.servers.$server', server),
+                    selected: c.server == server,
+                    onSelected: () async {
+                      ShellScope.of(context)?.navigate(
+                        Uri(
+                          path: '/team-builder',
+                          queryParameters: {
+                            'tab': 'box',
+                            'return': _returnTab.name,
+                          },
+                        ).toString(),
+                      );
+                      await c.state.setServer(server);
+                    },
+                  ),
+              ],
+            ),
+        ],
         if (store != null)
           HaneokaAccount.instance.signedIn &&
                   store.status != BoxSyncStatus.signedOut

@@ -105,7 +105,8 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
       setState(
         () => _saves = [
           for (final save in AccountStore.instance.saves)
-            if (save.release?.server == c.server) save,
+            if (save.release?.server == 'jp' || save.release?.server == 'intl')
+              save,
         ],
       );
     });
@@ -277,14 +278,11 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
   }
 
   void _readSave(GameSave save) {
-    if (save.release != null && save.release!.server != c.server) {
-      setState(() => _error = 'box_review_changed');
-      return;
-    }
     final player = save.player;
     _parse(() async {
       final candidate = projectBox({'_player': player}, 'encrypted-player');
       if (candidate == null) throw const BoxImportError('box_no_player');
+      candidate.declaredServer = save.release?.server;
       return [candidate];
     });
   }
@@ -988,8 +986,23 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
       ],
       const SliverToBoxAdapter(child: SizedBox(height: 24)),
     ];
+    final source = _candidates
+        .where((candidate) => candidate.id == _candidate)
+        .firstOrNull
+        ?.declaredServer;
+    final selected =
+        (confirmation?.cards.values.where((choice) => choice.include).length ??
+            0) +
+        (confirmation?.maps.values.where((choice) => choice.include).length ??
+            0);
+    final title = source != null && source != c.server
+        ? _t('serverTransfer', '{source} → {target}', {
+            'source': _t('servers.$source', source),
+            'target': _t('servers.${c.server}', c.server),
+          })
+        : _t('title', 'Import card data');
     return Scaffold(
-      appBar: AppBar(title: Text(_t('title', 'Import card data'))),
+      appBar: AppBar(title: Text(title)),
       body: CustomScrollView(slivers: slivers),
       bottomNavigationBar: _phase == _Phase.parsing || _phase == _Phase.review
           ? Material(
@@ -1011,7 +1024,9 @@ class _BoxImportScreenState extends State<_BoxImportScreen> {
                           )
                         : FilledButton(
                             onPressed: canConfirm ? _confirm : null,
-                            child: Text(_t('confirm', 'Confirm import')),
+                            child: Text(
+                              '${_t('confirm', 'Confirm import')} · ${_t('selectedEntries', '{count} selected', {'count': selected})}',
+                            ),
                           ),
                   ),
                 ),

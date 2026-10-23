@@ -1,3 +1,5 @@
+import '../core/catalog_source.dart';
+
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:intl/intl.dart';
@@ -19,6 +21,7 @@ import '../ui/detail.dart';
 import 'card_growth.dart';
 import 'character_detail.dart';
 import 'cross_server.dart';
+import 'source_picker.dart';
 import 'detail_media.dart';
 import 'entity_extras.dart';
 import 'catalog_screen.dart';
@@ -73,7 +76,7 @@ class _DetailScreenState extends State<DetailScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final key = AppScope.of(context).publicDataKey;
+    final key = CatalogSourceScope.keyOf(context);
     if (_dataKey != key) {
       _dataKey = key;
       _data = _load();
@@ -84,7 +87,10 @@ class _DetailScreenState extends State<DetailScreen> {
     final state = AppScope.of(context);
     // An entity only the other release has opens there (`displayServer`).
     final server = '${widget.summary[serverKey] ?? state.server}';
-    final api = widget.api ?? state.apiFor(server);
+    final api =
+        widget.api ??
+        CatalogSourceScope.maybeApi(context) ??
+        state.apiFor(server);
     final resource = widget.profile.resource;
     final (record, visuals, page) = await (
       api
@@ -200,6 +206,7 @@ class _DetailScreenState extends State<DetailScreen> {
           widget.profile,
           t,
           widget.api ??
+              CatalogSourceScope.maybeApi(context) ??
               state.apiFor('${widget.summary[serverKey] ?? state.server}'),
           visuals,
           songTitles: state.songTitle,
@@ -216,7 +223,15 @@ class _DetailScreenState extends State<DetailScreen> {
           title: kit.title(record),
           marks: view.marks(),
           marksExtent: view.marksExtent(),
-          actions: [..._neighbours(kit), ...view.actions()],
+          actions: [
+            ..._neighbours(kit),
+            ...view.actions(),
+            if (widget.api is! ProviderApi)
+              catalogSourceAction(
+                context,
+                '/catalog/${widget.profile.resource == 'cards' ? 'member-cards' : widget.profile.resource}/${widget.id}',
+              ),
+          ],
           body: widget.profile.presentation == Presentation.character
               ? CharacterDetail(record: record, page: page, visuals: visuals)
               : DetailLayout(media: view.media(), sections: view.sections()),
@@ -369,6 +384,60 @@ class _Page {
             : charts.lastOrNull?['difficulty'] as int?);
     final chart = charts.where((c) => c['difficulty'] == chosen).firstOrNull;
     final musicId = '${canonicalRecord['musicId'] ?? ''}'.trim();
+    if (!native && chart?['file'] != null) {
+      final provider = kit.api as ProviderApi;
+      final collection = provider.provider == 'sekai' ? 'sekai' : 'gbp';
+      final difficulty =
+          '${chart?['difficultyName'] ?? ['easy', 'normal', 'hard', 'expert', 'special'].elementAtOrNull(chosen ?? 3) ?? 'expert'}';
+      actions.add(
+        BarAction(
+          icon: Symbols.sports_esports_rounded,
+          label: t('navigation.chart', 'Chart'),
+          onPressed: () => openLink(
+            context,
+            Uri(
+              path: '/community/$collection/songs/$musicId',
+              queryParameters: {'chart': '1', 'difficulty': '$chosen'},
+            ).toString(),
+          ),
+        ),
+      );
+      if (provider.provider == 'bestdori') {
+        actions.add(
+          BarAction(
+            icon: Symbols.edit_rounded,
+            label: t('editors.chart.importGbp', 'Import GBP chart'),
+            onPressed: () => openLink(
+              context,
+              Uri(
+                path: '/chart-editor/create',
+                queryParameters: {
+                  'provider': 'bestdori',
+                  'region': provider.region,
+                  'songId': musicId,
+                  'difficulty': difficulty,
+                },
+              ).toString(),
+            ),
+          ),
+        );
+        actions.add(
+          BarAction(
+            icon: Symbols.sports_esports_rounded,
+            image: Image.asset(
+              'assets/settings/sonolus-icon.png',
+              width: 24,
+              height: 24,
+            ),
+            label: 'Sonolus',
+            onPressed: () => openLink(
+              context,
+              'https://open.sonolus.com/haneoka.org/levels/haneoka-gbp-$musicId-$difficulty',
+            ),
+          ),
+        );
+      }
+    }
     if (native &&
         chart?['file'] != null &&
         RegExp(r'^\d{1,16}$').hasMatch(musicId)) {
@@ -388,11 +457,11 @@ class _Page {
                   },
                 ).toString(),
               ),
-              builder: (_) => NativeChartPlayerScreen(
+              builder: (_) => CatalogSourceScope(api: kit.api, child: NativeChartPlayerScreen(
                 song: canonicalRecord,
                 api: kit.api,
                 difficulty: chosen!,
-              ),
+              )),
             ),
           ),
         ),

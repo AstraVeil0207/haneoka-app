@@ -7,6 +7,8 @@ import 'package:vega_plugin_haneoka/vega_plugin_haneoka.dart';
 
 import '../core/api.dart';
 import '../core/document_cache.dart';
+import '../core/account_resource.dart';
+import '../core/resource_file_cache.dart';
 
 Future<(Map<String, Object?>, String)> _decodeStoryInput(Uint8List bytes) =>
     Isolate.run(
@@ -48,18 +50,28 @@ final class NativeStoryDocument {
     final runtimeUri = api
         .asset('/api/v1/servers/${api.server}/story-runtime')
         .replace(queryParameters: {'release': release});
-    Future<(Map<String, Object?>, String)> input(Uri uri) =>
-        publicDocumentCache.read<(Map<String, Object?>, String)>(
-          key: PublicDocumentKey(
-            uri: uri,
-            server: api.server,
-            releaseId: release,
-            sourceId: sourceId,
+    Future<(Map<String, Object?>, String)> input(Uri uri) async {
+      if (isAccountResource(uri)) {
+        return _decodeStoryInput(
+          await resourceFileCache.readBytes(
+            uri,
+            kind: ResourceFileKind.renderResource,
           ),
-          decodeVariant: 'json.sha256.v1',
-          decode: _decodeStoryInput,
-          revalidateAfter: null,
         );
+      }
+      return publicDocumentCache.read<(Map<String, Object?>, String)>(
+        key: PublicDocumentKey(
+          uri: uri,
+          server: api.server,
+          releaseId: release,
+          sourceId: sourceId,
+        ),
+        decodeVariant: 'json.sha256.v1',
+        decode: _decodeStoryInput,
+        revalidateAfter: null,
+      );
+    }
+
     final (selected, runtimeInput) = await (input(uri), input(runtimeUri)).wait;
     final (entity, entityHash) = selected;
     final source = StorySourceIdentity(

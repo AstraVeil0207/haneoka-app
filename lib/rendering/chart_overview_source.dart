@@ -13,6 +13,7 @@ import 'package:cassiopeia_renderer_flutter/overview.dart';
 
 import '../chart/runtime_chart.dart';
 import 'native_chart_document.dart';
+import 'native_chart_input.dart';
 
 /// App-owned I/O/format adaptation. The independent renderer receives normalized
 /// coordinates, ready sprite meshes and color curves, never RuntimeChart.
@@ -29,14 +30,14 @@ Future<ChartOverviewSource> loadChartOverviewSource(
   RuntimeChart? chart,
 }) async {
   final runtime =
-      chart != null &&
-          chart.visualNotes.isNotEmpty &&
-          chart.bpmChanges.isNotEmpty
-      ? chart
-      : RuntimeChart.fromBytes(
+      chart ??
+      shiftNativeChart(
+        document.chart ?? RuntimeChart.fromBytes(
           await fetch(document.scoreUri),
           includeVisualSource: true,
-        );
+        ),
+        document.audioOffsetMs,
+      );
   final prefix = haneokaProfileAssetRoot;
   final archive = Map<String, Object?>.from(
     jsonDecode(

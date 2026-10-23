@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../about/about_screen.dart';
 import '../about/legal_screen.dart';
+import '../about/license_screen.dart';
+import '../about/download_screen.dart';
+import '../admin/admin_screen.dart';
 import '../games/song_guess.dart';
 import '../games/song_puzzle.dart';
 import '../games/sonolus_screen.dart';
 import '../community/editor.dart';
+import '../community/charts_screen.dart';
 import '../community/feed_screen.dart';
 import '../community/post_screen.dart';
 import '../community/sections.dart';
@@ -18,6 +22,7 @@ import '../tools/live2d_screen.dart';
 import '../tools/song_progress.dart';
 import '../tools/spine_screen.dart';
 import '../tools/stamp_maker.dart';
+import '../chart_editor/editor_screen.dart';
 import '../gacha_history/history_page.dart';
 import '../catalog/browse.dart';
 import '../catalog/missions.dart';
@@ -26,11 +31,13 @@ import '../catalog/catalog_screen.dart';
 import '../catalog/detail_screen.dart';
 import '../catalog/hub_screen.dart';
 import '../catalog/profiles.dart';
+import '../catalog/progression.dart';
 import '../catalog/skills.dart';
 import '../catalog/song_meta.dart';
 import '../catalog/songs.dart';
 import '../catalog/studio.dart';
 import '../core/api.dart';
+import '../core/catalog_source.dart';
 import '../core/app_state.dart';
 import '../core/provider_api.dart';
 import '../home/announcements.dart';
@@ -40,6 +47,7 @@ import '../records/player.dart';
 import '../stories/stories.dart';
 import '../stories/story_sequence_player.dart';
 import '../rendering/native_chart_player_screen.dart';
+import '../rendering/provider_chart_screen.dart';
 import '../team_builder/team_builder_screen.dart';
 import '../records/tracker.dart';
 import '../home/join.dart';
@@ -78,23 +86,27 @@ void openEntity(
   List<Map<String, Object?>>? siblings,
   HaneokaApi? api,
 }) {
+  final selectedApi = api ?? CatalogSourceScope.apiOf(context);
   final list = siblings ?? BrowseSiblings.of(context);
   final id = '${firstOf(item, profile.id) ?? item['_key']}';
   final kind = profile.resource == 'cards' ? 'member-cards' : profile.resource;
-  final path = api is ProviderApi
-      ? api.provider == 'sekai'
+  final path = selectedApi is ProviderApi
+      ? selectedApi.provider == 'sekai'
             ? '/community/sekai/songs'
             : '/community/gbp/songs'
       : '/catalog/$kind';
   Navigator.of(context).push(
     MaterialPageRoute<void>(
       settings: RouteSettings(name: '$path/${Uri.encodeComponent(id)}'),
-      builder: (_) => DetailScreen(
-        profile: profile,
-        id: '${firstOf(item, profile.id) ?? item['_key']}',
-        summary: item,
-        siblings: list,
-        api: api,
+      builder: (_) => CatalogSourceScope(
+        api: selectedApi,
+        child: DetailScreen(
+          profile: profile,
+          id: '${firstOf(item, profile.id) ?? item['_key']}',
+          summary: item,
+          siblings: list,
+          api: selectedApi,
+        ),
       ),
     ),
   );
@@ -113,6 +125,53 @@ const _communityFeeds = {
 /// The native screen for a website route, or null while it is being built.
 Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   final uri = Uri.parse(route);
+  route = uri.path;
+  if (uri.path == '/admin' || uri.path.startsWith('/admin/')) {
+    return AdminScreen(
+      section:
+          uri.path.split('/').where((p) => p.isNotEmpty).skip(1).firstOrNull ??
+          'overview',
+      query: uri.queryParameters,
+    );
+  }
+  final providerChart = RegExp(r'^/community/(gbp|sekai)/songs/(\d+)/?$')
+      .firstMatch(uri.path);
+  if (providerChart != null && uri.queryParameters['chart'] == '1') {
+    return ProviderChartScreen(
+      provider: providerChart[1] == 'gbp' ? 'bestdori' : 'sekai',
+      songId: providerChart[2]!,
+      difficulty: uri.queryParameters['difficulty'] ?? '3',
+      region: uri.queryParameters['region'],
+    );
+  }
+  if (uri.path.replaceFirst(RegExp(r'/+$'), '') == '/download') {
+    return const DownloadScreen();
+  }
+  if (uri.path.replaceFirst(RegExp(r'/+$'), '') == '/license') {
+    return const AppLicenseScreen();
+  }
+  final chartRoute = uri.path
+      .replaceFirst(RegExp(r'^/charts'), '/community/charts')
+      .replaceFirst(RegExp(r'/+$'), '');
+  if (chartRoute == '/community/charts') {
+    return CommunityChartsScreen(mine: uri.queryParameters['scope'] == 'mine');
+  }
+  final chartPage = RegExp(r'^/community/charts/([0-9a-f-]{36})(/chart)?$')
+      .firstMatch(chartRoute);
+  if (chartPage != null) {
+    return CommunityChartScreen(
+      id: chartPage[1]!,
+      playerOnly: chartPage[2] != null,
+      revision: int.tryParse(uri.queryParameters['revision'] ?? ''),
+      draft: uri.queryParameters['draft'] == '1',
+    );
+  }
+  if (uri.path.startsWith('/chart-editor/')) {
+    return ChartEditorScreen(
+      key: ValueKey(uri.toString()),
+      initialQuery: uri.queryParameters,
+    );
+  }
   if (uri.path == '/chart-simulator' && uri.queryParameters['id'] != null) {
     return NativeChartPlayerScreen(
       songId: uri.queryParameters['id'],
@@ -124,6 +183,15 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/') return HomeScreen(onBrowse: navigate);
   if (route == '/settings') return const SettingsScreen();
   if (route == '/catalog') return CatalogHubScreen(navigate: navigate);
+  final progression = route.split('/').last;
+  if (route.startsWith('/catalog/') &&
+      progressionPages.containsKey(progression)) {
+    return ProgressionScreen(
+      key: ValueKey(uri.toString()),
+      kind: progression,
+      server: uri.queryParameters['server'],
+    );
+  }
   if (route == '/announcements') return const AnnouncementsScreen();
   if (route == '/calendar') return const CalendarScreen();
   if (route == '/join') return const JoinScreen();
@@ -154,11 +222,26 @@ Widget? screenFor(String route, {required ValueChanged<String> navigate}) {
   if (route == '/sonolus') return const SonolusScreen();
   if (route == '/song-puzzle') return const SongPuzzleScreen();
   if (route == '/catalog/live2d') return const Live2DScreen();
+  if (RegExp(r'^/catalog/live2d/([^/]+)/?$').firstMatch(uri.path)
+      case final match?) {
+    return Live2DModelScreen(
+      model: {'live2dKey': Uri.decodeComponent(match[1]!)},
+    );
+  }
   if (route == '/catalog/assets') return const AssetsScreen();
   if (route == '/catalog/spine') return const SpineScreen();
+  if (RegExp(r'^/catalog/spine/([^/]+)/?$').firstMatch(uri.path)
+      case final match?) {
+    return SpineModelScreen(model: {'id': Uri.decodeComponent(match[1]!)});
+  }
   if (route == '/stamp-maker') return const StampMakerScreen();
   if (route == '/gacha-history') return const HistoryPage();
-  if (route == '/team-builder') return const TeamBuilderScreen();
+  if (route == '/team-builder') {
+    return TeamBuilderScreen(
+      initialTab: uri.queryParameters['tab'],
+      returnTab: uri.queryParameters['return'],
+    );
+  }
   if (route == '/catalog/stories') {
     return const StoriesScreen(key: ValueKey('band'), mode: 'band');
   }

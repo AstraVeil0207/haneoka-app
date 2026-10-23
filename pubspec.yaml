@@ -1,7 +1,7 @@
 name: haneoka
 description: "Reads your Our Notes save on every platform and shows everything it holds."
 publish_to: 'none'
-version: 0.1.7+50
+version: 0.1.8+51
 
 environment:
   sdk: ^3.13.5
@@ -52,7 +52,7 @@ dependencies:
   vega_plugin_haneoka:
     git:
       url: https://github.com/haneoka-gakuen/vega-plugin-haneoka.git
-      ref: d043969901fb3382751338dfd2bb080b356ab130
+      ref: 465926dc75604db4988f759adf9d41f5852ffcf1
       path: dart
   cassiopeia_plugin_our_notes:
     git:
@@ -116,6 +116,7 @@ dependencies:
       url: https://github.com/haneoka-gakuen/flutter_soloud.git
       ref: 421afc8897576929b3b4812d9e29c31f0a900adc
   window_manager: ^0.5.2
+  spine_flutter: 4.2.36
 dependency_overrides:
   media_kit_libs_windows_video:
     path: third_party/media_kit_libs_windows_video
@@ -128,6 +129,8 @@ flutter:
   generate: true
   uses-material-design: true
   assets:
+    - LICENSE
+    - third_party/chart_editor/
     - assets/i18n/
     - assets/brand/
     - assets/brand/oauth/

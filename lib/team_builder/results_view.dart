@@ -15,19 +15,21 @@ import '../catalog/song_meta.dart';
 import 'rank_targets.dart';
 import 'engine/box.dart';
 import 'engine/skills.dart';
+import 'engine/power.dart';
 
 import '../ui/app_image.dart';
 import '../ui/card_artwork.dart';
 import '../ui/scrollable_choice_chips.dart';
 import '../ui/theme.dart';
 import 'box.dart';
-import 'build_tab.dart';
 import 'controller.dart';
 import 'engine/api.dart';
 import 'engine/execution.dart';
 import 'engine/live.dart' show orders;
 import 'engine_client.dart';
 import 'result_image.dart';
+import 'result_metric.dart';
+import 'result_comparison.dart';
 import 'settings.dart';
 import 'widgets.dart';
 
@@ -80,9 +82,7 @@ void openResultSongAnalysis(
         final snapKey = hit.snaps.elementAtOrNull(index),
             snap = box.snaps.where((s) => s.key == snapKey).firstOrNull,
             skill = resolveSlotSkill(master, member, snap);
-        double percent(int type) => skill.effects
-            .where((effect) => effect.type == type)
-            .fold<double>(0, (sum, effect) => sum + effect.delta / 1000);
+        double percent(int type) => effectPercent(skill, type);
         return DeckSlot(
           score: percent(2000),
           perfect: percent(2004),
@@ -95,20 +95,32 @@ void openResultSongAnalysis(
     power: hit.power,
     slots: slots,
   );
+  final event = master.events[settings.eventId];
   if (hit.event != null &&
       settings.goal == GoalKind.event &&
-      settings.route == 'live') {
+      settings.route != 'challenge' &&
+      event != null) {
+    int bonus(int type) =>
+        ((box.members.fold<int>(
+                      0,
+                      (sum, member) =>
+                          sum + memberEventPercent(event.effects, member, type),
+                    ) +
+                    box.snaps.fold<int>(
+                      0,
+                      (sum, snap) =>
+                          sum + snapEventPercent(event.effects, snap, type),
+                    )) /
+                100)
+            .floor();
     deck = deck.copyWith(
       event: settings.eventId,
       boosts: settings.boosts,
-      pointBonus: settings.measure == 'items'
-          ? null
-          : hit.event!.bonusPercent.floor(),
-      itemBonus: settings.measure == 'items'
-          ? hit.event!.bonusPercent.floor()
-          : null,
+      pointBonus: bonus(0),
+      itemBonus: bonus(1),
     );
   }
+
   AnalysisDeckController.instance.set(deck);
   Navigator.of(context).push(
     MaterialPageRoute<void>(
@@ -124,6 +136,143 @@ void openResultSongAnalysis(
   );
 }
 
+List<(String, String)> resultConditions(
+  TeamBuilderController c,
+  EngineHit hit,
+  BuildSettings settings,
+) {
+  final input = c.activity && c.settings.rewardMode == 'recommendation'
+      ? c.pt.job?.request
+      : c.resultInputs;
+  if (input == null) return [];
+  final goal = input.goal;
+  final metric = resultMetric(hit, settings, c.tb);
+  final play = switch (goal) {
+    ScoreGoal(:final play) => play,
+    EventGoal(:final play) => play,
+    PlanGoal(:final play) => play,
+    _ => null,
+  };
+  return [
+    (
+      c.state.text('common.fields.source'),
+      c.tb('boxImport.servers.${c.server}', c.server),
+    ),
+    (
+      c.tb('members', 'Members'),
+      c.tb(settings.theoretical ? 'scopeAll' : 'scopeBox', ''),
+    ),
+    (
+      c.tb('unknownPolicy', 'Growth not entered'),
+      c.tb(
+        input.unknownPolicy == UnknownPolicy.max ? 'unknownMax' : 'unknownMin',
+        '',
+      ),
+    ),
+    (c.tb('goal', 'Goal'), metric.label),
+    if (goal is EventGoal || goal is PlanGoal)
+      (
+        c.tb('farm.memory', 'Character / song memory bonuses'),
+        c.tb(
+          goal is PlanGoal ||
+                  settings.farming['includeMemory'] == true &&
+                      settings.rewardMode != 'recommendation'
+              ? 'farm.included'
+              : 'farm.excluded',
+          '',
+        ),
+      ),
+    if (goal is EventGoal && goal.weights != null)
+      for (final (key, label) in [
+        ('points', 'weightPoints'),
+        ('items', 'weightItems'),
+        ('challengePoints', 'weightCp'),
+      ])
+        (c.tb(label, ''), '${goal.weights![key]}'),
+    if (play != null)
+      (
+        c.tb('playJudgements', 'Play judgements'),
+        play.isAllPerfect
+            ? c.tb('playAp', 'All Perfect')
+            : 'GREAT ${formatNumber(c.state.text.locale, play.great * 100, 1)}% · GOOD ${formatNumber(c.state.text.locale, play.good * 100, 1)}% · BAD ${formatNumber(c.state.text.locale, play.bad * 100, 1)}% · MISS ${formatNumber(c.state.text.locale, play.miss * 100, 1)}%',
+      ),
+    if (play != null && play.missEvery > 0)
+      (c.tb('missEvery', 'Miss every N notes'), '${play.missEvery}'),
+    if (goal is GekisoGoal) ...[
+      (
+        'GREAT',
+        '${formatNumber(c.state.text.locale, goal.accuracy.great * 100, 1)}%',
+      ),
+      (
+        'JUST',
+        '${formatNumber(c.state.text.locale, goal.accuracy.just * 100, 1)}%',
+      ),
+      (c.tb('pt.luckSamples', 'Luck samples'), '${goal.seeds}'),
+      (c.tb('missEvery', 'Miss every N notes'), '${goal.accuracy.missEvery}'),
+      (
+        c.tb('minComboBonus', 'Minimum base COMBO BONUS'),
+        '×${goal.minComboBonus}',
+      ),
+      (
+        c.tb('gekisoPlacements', 'Scoring placements'),
+        (c.results?.results
+                    .where((row) => row.song == hit.song)
+                    .firstOrNull
+                    ?.placements ??
+                [goal.rank, goal.rank, goal.rank])
+            .join(' · '),
+      ),
+    ],
+    if (goal is EventGoal && goal.gekiso != null) ...[
+      (
+        'JUST',
+        '${formatNumber(c.state.text.locale, goal.gekiso!.just * 100, 1)}%',
+      ),
+      (c.tb('pt.luckSamples', 'Luck samples'), '${goal.gekiso!.luckSamples}'),
+      (
+        c.tb('minComboBonus', 'Minimum base COMBO BONUS'),
+        '×${goal.minComboBonus}',
+      ),
+    ],
+    if (goal is EventGoal || goal is PlanGoal) ...[
+      (
+        c.tb('event', 'Event'),
+        c.catalog!
+                .events()
+                .where((row) => row.id == settings.eventId)
+                .firstOrNull
+                ?.name ??
+            '${settings.eventId}',
+      ),
+      (
+        c.tb('route', 'Live type'),
+        c.tb(switch (settings.route) {
+          'challenge' => 'routeChallenge',
+          'skip' => 'routeSkip',
+          _ => 'routeLive',
+        }, ''),
+      ),
+    ],
+    if (goal is PlanGoal) ...[
+      (c.tb('planBudget', 'Boosts to spend'), '${goal.boostBudget}'),
+      (
+        c.tb('planStartCp', 'Challenge points now'),
+        '${goal.startingChallengePoints}',
+      ),
+    ],
+    if (goal is EventGoal || goal is PlanGoal)
+      (
+        c.tb(settings.route == 'challenge' ? 'cpPerLive' : 'boosts', ''),
+        '${settings.route == 'challenge' ? settings.challengePoints : settings.boosts}',
+      ),
+    if (settings.goal == GoalKind.score && settings.scoreTarget != 'none')
+      (
+        c.tb('targetScore', 'Target score'),
+        formatNumber(c.state.text.locale, settings.targetScore ?? 0),
+      ),
+  ];
+}
+
 class ResultsView extends StatefulWidget {
   const ResultsView({super.key, required this.controller});
   final TeamBuilderController controller;
@@ -134,8 +283,6 @@ class ResultsView extends StatefulWidget {
 
 class _ResultsViewState extends State<ResultsView> {
   String _tab = 'overall';
-  final _compare = <String>[];
-  int _shownGeneration = -1;
 
   TeamBuilderController get c => widget.controller;
 
@@ -147,10 +294,6 @@ class _ResultsViewState extends State<ResultsView> {
     final results = activityResult == c.activity ? c.results : null;
     final theme = Theme.of(context);
     final locale = c.state.text.locale;
-    if (_shownGeneration != c.runGeneration) {
-      _shownGeneration = c.runGeneration;
-      _compare.clear();
-    }
     if (results == null) {
       return ToolSection(
         children: [
@@ -181,7 +324,9 @@ class _ResultsViewState extends State<ResultsView> {
     }
     final multi = results.results.length > 1 && settings.goal != GoalKind.plan;
     final tab = multi ? _tab : 'all';
-    final shown = tab == 'overall' || !multi
+    final shown = results.plan != null
+        ? [?results.plan!.normal, ?results.plan!.challenge]
+        : tab == 'overall' || !multi
         ? (multi ? results.overall : results.results.firstOrNull?.hits ?? [])
         : results.results.where((r) => r.song?.key == tab).firstOrNull?.hits ??
               [];
@@ -291,15 +436,19 @@ class _ResultsViewState extends State<ResultsView> {
                   ),
                   ValueChip(
                     label: c.tb('challengeLives', 'Challenge lives'),
-                    value: '${plan.challengeLives}',
+                    value: formatNumber(locale, plan.challengeLives, 2),
                   ),
                   ValueChip(
                     label: c.tb('cpEarned', 'Challenge points earned'),
-                    value: formatNumber(locale, plan.challengePointsEarned),
+                    value: formatNumber(locale, plan.challengePointsEarned, 2),
                   ),
                   ValueChip(
                     label: c.tb('cpLeft', 'Left over'),
-                    value: formatNumber(locale, plan.leftoverChallengePoints),
+                    value: formatNumber(
+                      locale,
+                      plan.leftoverChallengePoints,
+                      2,
+                    ),
                   ),
                   ValueChip(
                     label: c.tb('perBoost', 'Per boost'),
@@ -328,10 +477,6 @@ class _ResultsViewState extends State<ResultsView> {
             onSelected: (id) => setState(() => _tab = id),
           ),
         ],
-        if (_compareTable(context, shown) case final table?) ...[
-          const SizedBox(height: 12),
-          table,
-        ],
         const SizedBox(height: 12),
         if (shown.isEmpty)
           Padding(
@@ -344,34 +489,229 @@ class _ResultsViewState extends State<ResultsView> {
           for (final (index, hit) in shown.indexed) ...[
             if (index > 0) const SizedBox(height: 12),
             _HitCard(
-              key: ValueKey((c.runGeneration, hitKey(hit))),
+              key: ValueKey((c.resultSession, hitKey(hit))),
               controller: c,
               hit: hit,
               index: index,
-              settings: settings,
-              compared: _compare.contains(hitKey(hit)),
-              onCompare: () => setState(() {
-                final key = hitKey(hit);
-                if (!_compare.remove(key)) {
-                  _compare.add(key);
-                  if (_compare.length > 3) _compare.removeAt(0);
-                }
-              }),
+              settings: c.settingsForHit(hit),
+              compared: c.compared.any(
+                (row) => row.id == c.compareEntry(hit, index + 1)?.id,
+              ),
+              onCompare: () => c.toggleCompared(hit, index + 1),
             ),
           ],
+        if (shown.isNotEmpty &&
+            settings.goal != GoalKind.plan &&
+            !settings.theoretical &&
+            !c.stale) ...[
+          const SizedBox(height: 16),
+          ToolSection(
+            title: c.tb('growthTitle', 'Training priorities'),
+            children: [
+              if (c.currentGrowth && c.growth != null) ...[
+                if ((c.growth!['upgrades'] as List)
+                    .where(
+                      (row) =>
+                          (row as Map)['gain'] is num &&
+                          (row['gain'] as num) > 1e-9,
+                    )
+                    .isEmpty)
+                  Text(
+                    c.tb(
+                      'growthNone',
+                      'No single card upgrade improves the best team.',
+                    ),
+                  ),
+                for (final row
+                    in (c.growth!['upgrades'] as List)
+                        .cast<Map>()
+                        .where((row) => (row['gain'] as num) > 1e-9)
+                        .take(8))
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: SizedBox(
+                      width: 48,
+                      child: CardArt(
+                        catalog: catalog,
+                        members: row['kind'] == 'members',
+                        id: cardIdOf('${row['key']}'),
+                        emblems: false,
+                      ),
+                    ),
+                    title: Text(
+                      catalog.cardName(
+                        row['kind'] == 'members',
+                        cardIdOf('${row['key']}'),
+                      ),
+                    ),
+                    subtitle: Text(
+                      '+${formatNumber(locale, row['gain'] as num, 2)}',
+                    ),
+                  ),
+              ] else
+                FilledButton.tonalIcon(
+                  onPressed: c.running ? null : c.recommendGrowth,
+                  icon: const Icon(Symbols.trending_up_rounded),
+                  label: Text(
+                    c.growthRunning
+                        ? c.tb(
+                            'growthProgress',
+                            'Checking cards {done}/{total}',
+                            {
+                              'done': c.growthProgress.$1,
+                              'total': c.growthProgress.$2,
+                            },
+                          )
+                        : c.tb('growthRun', 'Find the best card to train'),
+                  ),
+                ),
+            ],
+          ),
+        ],
       ],
     );
   }
+}
 
-  Widget? _compareTable(BuildContext context, List<EngineHit> hits) {
-    final picked = [
-      for (final key in _compare)
-        ?hits.where((hit) => hitKey(hit) == key).firstOrNull,
-    ];
-    if (picked.length < 2) return null;
+Future<void> showResultComparison(
+  BuildContext context,
+  TeamBuilderController controller, {
+  bool rewards = false,
+}) => showDialog<void>(
+  context: context,
+  builder: (context) => Dialog(
+    insetPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 24),
+    child: SizedBox(
+      width: 1100,
+      height: MediaQuery.sizeOf(context).height * .86,
+      child: ListenableBuilder(
+        listenable: controller,
+        builder: (context, _) {
+          final entries = rewards ? controller.ptCompared : controller.compared;
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        controller.tb('comparison', 'Comparison'),
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: entries.isEmpty
+                          ? null
+                          : () {
+                              entries.clear();
+                              controller.changed();
+                              Navigator.of(context).pop();
+                            },
+                      child: Text(
+                        controller.state.text('common.actions.clear'),
+                      ),
+                    ),
+                    const CloseButton(),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final entry in entries)
+                            InputChip(
+                              label: Text('#${entry.position}'),
+                              onDeleted: () {
+                                entries.remove(entry);
+                                controller.changed();
+                                if (entries.isEmpty) {
+                                  Navigator.of(context).pop();
+                                }
+                              },
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      if (entries.length >= 2)
+                        ResultComparisonPanel(
+                          controller: controller,
+                          entries: entries,
+                        )
+                      else
+                        Text(
+                          controller.tb(
+                            'comparisonNeedTwo',
+                            'Select one more candidate to compare.',
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    ),
+  ),
+);
+
+class ResultComparisonPanel extends StatefulWidget {
+  const ResultComparisonPanel({
+    super.key,
+    required this.controller,
+    required this.entries,
+  });
+  final TeamBuilderController controller;
+  final List<ComparedResult> entries;
+  @override
+  State<ResultComparisonPanel> createState() => _ResultComparisonPanelState();
+}
+
+class _ResultComparisonPanelState extends State<ResultComparisonPanel> {
+  String? _baseline, _candidate;
+  TeamBuilderController get c => widget.controller;
+  @override
+  Widget build(BuildContext context) {
+    final pickedEntries = widget.entries;
+    if (pickedEntries.length < 2) return const SizedBox.shrink();
+    final foundBaseline = pickedEntries.indexWhere(
+      (entry) => entry.id == _baseline,
+    );
+    final baselineIndex = foundBaseline < 0 ? 0 : foundBaseline;
+    final baseline = pickedEntries[baselineIndex];
+    final compact = MediaQuery.sizeOf(context).width < 840;
+    var candidate = pickedEntries.indexWhere((entry) => entry.id == _candidate);
+    if (candidate < 0 || candidate == baselineIndex) {
+      candidate = baselineIndex == 0 ? 1 : 0;
+    }
+    final entries = compact
+        ? [baseline, pickedEntries[candidate]]
+        : [
+            baseline,
+            for (var i = 0; i < pickedEntries.length; i++)
+              if (i != baselineIndex) pickedEntries[i],
+          ];
+    final picked = entries.map((row) => row.hit).toList();
     final locale = c.state.text.locale;
     final catalog = c.catalog!;
     final rows = <(String, String Function(EngineHit))>[
+      (
+        c.tb('comparisonValue', 'Value'),
+        (hit) {
+          final entry = entries[picked.indexOf(hit)];
+          final metric = resultMetric(hit, entry.settings, c.tb);
+          return '${formatNumber(locale, metric.value, metric.digits)}${metric.unit}';
+        },
+      ),
       (c.tb('power', 'Power'), (hit) => formatNumber(locale, hit.power)),
       if (picked.any((hit) => hit.score != null)) ...[
         (
@@ -392,12 +732,6 @@ class _ResultsViewState extends State<ResultsView> {
       ],
       if (picked.any((hit) => hit.event != null)) ...[
         (
-          c.tb('pointsPerPlay', 'Event points per play'),
-          (hit) => hit.event == null
-              ? '—'
-              : formatNumber(locale, hit.event!.mean, 1),
-        ),
-        (
           c.tb('eventBonus', 'Event bonus'),
           (hit) => hit.event == null
               ? '—'
@@ -413,33 +747,133 @@ class _ResultsViewState extends State<ResultsView> {
       ),
     ];
     return ToolSection(
-      title: c.tb('comparison', 'Comparison'),
-      trailing: TextButton(
-        onPressed: () => setState(_compare.clear),
-        child: Text(catalog.t('common.actions.clear', 'Clear')),
-      ),
       children: [
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: DataTable(
-            columns: [
-              const DataColumn(label: SizedBox()),
-              for (final hit in picked)
-                DataColumn(
-                  label: Text('#${hits.indexOf(hit) + 1}'),
-                  numeric: true,
-                ),
-            ],
-            rows: [
-              for (final (label, value) in rows)
-                DataRow(
-                  cells: [
-                    DataCell(Text(label)),
-                    for (final hit in picked) DataCell(Text(value(hit))),
-                  ],
-                ),
-            ],
+        DropdownButtonFormField<int>(
+          key: ValueKey('baseline:$baselineIndex:${pickedEntries.length}'),
+          initialValue: baselineIndex,
+          isExpanded: true,
+          decoration: InputDecoration(
+            labelText: c.tb('comparisonBaseline', 'Baseline'),
           ),
+          items: [
+            for (var i = 0; i < pickedEntries.length; i++)
+              DropdownMenuItem(
+                value: i,
+                child: Text(
+                  '#${pickedEntries[i].position} · ${pickedEntries[i].hit.song == null ? c.tb('goalPower', 'Power') : catalog.songTitle(pickedEntries[i].hit.song!.songId)}',
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+          onChanged: (value) =>
+              setState(() => _baseline = pickedEntries[value ?? 0].id),
+        ),
+        if (compact && pickedEntries.length > 2)
+          DropdownButtonFormField<int>(
+            key: ValueKey('candidate:$candidate:${pickedEntries.length}'),
+            initialValue: candidate,
+            isExpanded: true,
+            decoration: InputDecoration(
+              labelText: c.tb('comparisonCandidate', 'Candidate'),
+            ),
+            items: [
+              for (var i = 0; i < pickedEntries.length; i++)
+                if (i != baselineIndex)
+                  DropdownMenuItem(
+                    value: i,
+                    child: Text('#${pickedEntries[i].position}'),
+                  ),
+            ],
+            onChanged: (value) =>
+                setState(() => _candidate = pickedEntries[value ?? 1].id),
+          ),
+        for (final entry in entries.skip(1))
+          Builder(
+            builder: (context) {
+              final a = resultMetric(baseline.hit, baseline.settings, c.tb),
+                  b = resultMetric(entry.hit, entry.settings, c.tb);
+              final difference = baseline.difference(entry);
+              final relative = a.value > 0 && b.relative
+                  ? (b.value - a.value) / a.value * 100
+                  : null;
+              final valid =
+                  baseline.conditions == entry.conditions &&
+                  a.id == b.id &&
+                  a.unit == b.unit;
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (valid)
+                    Text(
+                      '${b.label}: ${formatNumber(locale, b.value, b.digits)}${b.unit} (${b.value >= a.value ? '+' : ''}${formatNumber(locale, b.value - a.value, b.digits)}${b.unit}${relative == null ? '' : ' · ${formatNumber(locale, relative, 2)}%'})',
+                    ),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      for (final (key, label) in [
+                        ('members', c.tb('diffmembers', 'Member replacements')),
+                        ('snaps', c.tb('diffsnaps', 'Snapshot replacements')),
+                        (
+                          'bindings',
+                          c.tb('diffbindings', 'Snapshot rebindings'),
+                        ),
+                        ('growth', c.tb('diffgrowth', 'Growth changes')),
+                        ('leader', c.tb('leader', 'Leader')),
+                      ])
+                        Text('$label: ${difference[key]}'),
+                    ],
+                  ),
+                ],
+              );
+            },
+          ),
+        for (final entry in entries.where((entry) => !entry.listed))
+          Text(
+            '#${entry.position} · ${c.tb('outsideRanking', 'Outside current ranking')}',
+          ),
+        LayoutBuilder(
+          builder: (context, box) {
+            final valueWidth = (box.maxWidth - 104) / picked.length;
+            Widget cell(String value, {bool label = false}) => compact
+                ? SizedBox(
+                    width: label ? 80 : valueWidth,
+                    child: Text(
+                      value,
+                      textAlign: label ? TextAlign.start : TextAlign.end,
+                    ),
+                  )
+                : Text(value);
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                columnSpacing: compact ? 12 : 56,
+                horizontalMargin: compact ? 0 : 24,
+                dataRowMaxHeight: double.infinity,
+                columns: [
+                  DataColumn(
+                    label: compact
+                        ? const SizedBox(width: 80)
+                        : const SizedBox(),
+                  ),
+                  for (final hit in picked)
+                    DataColumn(
+                      label: cell('#${entries[picked.indexOf(hit)].position}'),
+                      numeric: true,
+                    ),
+                ],
+                rows: [
+                  for (final (label, value) in rows)
+                    DataRow(
+                      cells: [
+                        DataCell(cell(label, label: true)),
+                        for (final hit in picked) DataCell(cell(value(hit))),
+                      ],
+                    ),
+                ],
+              ),
+            );
+          },
         ),
       ],
     );
@@ -477,59 +911,42 @@ class _HitCardState extends State<_HitCard> {
       openResultSongAnalysis(context, c, hit, widget.settings);
 
   ({String label, String value}) _primary() {
-    final s = widget.settings;
-    final locale = c.state.text.locale;
-    if (s.goal == GoalKind.power) {
-      return (
-        label: c.tb('power', 'Power'),
-        value: formatNumber(locale, hit.power),
-      );
-    }
-    if (s.goal == GoalKind.potential && hit.potential != null) {
-      return (
-        label: c.tb('potential', 'Potential'),
-        value: formatNumber(locale, hit.potential!.potential),
-      );
-    }
-    if ((s.goal == GoalKind.event || s.goal == GoalKind.plan) &&
-        hit.event != null) {
-      final cp = s.measure == 'challenge-points' && s.goal == GoalKind.event;
-      final label = s.measure == 'items' && s.goal == GoalKind.event
-          ? c.tb('itemsPerPlay', 'Items per play')
-          : cp
-          ? c.tb('cpPerPlay', 'Challenge points per play')
-          : c.tb('pointsPerPlay', 'Event points per play');
-      return (
-        label: label,
-        value: formatNumber(
-          locale,
-          cp ? hit.event!.challengePoints : hit.event!.mean,
-          1,
-        ),
-      );
-    }
-    if (hit.score case final score?) {
-      final goal = scoreGoals[s.criterion] ?? scoreGoals['mean']!;
-      final value = switch (s.criterion) {
-        'min' => score.min,
-        'max' => score.max,
-        _ => score.mean,
-      };
-      return (
-        label: c.tb(goal.metric.$1, goal.metric.$2),
-        value: formatNumber(locale, value),
-      );
-    }
+    final metric = resultMetric(hit, widget.settings, c.tb);
     return (
-      label: c.tb('power', 'Power'),
-      value: formatNumber(locale, hit.power),
+      label: metric.label,
+      value:
+          '${formatNumber(c.state.text.locale, metric.value, metric.digits)}${metric.unit}',
     );
   }
 
   List<Widget> _chips() {
     final s = widget.settings;
     final locale = c.state.text.locale;
+    final placements =
+        c.results?.results
+            .where((row) => row.song == hit.song)
+            .firstOrNull
+            ?.placements ??
+        (!s.opponentsMode ? [s.gekisoRank, s.gekisoRank, s.gekisoRank] : null);
     return [
+      if (s.goal == GoalKind.gekiso && placements != null)
+        ValueChip(
+          label: c.tb('gekisoPlacements', 'Scoring placements'),
+          value: placements.join(' · '),
+        ),
+      if (hit.comboBonus != null)
+        ValueChip(
+          label: c.tb('comboBonus', 'Base COMBO BONUS'),
+          value: '×${hit.comboBonus}',
+        ),
+      if (hit.event?.otherMean case final other?)
+        ValueChip(
+          label: c.tb(
+            s.measure == 'items' ? 'pointsPerPlay' : 'itemsPerPlay',
+            '',
+          ),
+          value: formatNumber(locale, other, 1),
+        ),
       if (s.goal != GoalKind.power)
         ValueChip(
           icon: Symbols.bolt_rounded,
@@ -591,6 +1008,11 @@ class _HitCardState extends State<_HitCard> {
       if (hit.song case final song?)
         '${catalog.songTitle(song.songId)} ${catalog.difficultyLabel(song.songId, song.difficulty)}',
       '${main.label}: ${main.value} · ${c.tb('power', 'Power')}: ${formatNumber(c.state.text.locale, hit.power)}',
+      ...resultConditions(
+        c,
+        hit,
+        widget.settings,
+      ).map((condition) => '${condition.$1}: ${condition.$2}'),
       for (final (index, key) in hit.members.indexed)
         '${index == 0 ? '[${c.tb('leader', 'Leader')}] ' : ''}'
             '${catalog.cardName(true, cardIdOf(key))} (${catalog.cardSubtitle(true, cardIdOf(key))}) + '
@@ -775,6 +1197,23 @@ class _HitCardState extends State<_HitCard> {
               ),
             ),
             if (_expanded) ...[
+              ToolSection(
+                title: c.tb('originalConditions', 'Original result conditions'),
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final (label, value) in resultConditions(
+                        c,
+                        hit,
+                        widget.settings,
+                      ))
+                        ValueChip(label: label, value: value),
+                    ],
+                  ),
+                ],
+              ),
               if (hit.score != null) _Distribution(controller: c, hit: hit),
               TeamRankTargets(
                 controller: c,
@@ -1468,6 +1907,10 @@ Future<List<int>> renderHitImage(
       snapshotsLabel: c.tb('snapshots', 'Snaps'),
       leaderLabel: c.tb('leader', 'Leader'),
       emptyLabel: c.tb('noSnap', 'No snap'),
+      allEmptyLabel: c.tb(
+        'allNoSnaps',
+        'No Snapshots in any of the five slots',
+      ),
       imageUnavailableLabel: c.tb('imageUnavailable', 'Image unavailable'),
       members: [
         for (final (index, key) in hit.members.indexed)
@@ -1480,13 +1923,32 @@ Future<List<int>> renderHitImage(
       metrics: [
         (main.label, main.value),
         (c.tb('power', 'Power'), formatNumber(locale, hit.power)),
+        if (hit.comboBonus != null)
+          (c.tb('comboBonus', 'Base COMBO BONUS'), '×${hit.comboBonus}'),
+        if (hit.event?.otherMean case final other?)
+          (
+            c.tb(
+              c.settingsForHit(hit).measure == 'items'
+                  ? 'pointsPerPlay'
+                  : 'itemsPerPlay',
+              '',
+            ),
+            formatNumber(locale, other, 1),
+          ),
         if (hit.score case final score?)
           (
             c.tb('scoreRange', 'Range'),
             '${formatNumber(locale, score.min)} – ${formatNumber(locale, score.max)}',
           ),
       ],
-      footer: const ['haneoka.org'],
+      footer: [
+        ...resultConditions(
+          c,
+          hit,
+          c.settingsForHit(hit),
+        ).map((row) => '${row.$1}: ${row.$2}'),
+        'haneoka.org',
+      ],
       theme: ResultImageTheme(
         surface: scheme.surface,
         container: scheme.surfaceContainer,

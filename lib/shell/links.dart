@@ -10,6 +10,7 @@ import '../stories/stories.dart';
 import 'page.dart';
 import 'routes.dart';
 import 'route_paths.dart';
+import '../catalog/source_route.dart';
 
 /// The website's entity kinds (`RESOURCE_KINDS`) and the API resource each
 /// browses, for addresses like `/intl/ja/events/1/`.
@@ -36,7 +37,7 @@ const _kindResources = {
   'real-lives': 'real-lives',
 };
 
-const _servers = {'jp', 'intl', 'jp-test', 'intl-test'};
+const _servers = {'jp', 'intl'};
 const _locales = {'ja', 'en', 'zh-TW', 'zh-CN', 'ko'};
 
 /// Opens a haneoka.org address inside the app: an entity's page, or the
@@ -62,6 +63,25 @@ Future<bool> openLink(
     );
   }
   final parts = uri.pathSegments.where((p) => p.isNotEmpty).toList();
+  if (parts.length >= 2 &&
+      !_servers.contains(parts.first) &&
+      _locales.contains(parts[1])) {
+    final source = parts.removeAt(0);
+    parts.removeAt(0);
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        settings: RouteSettings(name: uri.toString()),
+        builder: (_) => NativeCatalogSourceRoute(
+          route: Uri(
+            path: '/${parts.join('/')}',
+            query: uri.hasQuery ? uri.query : null,
+          ),
+          source: source,
+        ),
+      ),
+    );
+    return true;
+  }
   final server = parts.isNotEmpty && _servers.contains(parts.first)
       ? parts.removeAt(0)
       : null;
@@ -74,6 +94,15 @@ Future<bool> openLink(
     ..addAll(Uri.parse(canonical).pathSegments);
   if (parts.isEmpty) {
     navigate?.call('/');
+    return navigate != null;
+  }
+  if (parts.first == 'charts') {
+    navigate?.call(
+      Uri(
+        path: '/charts/${parts.skip(1).join('/')}',
+        queryParameters: uri.queryParameters,
+      ).toString(),
+    );
     return navigate != null;
   }
   if ((parts.first == 'chart-simulator' && uri.queryParameters['id'] != null) ||
@@ -195,6 +224,21 @@ Future<bool> openLink(
           if (server != null) 'server': [server],
         },
         fragment: uri.hasFragment ? uri.fragment : null,
+      ).toString(),
+    );
+    return navigate != null;
+  }
+  if (parts.length == 1 &&
+      const {
+        'player-ranks',
+        'friendship-ranks',
+        'band-rating',
+        'high-score-rating',
+      }.contains(parts.first)) {
+    navigate?.call(
+      Uri(
+        path: '/catalog/${parts.first}',
+        queryParameters: {'server': ?server},
       ).toString(),
     );
     return navigate != null;

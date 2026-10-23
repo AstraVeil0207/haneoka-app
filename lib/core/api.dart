@@ -38,13 +38,14 @@ class HaneokaApi extends ChangeNotifier {
       defaultValue: 'https://haneoka.org',
     ),
     required this.server,
+    bool eagerRelease = true,
   }) {
     _instances.add(WeakReference(this));
     final reference = WeakReference(this);
     _subscription = publicDocumentCache.changes.listen((change) {
       reference.target?._documentChanged(change);
     });
-    unawaited(release());
+    if (eagerRelease) unawaited(release());
   }
 
   final String origin, server;
@@ -76,6 +77,8 @@ class HaneokaApi extends ChangeNotifier {
       cache.clear();
     }
   }
+
+  static void clearResourceViews() => _clearResourceCaches();
 
   static void invalidateCaches() {
     _clearResourceCaches();

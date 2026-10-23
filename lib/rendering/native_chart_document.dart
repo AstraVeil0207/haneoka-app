@@ -2,6 +2,8 @@ import 'package:cassiopeia_plugin_our_notes/render_profile.dart';
 
 import '../core/api.dart';
 import '../core/audio.dart';
+import '../chart/runtime_chart.dart';
+import 'visual_profiles.dart';
 
 /// An actual selected catalogue variant, pinned before any media/resource load.
 final class NativeChartDocument {
@@ -19,6 +21,11 @@ final class NativeChartDocument {
     this.masterNoteCount,
     List<int>? scoreRankScores,
     List<int> gekisouMissionTypes = const [],
+    this.resourceBase,
+    this.audioOffsetMs = 0,
+    this.timeScaleChanges = const [],
+    this.chart,
+    this.visualProfiles,
   }) : canonicalSong = Map.unmodifiable(canonicalSong),
        gekisouMissionTypes = List.unmodifiable(gekisouMissionTypes),
        scoreRankScores = scoreRankScores == null
@@ -27,6 +34,11 @@ final class NativeChartDocument {
   final RenderSource source;
   final String? sourceId;
   final Uri scoreUri, musicUri;
+  final Uri? resourceBase;
+  final double audioOffsetMs;
+  final List<({double timeMs, double scale})> timeScaleChanges;
+  final RuntimeChart? chart;
+  final NativeChartVisualProfiles? visualProfiles;
   final Uri? jacketUri;
   final int bandId;
   final int difficulty;
@@ -49,6 +61,11 @@ final class NativeChartDocument {
     masterNoteCount: masterNoteCount,
     scoreRankScores: scoreRankScores,
     gekisouMissionTypes: gekisouMissionTypes,
+    resourceBase: resourceBase,
+    audioOffsetMs: audioOffsetMs,
+    timeScaleChanges: timeScaleChanges,
+    chart: chart,
+    visualProfiles: visualProfiles,
   );
   String get key => '${source.server}:${source.release}:${source.document}';
   Track get track => Track(

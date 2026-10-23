@@ -63,6 +63,7 @@ class TeamResultImage {
     required this.snapshots,
     required this.metrics,
     required this.footer,
+    this.allEmptyLabel,
     required this.theme,
   });
   final String title;
@@ -78,6 +79,7 @@ class TeamResultImage {
   /// (label, value).
   final List<(String, String)> metrics;
   final List<String> footer;
+  final String? allEmptyLabel;
   final ResultImageTheme theme;
 }
 
@@ -87,7 +89,11 @@ Future<ui.Image?> _fetch(String source) async {
         .get(Uri.parse(source))
         .timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) return null;
-    final codec = await ui.instantiateImageCodec(response.bodyBytes);
+    final codec = await ui.instantiateImageCodec(
+      response.bodyBytes,
+      targetWidth: 512,
+      allowUpscaling: false,
+    );
     final image = (await codec.getNextFrame()).image;
     codec.dispose();
     return image;
@@ -118,19 +124,110 @@ Future<List<int>> renderTeamResultImage(TeamResultImage model) async {
       _fetch(source).then((image) => images[source] = image),
   ]);
   final rows = math.max(1, (model.metrics.length / 3).ceil());
-  final hasSnapshots = model.snapshots.any((card) => card != null);
-  const pageWidth = 1280.0;
-  final pageHeight = 1480.0 + (rows - 1) * 122 - (hasSnapshots ? 0 : 140);
+  final allEmpty =
+      model.snapshots.length == 5 &&
+      model.snapshots.every((card) => card == null);
+  const pageWidth = 1280.0, margin = 48.0, gap = 16.0, width = 224.0;
+  final t = model.theme;
+  TextPainter layout(
+    String text,
+    double size,
+    double maxWidth, {
+    FontWeight weight = FontWeight.w400,
+    Color? color,
+  }) => TextPainter(
+    text: TextSpan(
+      text: text,
+      style: TextStyle(
+        fontSize: size,
+        fontWeight: weight,
+        color: color ?? t.text,
+        height: (size + 6) / size,
+      ),
+    ),
+    textDirection: TextDirection.ltr,
+  )..layout(maxWidth: math.max(1, maxWidth));
+  double textHeight(
+    String text,
+    double size,
+    double maxWidth, {
+    FontWeight weight = FontWeight.w400,
+  }) {
+    final painter = layout(text, size, maxWidth, weight: weight);
+    final height = painter.height;
+    painter.dispose();
+    return height;
+  }
+
+  final titleHeight = math.max(
+    84.0,
+    textHeight(model.title, 36, 1184, weight: FontWeight.w700),
+  );
+  final subtitleY = 81 + titleHeight;
+  final metricsY =
+      subtitleY + math.max(26.0, textHeight(model.subtitle, 20, 1184)) + 17;
+  final columns = math.max(1, math.min(3, model.metrics.length));
+  final metricWidth = (1184 - gap * (columns - 1)) / columns;
+  final metricHeights = [
+    for (var row = 0; row < rows; row++)
+      model.metrics
+          .skip(row * 3)
+          .take(3)
+          .fold<double>(
+            106,
+            (height, cell) => math.max(
+              height,
+              32 +
+                  textHeight(cell.$1, 17, metricWidth - 32) +
+                  textHeight(
+                    cell.$2,
+                    29,
+                    metricWidth - 32,
+                    weight: FontWeight.w700,
+                  ),
+            ),
+          ),
+  ];
+  final metricOffsets = <double>[];
+  var nextRow = metricsY;
+  for (final height in metricHeights) {
+    metricOffsets.add(nextRow);
+    nextRow += height + gap;
+  }
+  double avatarWidth(ResultImageCard card) =>
+      card.avatars.take(5).where((source) => images[source] != null).length *
+      20.0;
+  double rowExtra(Iterable<ResultImageCard?> cards) =>
+      cards.whereType<ResultImageCard>().fold<double>(
+        0,
+        (height, card) => math.max(
+          height,
+          math.max(
+                0,
+                textHeight(card.title, 20, width, weight: FontWeight.w600) - 52,
+              ) +
+              math.max(
+                0,
+                textHeight(card.character, 15, width - avatarWidth(card) - 8) -
+                    42,
+              ),
+        ),
+      );
+  final membersY = nextRow + 24;
+  final snapshotsY = membersY + 605 + rowExtra(model.members);
+  final footerY =
+      snapshotsY + (allEmpty ? 210 : 350 + rowExtra(model.snapshots));
+  final footerHeight = model.footer.fold<double>(
+    0,
+    (height, line) => height + textHeight(line, 16, 1184) + 4,
+  );
+  final pageHeight = footerY + 18 + footerHeight + 48;
   final recorder = ui.PictureRecorder();
   final c = Canvas(recorder);
-  final t = model.theme;
-  const margin = 48.0, gap = 16.0, width = 224.0;
   c.drawRect(
-    const Rect.fromLTWH(0, 0, pageWidth, 16384),
+    Rect.fromLTWH(0, 0, pageWidth, pageHeight),
     Paint()..color = t.surface,
   );
-
-  /// `lines`: wraps by character, ellipsizing the last allowed line.
   void lines(
     String text,
     double x,
@@ -141,47 +238,9 @@ Future<List<int>> renderTeamResultImage(TeamResultImage model) async {
     Color? color,
     FontWeight weight = FontWeight.w400,
   }) {
-    final style = TextStyle(
-      fontSize: size,
-      fontWeight: weight,
-      color: color ?? t.text,
-      height: 1,
-    );
-    double measure(String value) {
-      final painter = TextPainter(
-        text: TextSpan(text: value, style: style),
-        textDirection: TextDirection.ltr,
-      )..layout();
-      return painter.width;
-    }
-
-    void fill(String value, int line) => (TextPainter(
-      text: TextSpan(text: value, style: style),
-      textDirection: TextDirection.ltr,
-    )..layout()).paint(c, Offset(x, y + line * (size + 6)));
-    var used = 0;
-    for (final paragraph in text.split(RegExp(r'\r?\n'))) {
-      final chars = paragraph.runes.map(String.fromCharCode).toList();
-      var line = '';
-      for (final char in chars) {
-        if (measure(line + char) <= max) {
-          line += char;
-          continue;
-        }
-        if (used == limit - 1) {
-          while (line.isNotEmpty && measure('$line…') > max) {
-            final runes = line.runes.toList()..removeLast();
-            line = String.fromCharCodes(runes);
-          }
-          fill('$line…', used);
-          return;
-        }
-        fill(line, used++);
-        line = char;
-      }
-      if (used >= limit) return;
-      fill(line, used++);
-    }
+    final painter = layout(text, size, max, color: color, weight: weight);
+    painter.paint(c, Offset(x, y));
+    painter.dispose();
   }
 
   void panel(double x, double y, double w, double h) => c.drawRRect(
@@ -216,25 +275,22 @@ Future<List<int>> renderTeamResultImage(TeamResultImage model) async {
     weight: FontWeight.w700,
   );
   lines(model.title, margin, 76, 1184, 36, limit: 2, weight: FontWeight.w700);
-  lines(model.subtitle, margin, 165, 1184, 20, color: t.muted);
-  final columns = math.max(1, math.min(3, model.metrics.length));
-  final metricWidth = (1184 - gap * (columns - 1)) / columns;
+  lines(model.subtitle, margin, subtitleY, 1184, 20, color: t.muted);
   for (final (index, (label, value)) in model.metrics.indexed) {
     final x = margin + index % 3 * (metricWidth + gap);
-    final y = 208.0 + (index ~/ 3) * 122;
-    panel(x, y, metricWidth, 106);
+    final y = metricOffsets[index ~/ 3];
+    panel(x, y, metricWidth, metricHeights[index ~/ 3]);
     lines(label, x + 16, y + 12, metricWidth - 32, 17, color: t.muted);
     lines(
       value,
       x + 16,
-      y + 36,
+      y + 20 + textHeight(label, 17, metricWidth - 32),
       metricWidth - 32,
       29,
       color: t.primary,
       weight: FontWeight.w700,
     );
   }
-  final membersY = 232.0 + rows * 122;
   lines(
     model.membersLabel,
     margin,
@@ -420,6 +476,14 @@ Future<List<int>> renderTeamResultImage(TeamResultImage model) async {
       limit: 2,
       weight: FontWeight.w600,
     );
+    final avatarY =
+        y +
+        h +
+        19 +
+        math.max(
+          52,
+          textHeight(card.title, 20, width, weight: FontWeight.w600),
+        );
     var avatarX = x;
     for (final avatar in card.avatars.take(5)) {
       final loaded = images[avatar];
@@ -433,7 +497,7 @@ Future<List<int>> renderTeamResultImage(TeamResultImage model) async {
             edge,
             edge,
           ),
-          Rect.fromLTWH(avatarX, y + h + 71, 24, 24),
+          Rect.fromLTWH(avatarX, avatarY, 24, 24),
           Paint()..filterQuality = FilterQuality.high,
         );
         avatarX += 20;
@@ -442,7 +506,7 @@ Future<List<int>> renderTeamResultImage(TeamResultImage model) async {
     lines(
       card.character,
       avatarX + (avatarX > x ? 8 : 0),
-      y + h + 75,
+      avatarY + 4,
       width - (avatarX - x) - 8,
       15,
       limit: 2,
@@ -453,7 +517,6 @@ Future<List<int>> renderTeamResultImage(TeamResultImage model) async {
   for (final (index, card) in model.members.indexed) {
     drawCard(card, index, membersY + 40, true);
   }
-  final snapshotsY = membersY + 605;
   lines(
     model.snapshotsLabel,
     margin,
@@ -462,10 +525,21 @@ Future<List<int>> renderTeamResultImage(TeamResultImage model) async {
     22,
     weight: FontWeight.w700,
   );
-  for (final (index, card) in model.snapshots.indexed) {
-    drawCard(card, index, snapshotsY + 40, false);
+  if (allEmpty) {
+    panel(margin, snapshotsY + 40, 1184, 90);
+    lines(
+      model.allEmptyLabel ?? model.emptyLabel,
+      margin + 20,
+      snapshotsY + 72,
+      1144,
+      20,
+      color: t.muted,
+    );
+  } else {
+    for (final (index, card) in model.snapshots.indexed) {
+      drawCard(card, index, snapshotsY + 40, false);
+    }
   }
-  final footerY = snapshotsY + (hasSnapshots ? 350 : 210);
   c.drawLine(
     Offset(margin, footerY),
     Offset(1232, footerY),
@@ -473,11 +547,13 @@ Future<List<int>> renderTeamResultImage(TeamResultImage model) async {
       ..color = t.outline
       ..strokeWidth = 1,
   );
-  for (final (index, line) in model.footer.take(4).indexed) {
-    lines(line, margin, footerY + 18 + index * 25, 1184, 16, color: t.muted);
+  var footerLineY = footerY + 18;
+  for (final line in model.footer) {
+    lines(line, margin, footerLineY, 1184, 16, color: t.muted);
+    footerLineY += textHeight(line, 16, 1184) + 4;
   }
   final picture = recorder.endRecording();
-  final rendered = await picture.toImage(pageWidth.toInt(), pageHeight.toInt());
+  final rendered = await picture.toImage(pageWidth.toInt(), pageHeight.ceil());
   final data = await rendered.toByteData(format: ui.ImageByteFormat.png);
   rendered.dispose();
   for (final loaded in images.values) {

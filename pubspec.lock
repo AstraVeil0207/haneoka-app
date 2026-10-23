@@ -621,6 +621,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "4.12.0"
+  inject_js:
+    dependency: transitive
+    description:
+      name: inject_js
+      sha256: "849eacfd4b7e9182a7e743843a820d74bf1abcb692bdbe09e34ef0f753ad7227"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.0"
   intl:
     dependency: "direct main"
     description:
@@ -657,10 +665,10 @@ packages:
     dependency: transitive
     description:
       name: js
-      sha256: "53385261521cc4a0c4658fd0ad07a7d14591cf8fc33abbceae306ddb974888dc"
+      sha256: f2c445dce49627136094980615a031419f7f3eb393237e4ecd97ac15dea343f3
       url: "https://pub.dev"
     source: hosted
-    version: "0.7.2"
+    version: "0.6.7"
   json_annotation:
     dependency: transitive
     description:
@@ -1123,6 +1131,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.10.2"
+  spine_flutter:
+    dependency: "direct main"
+    description:
+      name: spine_flutter
+      sha256: "195dfd2936f6938cefb91862dab2b59ecd08d9fecf4c208d3ad5f72fe5e0715a"
+      url: "https://pub.dev"
+    source: hosted
+    version: "4.2.36"
   sqflite:
     dependency: transitive
     description:
@@ -1360,8 +1376,8 @@ packages:
     dependency: "direct main"
     description:
       path: dart
-      ref: d043969901fb3382751338dfd2bb080b356ab130
-      resolved-ref: d043969901fb3382751338dfd2bb080b356ab130
+      ref: "465926dc75604db4988f759adf9d41f5852ffcf1"
+      resolved-ref: "465926dc75604db4988f759adf9d41f5852ffcf1"
       url: "https://github.com/haneoka-gakuen/vega-plugin-haneoka.git"
     source: git
     version: "0.1.0"
@@ -1416,6 +1432,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.1"
+  web_ffi_fork:
+    dependency: transitive
+    description:
+      name: web_ffi_fork
+      sha256: "557b3008bb3c8547ee63eac6e53c0ebebb443da9d7558b3f1b98e1ed59989a11"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.7.5"
   web_socket:
     dependency: transitive
     description:

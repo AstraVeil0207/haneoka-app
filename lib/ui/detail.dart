@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import '../core/account_resource.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 
-import '../core/net.dart';
+import 'account_image.dart';
+
 
 import 'package:material_new_shapes/material_new_shapes.dart';
 
@@ -146,6 +147,7 @@ class DetailFold extends StatelessWidget {
     required this.child,
     this.meta,
     this.open = false,
+    this.onExpansionChanged,
   });
   final String title;
   final String? meta;
@@ -153,6 +155,7 @@ class DetailFold extends StatelessWidget {
 
   /// Whether the fold starts open.
   final bool open;
+  final ValueChanged<bool>? onExpansionChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -166,6 +169,7 @@ class DetailFold extends StatelessWidget {
       padding: const EdgeInsets.only(top: 8),
       child: ExpansionTile(
         initiallyExpanded: open,
+        onExpansionChanged: onExpansionChanged,
         expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
         shape: shape,
         collapsedShape: shape,
@@ -422,10 +426,7 @@ class _ImageGalleryState extends State<ImageGallery> {
   double _ratio(String url) {
     final known = _ratios[url];
     if (known != null) return known;
-    final stream = CachedNetworkImageProvider(
-      url,
-      cacheManager: artworkCache,
-    ).resolve(ImageConfiguration.empty);
+    final stream = nativeNetworkImage(url).resolve(ImageConfiguration.empty);
     late final ImageStreamListener listener;
     listener = ImageStreamListener((info, _) {
       stream.removeListener(listener);
@@ -605,10 +606,18 @@ class _ImageGalleryState extends State<ImageGallery> {
 }
 
 /// Full-screen pinch zoom over the gallery (`photo_view`).
-class _ZoomView extends StatelessWidget {
+class _ZoomView extends StatefulWidget {
   const _ZoomView({required this.images, required this.initial});
   final List<String> images;
   final int initial;
+  @override
+  State<_ZoomView> createState() => _ZoomViewState();
+}
+
+class _ZoomViewState extends State<_ZoomView> {
+  late final _pages = PageController(initialPage: widget.initial);
+  @override
+  void dispose() { _pages.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) {
@@ -616,16 +625,18 @@ class _ZoomView extends StatelessWidget {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          PhotoViewGallery.builder(
-            itemCount: images.length,
-            pageController: PageController(initialPage: initial),
-            builder: (context, index) => PhotoViewGalleryPageOptions(
-              imageProvider: CachedNetworkImageProvider(
-                images[index],
-                cacheManager: artworkCache,
+          StreamBuilder<void>(
+            stream: widget.images.any((url) => isAccountResource(Uri.parse(url)))
+                ? AccountResources.instance.changes : null,
+            builder: (context, _) => PhotoViewGallery.builder(
+              key: ValueKey(AccountResources.instance.epoch),
+              itemCount: widget.images.length,
+              pageController: _pages,
+              builder: (context, index) => PhotoViewGalleryPageOptions(
+                imageProvider: nativeNetworkImage(widget.images[index]),
+                minScale: PhotoViewComputedScale.contained,
+                maxScale: PhotoViewComputedScale.covered * 4,
               ),
-              minScale: PhotoViewComputedScale.contained,
-              maxScale: PhotoViewComputedScale.covered * 4,
             ),
           ),
           SafeArea(

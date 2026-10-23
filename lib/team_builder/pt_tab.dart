@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import 'box_tab.dart' show showCardEditor;
-import 'build_tab.dart' show sticky, BuildTab;
+import 'build_tab.dart' show BuildTab;
 import 'controller.dart';
 import 'engine/api.dart';
 import 'engine/num.dart';
@@ -61,66 +61,110 @@ class _PtTabState extends State<PtTab> {
 
   @override
   Widget build(BuildContext context) {
-    final modes = Segmented<String>(
-      value: c.settings.rewardMode,
-      grow: false,
-      options: [
-        Choice('recommendation', c.tb('recommendation', 'Recommendation')),
-        Choice('event', c.tb('rewardSearch', 'Reward team search')),
-        Choice('plan', c.tb('goalPlan', 'Event resource plan')),
+    final farm = c.settings.farming;
+    final mode = c.settings.rewardMode == 'plan' ? 'plan' : 'farm';
+    final modes = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Segmented<String>(
+          value: mode,
+          grow: false,
+          options: [
+            Choice('farm', c.tb('farm.title', 'Farming recommendations')),
+            Choice('plan', c.tb('farm.plan', 'Resource planning')),
+          ],
+          onSelected: (value) {
+            c.cancel();
+            pt.showIssues = false;
+            c.updateSettings({
+              'rewardMode': value == 'plan' ? 'plan' : c.settings.farmingMode,
+            });
+          },
+        ),
+        if (mode == 'farm') ...[
+          const SizedBox(height: 16),
+          ToolSection(
+            title: c.tb('farm.conditions', 'Play and account conditions'),
+            children: [
+              DropdownButtonFormField<String>(
+                key: ValueKey(farm['play']),
+                initialValue: farm['play'] as String,
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: c.tb('farm.task', 'Event task'),
+                ),
+                items: [
+                  for (final (value, label) in [
+                    ('solo', t('solo', 'Solo')),
+                    ('gekiso', t('gekiso', 'Gekiso')),
+                    ('challenge', c.tb('routeChallenge', 'Challenge live')),
+                    ('skip', c.tb('routeSkip', 'Skip')),
+                  ])
+                    DropdownMenuItem(value: value, child: Text(label)),
+                ],
+                onChanged: (value) => c.updateSettings({
+                  'farming': {...farm, 'play': value},
+                }),
+              ),
+              if (farm['play'] != 'gekiso')
+                ExpansionTile(
+                  title: Text(c.tb('farm.advanced', 'Advanced conditions')),
+                  tilePadding: EdgeInsets.zero,
+                  children: [
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        c.tb(
+                          'farm.requireGrowth',
+                          'Complete before calculating',
+                        ),
+                      ),
+                      value: farm['requireGrowth'] == true,
+                      onChanged: (value) => c.updateSettings({
+                        'farming': {...farm, 'requireGrowth': value},
+                      }),
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        c.tb('farm.memory', 'Character / song memory bonuses'),
+                      ),
+                      value: farm['includeMemory'] == true,
+                      onChanged: (value) => c.updateSettings({
+                        'farming': {...farm, 'includeMemory': value},
+                      }),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ],
       ],
-      onSelected: (value) {
-        c.cancel();
-        pt.showIssues = false;
-        c.updateSettings({'rewardMode': value});
-      },
     );
     if (c.settings.rewardMode != 'recommendation') {
       return BuildTab(controller: c, leading: modes);
     }
+    pt.measure = c.searchSettings.measure == 'items' ? 'items' : 'points';
     pt.sync();
-    final settings = [
-      modes,
-      const SizedBox(height: 16),
-      ..._cachedSetup(context),
-      if (pt.showIssues && pt.issues.isNotEmpty) ...[
-        const SizedBox(height: 16),
-        _issues(context),
-      ],
-    ];
-    final ranking = _ranking(context);
-    final run = _run(context);
-    if (MediaQuery.sizeOf(context).width >= 1100) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return TeamToolLayout(
+      controller: c,
+      storageKey: 'reward',
+      summary:
+          '${c.tb('farm.title', 'Farming recommendations')} · ${c.searchSettings.songs.length}',
+      conditions: (context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(
-            width: 440,
-            child: sticky(
-              context,
-              ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 0, 160),
-                children: settings,
-              ),
-              run,
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-              children: [ranking],
-            ),
-          ),
+          modes,
+          const SizedBox(height: 16),
+          ..._cachedSetup(context),
+          if (pt.showIssues && pt.issues.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _issues(context),
+          ],
         ],
-      );
-    }
-    return sticky(
-      context,
-      ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 160),
-        children: [...settings, const SizedBox(height: 16), ranking],
       ),
-      run,
+      action: _run,
+      results: _ranking,
     );
   }
 
@@ -177,19 +221,6 @@ class _PtTabState extends State<PtTab> {
         icon: Symbols.emoji_events_rounded,
         title: c.tb('eventSetup', 'Event'),
         children: [
-          Segmented<bool>(
-            value: s.ptGekiso,
-            options: [
-              Choice(false, t('solo', 'Solo'), Symbols.person_rounded),
-              Choice(
-                true,
-                t('gekiso', 'Gekisou'),
-                Symbols.local_fire_department_rounded,
-              ),
-            ],
-            onSelected: (value) =>
-                c.updateSettings({'ptMode': value ? 'gekiso' : 'solo'}),
-          ),
           CheckboxListTile(
             contentPadding: EdgeInsets.zero,
             value: s.ptCycle,
@@ -204,10 +235,24 @@ class _PtTabState extends State<PtTab> {
             ],
             onSelected: (value) {
               pt.measure = value;
+              c.updateSettings({'measure': value});
               pt.sync();
               c.changed();
             },
           ),
+          if (s.ptGekiso && c.hasMission(1, s.songs))
+            TextFormField(
+              key: const ValueKey('pt-combo'),
+              initialValue: s.minComboBonus == 1 ? '' : '${s.minComboBonus}',
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: c.tb('minComboBonus', 'Minimum base COMBO BONUS'),
+                prefixText: '×',
+                hintText: c.tb('unlimitedCombo', 'No minimum'),
+              ),
+              onChanged: (value) =>
+                  c.updateSettings({'minComboBonus': int.tryParse(value) ?? 1}),
+            ),
           field(
             'event',
             DropdownMenu<int>(
@@ -628,6 +673,7 @@ class _PtTabState extends State<PtTab> {
         ],
       );
     }
+    c.syncPtCompared(job);
     final catalog = c.catalog!;
     final locale = c.state.text.locale;
     final ranking = ptSongRanking(job, pt.measure);
@@ -707,7 +753,45 @@ class _PtTabState extends State<PtTab> {
                 child: Text(breakdown, style: theme.textTheme.bodySmall),
               ),
             const SizedBox(height: 12),
-            Formation(controller: c, hit: hit, settings: c.settings),
+            Formation(
+              controller: c,
+              hit: hit,
+              settings: c.ptCompareEntry(hit, job, 0)?.settings ?? c.settings,
+            ),
+            if (hit.comboBonus != null || hit.event?.otherMean != null)
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (hit.comboBonus != null)
+                    ValueChip(
+                      label: c.tb('comboBonus', 'Base COMBO BONUS'),
+                      value: '×${hit.comboBonus}',
+                    ),
+                  if (hit.event?.otherMean case final other?)
+                    ValueChip(
+                      label: c.tb(
+                        pt.measure == 'items'
+                            ? 'pointsPerPlay'
+                            : 'itemsPerPlay',
+                        '',
+                      ),
+                      value: formatNumber(locale, other, 1),
+                    ),
+                ],
+              ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: IconButton(
+                isSelected: c.ptCompared.any(
+                  (row) => row.id == c.ptCompareEntry(hit, job, 0)?.id,
+                ),
+                tooltip: c.tb('addComparison', 'Add to comparison'),
+                icon: const Icon(Symbols.compare_arrows_rounded),
+                onPressed: () =>
+                    c.togglePtCompared(hit, job, ranking.indexOf(hit) + 1),
+              ),
+            ),
             Align(
               alignment: Alignment.centerRight,
               child: IconButton(
@@ -765,6 +849,7 @@ class _PtTabState extends State<PtTab> {
                 pt
                   ..measure = value.single
                   ..showAll = false;
+                c.updateSettings({'measure': value.single});
                 c.changed();
               },
             ),
@@ -800,10 +885,12 @@ class _PtTabState extends State<PtTab> {
                 '${c.tb('eventBonus', 'Event bonus')} +${number(hit.event!.bonusPercent.floor())}%',
             '${number(hit.event!.mean)} $currency',
             best: position == 0,
-            breakdown: t('breakdown', 'Live {direct} + CP {converted}', {
-              'direct': number(hit.event!.directMean ?? 0),
-              'converted': number(hit.event!.convertedMean ?? 0),
-            }),
+            breakdown: job.cycle == null
+                ? null
+                : t('breakdown', 'Live {direct} + CP {converted}', {
+                    'direct': number(hit.event!.directMean ?? 0),
+                    'converted': number(hit.event!.convertedMean ?? 0),
+                  }),
           ),
         ],
         if (ranking.length > (job.scope == 'top-one' ? 1 : 5))

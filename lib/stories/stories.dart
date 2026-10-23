@@ -1,8 +1,11 @@
+import '../core/catalog_source.dart';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:material_symbols_icons/symbols.dart';
 
 import '../catalog/browse.dart';
+import '../catalog/source_picker.dart';
 import '../catalog/visuals.dart';
 import '../catalog/cross_server.dart';
 import '../community/entity_comments.dart';
@@ -219,7 +222,7 @@ class _StoriesScreenState extends State<StoriesScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final key = AppScope.of(context).publicDataKey;
+    final key = CatalogSourceScope.keyOf(context);
     if (_dataKey != key) {
       _dataKey = key;
       _data = _load();
@@ -228,11 +231,12 @@ class _StoriesScreenState extends State<StoriesScreen> {
 
   Future<_StoryData> _load() async {
     if (widget.api case final api?) return _loadProvider(api);
-    final state = AppScope.of(context);
-    final apis = state.catalogApis;
+    final apis = CatalogSourceScope.apisOf(context);
     final servers = [
-      state.server,
-      ...apis.keys.where((server) => server != state.server),
+      CatalogSourceScope.serverOf(context),
+      ...apis.keys.where(
+        (server) => server != CatalogSourceScope.serverOf(context),
+      ),
     ];
     final (documents, visuals) = await (
       Future.wait([
@@ -241,7 +245,7 @@ class _StoriesScreenState extends State<StoriesScreen> {
               .catalog('stories')
               .then<Object?>((value) => value, onError: (_) => null),
       ]),
-      CatalogVisuals.of(state.api),
+      CatalogVisuals.of(CatalogSourceScope.apiOf(context)),
     ).wait;
     if (documents.every((document) => document == null)) {
       throw StateError('Story catalog unavailable');
@@ -251,7 +255,7 @@ class _StoriesScreenState extends State<StoriesScreen> {
     };
     final episodes = await crossServerCollection(
       resource: 'stories',
-      selected: state.server,
+      selected: CatalogSourceScope.serverOf(context),
       apis: apis,
       rowsPath: 'episodes',
       sourceDocuments: sources,
@@ -504,6 +508,8 @@ class _StoriesScreenState extends State<StoriesScreen> {
         return ShellPage(
           title: _label(t),
           actions: [
+            if (widget.api == null)
+              catalogSourceAction(context, '/stories?mode=${widget.mode}'),
             if (data != null)
               BarAction(
                 icon: Symbols.filter_alt_rounded,
@@ -628,7 +634,7 @@ class _StoriesScreenState extends State<StoriesScreen> {
       child: StatefulBuilder(
         builder: (sheet, refresh) {
           final t = AppScope.of(context).text;
-          final api = widget.api ?? AppScope.of(context).api;
+          final api = widget.api ?? CatalogSourceScope.apiOf(context);
           final facets = <FacetSpec>[
             for (final (key, label) in [
               ('band', t.label('band', 'Band')),
@@ -884,8 +890,8 @@ class _StoriesScreenState extends State<StoriesScreen> {
     List<Entry> chosen,
     List<(String, List<Entry>)> groups,
   ) {
-    final state = AppScope.of(context), t = AppScope.of(context).text;
-    final api = widget.api ?? state.api;
+    final t = AppScope.of(context).text;
+    final api = widget.api ?? CatalogSourceScope.apiOf(context);
     final padding = pagePadding(context);
     final info = rail == null ? null : _railInfo(data, rail, t, api);
     void open(BuildContext context, Entry episode) => _EpisodeTile(
@@ -1312,7 +1318,7 @@ class _EpisodeTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
     final t = state.text;
-    final api = this.api ?? state.api;
+    final api = this.api ?? CatalogSourceScope.apiOf(context);
     final number = episode['episodeNumber'];
     final duration = _duration(episode['playTime']);
     String subtitle;
@@ -1408,9 +1414,8 @@ class _EpisodeTile extends StatelessWidget {
   }
 
   void open(BuildContext context) {
-    final state = AppScope.of(context);
-    final api =
-        this.api ?? state.apiFor('${episode[serverKey] ?? state.server}');
+    final api = CatalogSourceScope.resolve(context, api: this.api,
+      server: episode[serverKey] == null ? null : '${episode[serverKey]}');
     if (episode['cardId'] != null) {
       openStoryCard(context, api, '${episode['cardId']}');
       return;
@@ -1421,7 +1426,7 @@ class _EpisodeTile extends StatelessWidget {
           name:
               '/stories/${Uri.encodeComponent('${episode['storyKey'] ?? episode['storyId'] ?? episode['_key']}')}?mode=$mode',
         ),
-        builder: (_) => StoryReaderScreen(episode: episode, api: api),
+        builder: (_) => CatalogSourceScope(api: api, child: StoryReaderScreen(episode: episode, api: api)),
       ),
     );
   }
@@ -1453,14 +1458,14 @@ Future<void> openStoryCard(
               Navigator.pop(sheet);
               Navigator.of(context).push(
                 MaterialPageRoute<void>(
-                  builder: (_) => StoryReaderScreen(
+                  builder: (_) => CatalogSourceScope(api: api, child: StoryReaderScreen(
                     api: api,
                     episode: {
                       'storyKey':
                           'card.${e['resourceSetName'] ?? card['resourceSetName']}.${e['scenarioId']}',
                       'title': e['title'],
                     },
-                  ),
+                  )),
                 ),
               );
             },
@@ -1496,10 +1501,9 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final state = AppScope.of(context);
-    final api = widget.api ?? state.api;
-    if (_dataKey != state.publicDataKey) {
-      _dataKey = state.publicDataKey;
+    final api = widget.api ?? CatalogSourceScope.apiOf(context);
+    if (_dataKey != CatalogSourceScope.keyOf(context)) {
+      _dataKey = CatalogSourceScope.keyOf(context);
       _data = _load(api);
     }
   }
@@ -1570,7 +1574,7 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
   @override
   Widget build(BuildContext context) {
     final state = AppScope.of(context);
-    final api = widget.api ?? state.api;
+    final api = widget.api ?? CatalogSourceScope.apiOf(context);
     final t = state.text;
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
@@ -1625,7 +1629,7 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
                               },
                             ).toString(),
                           ),
-                          builder: (_) => StorySequencePlayer(
+                          builder: (_) => CatalogSourceScope(api: api, child: StorySequencePlayer(
                             storyId: id,
                             server: api.server,
                             api: api,
@@ -1636,7 +1640,7 @@ class _StoryReaderScreenState extends State<StoryReaderScreen> {
                                   episode: {'storyKey': currentId},
                                   api: api,
                                 ),
-                          ),
+                          )),
                         ),
                       );
                     },

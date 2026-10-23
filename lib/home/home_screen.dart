@@ -871,7 +871,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                             : const SizedBox(height: 96);
                                       }
                                       return _FitRows(
-                                        extent: 72,
+                                        extent: 80,
                                         children: [
                                           for (final entry in entries.take(5))
                                             AnnouncementRow(
@@ -1956,7 +1956,29 @@ class _BirthdaysState extends State<_Birthdays> {
               : small
               ? 32.0
               : 40.0;
-          final avatarHeight = avatarSize + 3 + 16;
+          final countdownStyle = theme.textTheme.labelSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          );
+          var countdownHeight = 0.0;
+          for (final item in avatars) {
+            final painter = TextPainter(
+              text: TextSpan(
+                text: countdown(item, short: true),
+                style: countdownStyle,
+              ),
+              textDirection: Directionality.of(context),
+              textScaler: MediaQuery.textScalerOf(context),
+              maxLines: 1,
+            )..layout();
+            if (painter.height > countdownHeight) {
+              countdownHeight = painter.height;
+            }
+            painter.dispose();
+          }
+          final avatarHeight = (avatarSize + 3 + countdownHeight).clamp(
+            48.0,
+            double.infinity,
+          );
           final choicesHeight = choices.length > 1 ? 32.0 : 0.0;
           final topHeight =
               box.maxHeight - inset * 2 - avatarHeight - 8 - choicesHeight;
@@ -2017,122 +2039,153 @@ class _BirthdaysState extends State<_Birthdays> {
                             ),
                             Expanded(
                               flex: 5,
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  if (!small && topHeight > 140)
-                                    Row(
+                              child: LayoutBuilder(
+                                builder: (context, area) => SingleChildScrollView(
+                                  child: ConstrainedBox(
+                                    constraints: BoxConstraints(
+                                      minHeight: area.maxHeight,
+                                    ),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        Icon(
-                                          Symbols.cake_rounded,
-                                          size: 16,
-                                          color: theme.colorScheme.primary,
-                                        ),
-                                        const SizedBox(width: 5),
-                                        Expanded(
-                                          child: Text(
-                                            t(
-                                              'home.dashboard.birthdaysTitle',
-                                              'Birthday countdown',
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: theme.textTheme.labelMedium
-                                                ?.copyWith(
-                                                  color:
-                                                      theme.colorScheme.primary,
+                                        if (!small && topHeight > 140)
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Symbols.cake_rounded,
+                                                size: 16,
+                                                color:
+                                                    theme.colorScheme.primary,
+                                              ),
+                                              const SizedBox(width: 5),
+                                              Expanded(
+                                                child: Text(
+                                                  t(
+                                                    'home.dashboard.birthdaysTitle',
+                                                    'Birthday countdown',
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: theme
+                                                      .textTheme
+                                                      .labelMedium
+                                                      ?.copyWith(
+                                                        color: theme
+                                                            .colorScheme
+                                                            .primary,
+                                                      ),
                                                 ),
+                                              ),
+                                            ],
+                                          ),
+                                        InkWell(
+                                          onTap: () => open(featured),
+                                          child: Row(
+                                            children: [
+                                              if (face.isNotEmpty)
+                                                ShapedIcon(
+                                                  shape: MaterialShapes.sunny,
+                                                  size: topHeight < 75
+                                                      ? 20
+                                                      : faceSize,
+                                                  color: theme
+                                                      .colorScheme
+                                                      .surfaceContainerHighest,
+                                                  child: AppImage(
+                                                    candidates: [
+                                                      api
+                                                          .asset(face)
+                                                          .toString(),
+                                                    ],
+                                                    fit: BoxFit.cover,
+                                                  ),
+                                                ),
+                                              const SizedBox(width: 6),
+                                              Expanded(
+                                                child: Text(
+                                                  featured.name,
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: nameStyle,
+                                                ),
+                                              ),
+                                            ],
                                           ),
                                         ),
-                                      ],
-                                    ),
-                                  InkWell(
-                                    onTap: () => open(featured),
-                                    child: Row(
-                                      children: [
-                                        if (face.isNotEmpty)
-                                          ShapedIcon(
-                                            shape: MaterialShapes.sunny,
-                                            size: topHeight < 75
-                                                ? 20
-                                                : faceSize,
-                                            color: theme
-                                                .colorScheme
-                                                .surfaceContainerHighest,
-                                            child: AppImage(
-                                              candidates: [
-                                                api.asset(face).toString(),
-                                              ],
-                                              fit: BoxFit.cover,
+                                        if (topHeight >= 75 &&
+                                            t
+                                                .text(band?['bandName'])
+                                                .isNotEmpty) ...[
+                                          SizedBox(height: tiny ? 2 : 5),
+                                          Row(
+                                            children: [
+                                              if (bandIcon != null)
+                                                SizedBox.square(
+                                                  dimension: tiny ? 12 : 16,
+                                                  child: AppImage(
+                                                    candidates: [bandIcon],
+                                                  ),
+                                                ),
+                                              SizedBox(width: tiny ? 3 : 5),
+                                              Expanded(
+                                                child: Text(
+                                                  t.text(band?['bandName']),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style:
+                                                      theme.textTheme.bodySmall,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
+                                        SizedBox(height: tiny ? 2 : 5),
+                                        Wrap(
+                                          spacing: tiny ? 4 : 8,
+                                          crossAxisAlignment:
+                                              WrapCrossAlignment.center,
+                                          children: [
+                                            FittedBox(
+                                              fit: BoxFit.scaleDown,
+                                              alignment: Alignment.centerLeft,
+                                              child: Text(
+                                                countdown(
+                                                  featured,
+                                                  short:
+                                                      choices.length > 1 &&
+                                                      days > 0,
+                                                ),
+                                                maxLines: 1,
+                                                style: dueStyle,
+                                              ),
                                             ),
-                                          ),
-                                        const SizedBox(width: 6),
-                                        Expanded(
-                                          child: Text(
-                                            featured.name,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            style: nameStyle,
-                                          ),
+                                            Text(
+                                              birthdayDate,
+                                              style: theme.textTheme.bodySmall,
+                                            ),
+                                          ],
                                         ),
-                                      ],
-                                    ),
-                                  ),
-                                  if (topHeight >= 75 &&
-                                      t.text(band?['bandName']).isNotEmpty) ...[
-                                    SizedBox(height: tiny ? 2 : 5),
-                                    Row(
-                                      children: [
-                                        if (bandIcon != null)
-                                          SizedBox.square(
-                                            dimension: tiny ? 12 : 16,
-                                            child: AppImage(
-                                              candidates: [bandIcon],
+                                        if (!small &&
+                                            featured.pool != null &&
+                                            topHeight > 160)
+                                          Text(
+                                            t.window(
+                                              featured.pool!['startAt'],
+                                              featured.pool!['endAt'],
                                             ),
-                                          ),
-                                        SizedBox(width: tiny ? 3 : 5),
-                                        Expanded(
-                                          child: Text(
-                                            t.text(band?['bandName']),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
                                             style: theme.textTheme.bodySmall,
                                           ),
-                                        ),
                                       ],
                                     ),
-                                  ],
-                                  SizedBox(height: tiny ? 2 : 5),
-                                  Wrap(
-                                    spacing: tiny ? 4 : 8,
-                                    crossAxisAlignment:
-                                        WrapCrossAlignment.center,
-                                    children: [
-                                      Text(
-                                        countdown(
-                                          featured,
-                                          short: choices.length > 1 && days > 0,
-                                        ),
-                                        style: dueStyle,
-                                      ),
-                                      Text(
-                                        birthdayDate,
-                                        style: theme.textTheme.bodySmall,
-                                      ),
-                                    ],
                                   ),
-                                  if (!small &&
-                                      featured.pool != null &&
-                                      topHeight > 160)
-                                    Text(
-                                      t.window(
-                                        featured.pool!['startAt'],
-                                        featured.pool!['endAt'],
-                                      ),
-                                      style: theme.textTheme.bodySmall,
-                                    ),
-                                ],
+                                ),
                               ),
                             ),
                           ],
@@ -2179,11 +2232,7 @@ class _BirthdaysState extends State<_Birthdays> {
                           : small
                           ? 5.0
                           : 8.0;
-                      final minimum = tiny
-                          ? 34.0
-                          : small
-                          ? 42.0
-                          : 52.0;
+                      final minimum = avatarSize.clamp(48.0, double.infinity);
                       final count = ((rail.maxWidth + gap) / (minimum + gap))
                           .floor()
                           .clamp(0, avatars.length);
@@ -2284,10 +2333,7 @@ class _BirthdaysState extends State<_Birthdays> {
                                             countdown(item, short: true),
                                             maxLines: 1,
                                             overflow: TextOverflow.ellipsis,
-                                            style: theme.textTheme.labelSmall
-                                                ?.copyWith(
-                                                  fontWeight: FontWeight.w600,
-                                                ),
+                                            style: countdownStyle,
                                           ),
                                         ],
                                       ),

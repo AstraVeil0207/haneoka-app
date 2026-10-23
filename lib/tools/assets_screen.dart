@@ -1,3 +1,4 @@
+import '../core/catalog_source.dart';
 import '../core/managed_media_player.dart';
 
 import 'dart:async';
@@ -89,7 +90,7 @@ class _AssetsScreenState extends State<AssetsScreen> {
   String _query = '';
   Future<Map>? _tree;
   Future<Map> _load() {
-    final api = AppScope.of(context).api;
+    final api = CatalogSourceScope.apiOf(context);
     return cachedResource(
       _trees,
       api,
@@ -114,9 +115,12 @@ class _AssetsScreenState extends State<AssetsScreen> {
 
   void _open(List<String> parts, Object? value) => Navigator.of(context).push(
     MaterialPageRoute<void>(
-      builder: (_) => value is Map
-          ? AssetsScreen(path: parts)
-          : _SourceScreen(parts: parts),
+      builder: (_) => CatalogSourceScope(
+        api: CatalogSourceScope.apiOf(context),
+        child: value is Map
+            ? AssetsScreen(path: parts)
+            : _SourceScreen(parts: parts),
+      ),
     ),
   );
 
@@ -238,7 +242,7 @@ class _SourceScreenState extends State<_SourceScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _files ??= AppScope.of(context).api
+    _files ??= CatalogSourceScope.apiOf(context)
         .catalog('sources/${widget.parts.join('/')}')
         .then((value) {
           final descriptor = (value as Map?) ?? const {};
@@ -254,12 +258,12 @@ class _SourceScreenState extends State<_SourceScreen> {
   }
 
   String _url(String file) {
-    final server = AppScope.of(context).server;
+    final server = CatalogSourceScope.serverOf(context);
     final segments = file.split('/').where((p) => p.isNotEmpty).toList();
     if (segments.isEmpty) return '';
     final [root, ...parts] = segments;
     return const {'assets', 'runtime', 'objects'}.contains(root)
-        ? AppScope.of(context).api
+        ? CatalogSourceScope.apiOf(context)
               .asset(
                 '/$root/$server/${parts.map(Uri.encodeComponent).join('/')}',
               )

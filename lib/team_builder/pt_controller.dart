@@ -93,6 +93,7 @@ class PtController {
       unknownPolicy: UnknownPolicy.min,
       goal: EventGoal(
         ptOnly: true,
+        minComboBonus: s.minComboBonus,
         measure: measure,
         route: RouteKind.live,
         eventId: s.eventId ?? -1,
@@ -197,6 +198,8 @@ class PtController {
     final key = '${host.server}|$owner|$dataFingerprint';
     if (key == _restoreKey) return;
     _restoreKey = key;
+    job = null;
+    host.ptCompared.clear();
     final generation = ++_generation;
     try {
       final restored = await _store.latest(host.server, owner);
@@ -204,7 +207,11 @@ class PtController {
       for (final task in restored?.tasks ?? const <PtTask>[]) {
         if (task.status == 'running') task.status = 'queued';
       }
-      job = restored;
+      job =
+          restored?.dataFingerprint == dataFingerprint &&
+              restored?.owner == owner
+          ? restored
+          : null;
     } catch (_) {
       if (generation != _generation) return;
       storageError = true;

@@ -16,6 +16,26 @@ class BuildSettings {
       _json['rewardMode'] = _json['goal'];
       _json['goal'] = 'score';
     }
+    if (json['farming'] is! Map) {
+      final custom = _json['rewardMode'] == 'event';
+      _json['farming'] = {
+        ...farmingDefaults,
+        'play': custom
+            ? _json['route'] == 'live'
+                  ? 'solo'
+                  : _json['route']
+            : _json['ptMode'],
+        for (final key in farmingDefaults.keys)
+          if (custom && _json.containsKey(key)) key: _json[key],
+        'measure': _json['measure'] == 'items' || custom
+            ? _json['measure']
+            : 'points',
+        'ptCycle': _json['ptCycle'],
+        'requireGrowth': !custom,
+        'includeMemory': custom,
+      };
+    }
+    if (_json['rewardMode'] != 'plan') _json['rewardMode'] = farmingMode;
   }
   final Doc _json;
   final GoalKind? _searchGoal;
@@ -25,6 +45,83 @@ class BuildSettings {
   // pass through that migration or it turns back into ordinary score search.
   BuildSettings forGoal(GoalKind goal) =>
       BuildSettings._search({..._json}, goal);
+
+  static const farmingDefaults = <String, Object?>{
+    'play': 'solo',
+    'playMode': 'ap',
+    'great': 3,
+    'good': 0,
+    'miss': 0,
+    'missEvery': 0,
+    'measure': 'points',
+    'weighted': false,
+    'weightPoints': 1,
+    'weightItems': 0,
+    'weightCp': 0,
+    'requireGrowth': true,
+    'unknownPolicy': 'min',
+    'includeMemory': false,
+    'fullRanking': false,
+    'k': 1,
+    'timeLimit': null,
+    'ptCycle': false,
+  };
+  Doc get farming => {...farmingDefaults, ...objectRow(_json['farming'])};
+  Doc get farmingConditions {
+    final draft = farming;
+    if (draft['play'] != 'gekiso') {
+      return {
+        ...draft,
+        'playMode': draft['play'] == 'skip' ? 'ap' : draft['playMode'],
+        'measure':
+            draft['play'] != 'solo' && draft['measure'] == 'challenge-points'
+            ? 'points'
+            : draft['measure'],
+      };
+    }
+    return {
+      ...draft,
+      'playMode': 'ap',
+      'requireGrowth': true,
+      'unknownPolicy': 'min',
+      'includeMemory': false,
+      'measure': draft['measure'] == 'items' ? 'items' : 'points',
+      'weighted': false,
+      'fullRanking': false,
+      'k': 1,
+      'timeLimit': null,
+    };
+  }
+
+  String get farmingMode {
+    final s = farmingConditions;
+    return const ['solo', 'gekiso'].contains(s['play']) &&
+            s['playMode'] == 'ap' &&
+            s['requireGrowth'] == true &&
+            s['includeMemory'] == false &&
+            s['measure'] != 'challenge-points' &&
+            s['weighted'] == false &&
+            s['fullRanking'] == false &&
+            s['k'] == 1 &&
+            s['timeLimit'] == null
+        ? 'recommendation'
+        : 'event';
+  }
+
+  BuildSettings forFarming() {
+    final s = farmingConditions;
+    return BuildSettings._search({
+      ..._json,
+      ...s,
+      'rewardMode': farmingMode,
+      'goal': 'event',
+      'route': const ['solo', 'gekiso'].contains(s['play'])
+          ? 'live'
+          : s['play'],
+      'ptMode': s['play'] == 'gekiso' ? 'gekiso' : 'solo',
+      'unknownPolicy': s['requireGrowth'] == true ? 'min' : s['unknownPolicy'],
+    }, GoalKind.event);
+  }
 
   static const _defaults = <String, Object?>{
     'rewardMode': 'recommendation',
@@ -36,6 +133,17 @@ class BuildSettings {
     'goal': 'score',
     'songs': <Object?>[],
     'criterion': 'mean',
+    'scoreTarget': 'none',
+    'targetScore': null,
+    'weighted': false,
+    'weightPoints': 1,
+    'weightItems': 0,
+    'weightCp': 0,
+    'manualScoreMode': 'score',
+    'gekisoSeeds': 0,
+    'gekisoPlacementMode': 'rank',
+    'gekisoOpponents': <Object?>['', '', ''],
+    'minComboBonus': 1,
     'playMode': 'ap',
     'great': 3,
     'good': 0,
@@ -87,6 +195,32 @@ class BuildSettings {
       GoalKind.values.where((g) => g.name == _json['goal']).firstOrNull ??
       GoalKind.score;
   List<SongRef> get songs => _songs('songs');
+  String get scoreTarget => '${_json['scoreTarget']}';
+  int? get targetScore => _nullableInt('targetScore');
+  bool get weighted => _json['weighted'] == true;
+  Doc? get weights => weighted
+      ? {
+          'points': numOf(_json['weightPoints']),
+          'items': numOf(_json['weightItems']),
+          'challengePoints': numOf(_json['weightCp']),
+        }
+      : null;
+  String get manualScoreMode => '${_json['manualScoreMode']}';
+  int get gekisoSeeds => _int('gekisoSeeds');
+  int get minComboBonus => _int('minComboBonus');
+  bool get opponentsMode => _json['gekisoPlacementMode'] == 'opponents';
+  List<String> get opponentDrafts => [
+    for (final v in _json['gekisoOpponents'] as List) '$v',
+  ];
+  List<List<double>>? get opponents => opponentsMode
+      ? [
+          for (final range in opponentDrafts)
+            [
+              for (final token in range.trim().split(RegExp(r'[\s,，、]+')))
+                if (token.isNotEmpty) double.parse(token),
+            ],
+        ]
+      : null;
   String get criterion => '${_json['criterion']}';
   bool get allPerfect => _json['playMode'] != 'custom';
   int get great => _int('great');

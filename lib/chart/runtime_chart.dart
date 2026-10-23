@@ -106,6 +106,7 @@ int judgementTypeOf(int op, bool critical) {
 }
 
 class _SsNote {
+  Map? source;
   int type = 0;
   int t = 0;
   double pos = 0;
@@ -137,8 +138,9 @@ double _toF32(Object? value) =>
 bool _truthy(Object? value) =>
     !(value == null || value == false || value == 0 || value == '');
 
-_SsNote _readNote(Map raw) {
+_SsNote _readNote(Map raw, {bool retainSource = false}) {
   final note = _SsNote();
+  if (retainSource) note.source = raw;
   if (raw['type'] case final String type) note.type = _noteTypes[type] ?? 0;
   if (raw['t'] != null) note.t = _toInt(raw['t']);
   if (raw['pos'] != null) {
@@ -168,7 +170,10 @@ _SsNote _readNote(Map raw) {
       ? raw['visible'] as bool
       : null;
   if (raw['node'] case final List nodes) {
-    note.node = [for (final child in nodes) _readNote(child as Map)];
+    note.node = [
+      for (final child in nodes)
+        _readNote(child as Map, retainSource: retainSource),
+    ];
   }
   return note;
 }
@@ -332,6 +337,8 @@ class _NoteInfo {
     this.visualVisible,
     this.visibilitySource,
     this.sourceTick,
+    this.sourceNotes,
+    this.sourceLines,
   });
   final _BarPos position;
   final int lane;
@@ -347,6 +354,8 @@ class _NoteInfo {
   final bool? visualVisible;
   final String? visibilitySource;
   final int? sourceTick;
+  final List<Map>? sourceNotes;
+  final Map<int, Map>? sourceLines;
 }
 
 int _flickDirection(_SsNote note) => note.dir == 1
@@ -373,6 +382,7 @@ _NoteInfo _singleInfo(_SsNote note, _TickConverter tc) => _NoteInfo(
   easeR: 0,
   lines: [],
   sourceTick: note.t,
+  sourceNotes: note.source == null ? null : [note.source!],
   visualVisible: note.visualVisible,
   visibilitySource: 'single.raw.visible',
 );
@@ -498,6 +508,17 @@ void _lineInfos(
           visualWidth: f(size),
           position: tc.barPosition(node.t),
           sourceTick: node.t,
+          sourceNotes: node.source == null
+              ? null
+              : [
+                  node.source!,
+                  if (!identical(directionSource, node) &&
+                      directionSource.source != null)
+                    directionSource.source!,
+                ],
+          sourceLines: i != 0 || chain.source == null
+              ? null
+              : {lineIndex: chain.source!},
           lane: _netRoundInt(f(pos)),
           width: math.max(1, _netRoundInt(size)),
           op: op,
@@ -583,6 +604,8 @@ Map<double, Map<int, List<_NoteInfo>>> _infoDictionary(List<_NoteInfo> infos) {
           .firstOrNull;
       if (hit != null) {
         hit.lines.addAll(info.lines);
+        hit.sourceNotes?.addAll(info.sourceNotes ?? const []);
+        hit.sourceLines?.addAll(info.sourceLines ?? const {});
         continue;
       }
     }
@@ -752,6 +775,15 @@ class RuntimeBpmChange {
   final double bpm;
 }
 
+class RuntimeChartSourceObserver {
+  const RuntimeChartSourceObserver({
+    required this.onNote,
+    required this.onLine,
+  });
+  final void Function(Map source, int nativeId) onNote;
+  final void Function(Map source, int nativeId) onLine;
+}
+
 /// A converted chart: score fields keep their existing behavior. Native renderer
 /// source fields are opt-in, so normal team-builder loads retain no visual arrays.
 class RuntimeChart {
@@ -801,6 +833,7 @@ class RuntimeChart {
   factory RuntimeChart.fromJson(
     Object? root, {
     bool includeVisualSource = false,
+    RuntimeChartSourceObserver? sourceObserver,
   }) {
     final score = root is Map ? root['score'] : null;
     if (score is! Map) throw const FormatException('ss score');
@@ -824,7 +857,8 @@ class RuntimeChart {
         (_toInt((pair as List)[0]), _toInt(pair[1])),
     ];
     final notes = [
-      for (final note in list(score['notes'])) _readNote(note as Map),
+      for (final note in list(score['notes']))
+        _readNote(note as Map, retainSource: sourceObserver != null),
     ];
     final tc = _TickConverter(sig, bpm);
     final infos = _buildNoteInfos(notes, tc);
@@ -1037,6 +1071,19 @@ class RuntimeChart {
         beginByLine[id]?.viewNotes.add(note);
       } else {
         return null;
+      }
+      if (sourceObserver != null) {
+        for (final raw in info.sourceNotes ?? const <Map>[]) {
+          sourceObserver.onNote(raw, note.id);
+        }
+        if (info.sourceLines != null) {
+          for (final (index, sourceIndex) in info.lines.indexed) {
+            final raw = info.sourceLines![sourceIndex];
+            if (raw != null && index < note.lineIds.length) {
+              sourceObserver.onLine(raw, note.lineIds[index]);
+            }
+          }
+        }
       }
       return note;
     }

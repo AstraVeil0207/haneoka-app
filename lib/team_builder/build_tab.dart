@@ -141,46 +141,22 @@ class _BuildTabState extends State<BuildTab> {
   @override
   Widget build(BuildContext context) {
     final c = controller;
-    final settings = [
-      if (widget.leading != null) ...[
-        widget.leading!,
-        const SizedBox(height: 16),
-      ],
-      ..._cachedSettings(context),
-    ];
-    final run = _run(context);
-    final results = ResultsView(controller: c);
-    if (MediaQuery.sizeOf(context).width >= 1100) {
-      return Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    return TeamToolLayout(
+      controller: c,
+      summary:
+          '${c.settings.theoretical ? c.tb('scopeAll', 'All cards') : c.tb('scopeBox', 'My cards')} · ${c.tb('chartCount', '{count} charts', {'count': c.searchSettings.songs.length})}',
+      conditions: (context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          SizedBox(
-            width: 440,
-            child: sticky(
-              context,
-              ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 0, 96),
-                children: settings,
-              ),
-              run,
-            ),
-          ),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-              children: [results],
-            ),
-          ),
+          if (widget.leading != null) ...[
+            widget.leading!,
+            const SizedBox(height: 16),
+          ],
+          ..._cachedSettings(context),
         ],
-      );
-    }
-    return sticky(
-      context,
-      ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
-        children: [...settings, const SizedBox(height: 16), results],
       ),
-      run,
+      action: _run,
+      results: (_) => ResultsView(controller: c),
     );
   }
 
@@ -193,11 +169,12 @@ class _BuildTabState extends State<BuildTab> {
             'needCards',
             'Add cards in My cards, or search all cards at full growth.',
           )
-        : c.goal() == null
-        ? (s.goal == GoalKind.event || s.goal == GoalKind.plan
-              ? c.tb('needEventSongs', 'Choose an event and songs.')
-              : c.tb('needSongs', 'Choose at least one song.'))
-        : null;
+        : c.inputIssue ??
+              (c.goal() == null
+                  ? (s.goal == GoalKind.event || s.goal == GoalKind.plan
+                        ? c.tb('needEventSongs', 'Choose an event and songs.')
+                        : c.tb('needSongs', 'Choose at least one song.'))
+                  : null);
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(16),
     );
@@ -249,8 +226,6 @@ class _BuildTabState extends State<BuildTab> {
         s.goal == GoalKind.plan ||
         (s.goal == GoalKind.event && s.route != 'skip') ||
         (s.goal == GoalKind.power && s.powerSong);
-    final theme = Theme.of(context);
-    final criterion = scoreGoals[s.criterion] ?? scoreGoals['mean']!;
     return [
       if (!c.activity || s.goal != GoalKind.plan)
         ToolSection(
@@ -274,28 +249,54 @@ class _BuildTabState extends State<BuildTab> {
                 onChanged: (value) => set({'fullRanking': value == true}),
               ),
             if (scored) ...[
-              _WrappingSegments(
-                value: s.criterion,
-                options: [
-                  for (final key in const ['mean', 'max', 'min'])
-                    (
-                      key,
-                      c.tb(
-                        scoreGoals[key]!.label.$1,
-                        scoreGoals[key]!.label.$2,
-                      ),
+              DropdownButtonFormField<String>(
+                key: ValueKey((
+                  'criterion',
+                  s.goal,
+                  s.scoreTarget,
+                  s.criterion,
+                )),
+                initialValue:
+                    s.goal == GoalKind.score && s.scoreTarget != 'none'
+                    ? s.scoreTarget
+                    : s.criterion,
+                isExpanded: true,
+                decoration: InputDecoration(
+                  labelText: c.tb('criterion', 'Score goal'),
+                ),
+                items: [
+                  for (final (key, label) in [
+                    ('mean', c.tb('criterionMean', 'Average score')),
+                    ('max', c.tb('criterionMax', 'Single-run maximum')),
+                    ('min', c.tb('criterionMin', 'Minimum score')),
+                    if (s.goal == GoalKind.score) ...[
+                      ('at-least', c.tb('criterionReach', 'Reach rate')),
+                      ('capped', c.tb('criterionCapped', 'Capped average')),
+                    ],
+                  ])
+                    DropdownMenuItem(
+                      value: key,
+                      child: Text(label, overflow: TextOverflow.ellipsis),
                     ),
                 ],
-                onSelected: (value) => set({'criterion': value}),
+                onChanged: (value) {
+                  if (value == null) return;
+                  set(
+                    value == 'at-least' || value == 'capped'
+                        ? {'scoreTarget': value, 'criterion': 'mean'}
+                        : {'scoreTarget': 'none', 'criterion': value},
+                  );
+                },
               ),
-              Text(
-                c.tb(criterion.help.$1, criterion.help.$2),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
+              if (s.goal == GoalKind.score && s.scoreTarget != 'none')
+                _NumberField(
+                  label: c.tb('targetScore', 'Target score'),
+                  value: s.targetScore ?? 0,
+                  onChanged: (value) =>
+                      set({'targetScore': value > 0 ? value : null}),
                 ),
-              ),
             ],
-            if (s.goal == GoalKind.gekiso)
+            if (s.goal == GoalKind.gekiso && !s.opponentsMode)
               ToolField(
                 label: c.tb('gekisoRank', 'Placement in each range'),
                 child: Segmented<int>(
@@ -307,6 +308,46 @@ class _BuildTabState extends State<BuildTab> {
                   onSelected: (value) => set({'gekisoRank': value}),
                 ),
               ),
+            if (s.goal == GoalKind.gekiso) ...[
+              if (c.hasMission(1, s.songs))
+                _NumberField(
+                  label: c.tb('minComboBonus', 'Minimum base COMBO BONUS'),
+                  value: s.minComboBonus,
+                  onChanged: (value) =>
+                      set({'minComboBonus': value == 0 ? 1 : value}),
+                ),
+              _NumberField(
+                label: c.tb('pt.luckSamples', 'Luck samples'),
+                value: s.gekisoSeeds,
+                onChanged: (value) => set({'gekisoSeeds': value}),
+              ),
+              _WrappingSegments(
+                value: s.opponentsMode ? 'opponents' : 'rank',
+                options: [
+                  ('rank', c.tb('placementRank', 'Specified placement')),
+                  ('opponents', c.tb('placementOpponents', 'Opponent scores')),
+                ],
+                onSelected: (value) => set({'gekisoPlacementMode': value}),
+              ),
+              if (s.opponentsMode)
+                for (var range = 0; range < 3; range++)
+                  TextFormField(
+                    key: ValueKey('opponents-$range'),
+                    initialValue: s.opponentDrafts[range],
+                    keyboardType: TextInputType.text,
+                    decoration: InputDecoration(
+                      labelText: c.tb('gekisoRange', 'Range {n}', {
+                        'n': range + 1,
+                      }),
+                    ),
+                    onChanged: (value) => set({
+                      'gekisoOpponents': [
+                        for (var i = 0; i < 3; i++)
+                          i == range ? value : s.opponentDrafts[i],
+                      ],
+                    }),
+                  ),
+            ],
             if (s.goal == GoalKind.potential)
               Segmented<int>(
                 value: s.window,
@@ -388,6 +429,49 @@ class _BuildTabState extends State<BuildTab> {
               ],
               onSelected: (value) => set({'measure': value}),
             ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text(c.tb('measureWeighted', 'Weighted rewards')),
+              value: s.weighted,
+              onChanged: (value) => set({'weighted': value}),
+            ),
+            if (s.weighted)
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  for (final (key, label) in [
+                    (
+                      'weightPoints',
+                      c.tb('weightPoints', 'Weight per event point'),
+                    ),
+                    (
+                      'weightItems',
+                      c.tb('weightItems', 'Weight per shop item'),
+                    ),
+                    if (s.route == 'live')
+                      (
+                        'weightCp',
+                        c.tb('weightCp', 'Weight per challenge point'),
+                      ),
+                  ])
+                    TextFormField(
+                      key: ValueKey('reward-$key'),
+                      initialValue:
+                          '${s.weights![key == 'weightPoints'
+                              ? 'points'
+                              : key == 'weightItems'
+                              ? 'items'
+                              : 'challengePoints']}',
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration(labelText: label),
+                      onChanged: (value) =>
+                          set({key: double.tryParse(value) ?? 0}),
+                    ),
+                ],
+              ),
             if (s.route == 'challenge')
               ToolField(
                 label: c.tb('cpPerLive', 'Challenge points per live'),
@@ -716,7 +800,7 @@ class _BuildTabState extends State<BuildTab> {
             onChanged: (value) => c.updateSettings({'missEvery': value}),
           ),
         ],
-        slider('JUST', 'just', s.just, 100),
+        if (c.hasMission(3, s.songs)) slider('JUST', 'just', s.just, 100),
       ] else if (!s.allPerfect) ...[
         slider('GREAT', 'great', s.great, 40),
         slider('GOOD', 'good', s.good, 20),
@@ -789,7 +873,6 @@ class _Candidates extends StatelessWidget {
     final catalog = c.catalog!;
     final view = c.view!;
     final t = catalog.t;
-    final theme = Theme.of(context);
     void set(Map<String, Object?> patch) => c.updateSettings(patch);
     List<int> toggle(List<int> list, int value) => list.contains(value)
         ? [...list.where((item) => item != value)]
@@ -803,7 +886,7 @@ class _Candidates extends StatelessWidget {
         if (row.use) row.cardId,
     ];
     return Material(
-      color: theme.colorScheme.surfaceContainerLow,
+      color: Theme.of(context).colorScheme.surfaceContainerLow,
       borderRadius: BorderRadius.circular(28),
       clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
@@ -1007,9 +1090,7 @@ class _GoalGrid extends StatelessWidget {
     final compact = MediaQuery.sizeOf(context).width < 600;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = compact
-            ? 2
-            : ((constraints.maxWidth + 8) / (176 + 8)).floor().clamp(1, 6);
+        final columns = constraints.maxWidth < 200 ? 1 : 2;
         final width = (constraints.maxWidth - 8 * (columns - 1)) / columns;
         return Wrap(
           spacing: 8,

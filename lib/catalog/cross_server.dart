@@ -25,8 +25,10 @@ const crossCatalogIds = <String, List<String>>{
   'passes': ['id'],
   'missions': ['id'],
   'tgw-card': ['id'],
+  'live2d': ['live2dKey', 'id'],
+  'spine': ['id'],
 };
-const _opaque = {'real-lives', 'passes', 'missions', 'stories'};
+const _opaque = {'real-lives', 'passes', 'missions', 'stories', 'live2d', 'spine'};
 const _nameFields = [
   'prefix',
   'cardName',
@@ -161,7 +163,9 @@ Future<List<Map<String, Object?>>> crossServerCollection({
   required String? rowsPath,
   Map<String, Object?>? sourceDocuments,
 }) async {
-  final servers = ['jp', 'intl'].where(apis.containsKey).toList();
+  final servers = const {'jp', 'intl'}.contains(selected)
+      ? ['jp', 'intl'].where(apis.containsKey).toList()
+      : apis.keys.toList();
   final documents = sourceDocuments == null
       ? await Future.wait([
           for (final server in servers)
@@ -170,6 +174,9 @@ Future<List<Map<String, Object?>>> crossServerCollection({
                 .then<Object?>((v) => v, onError: (_) => null),
         ])
       : [for (final server in servers) sourceDocuments[server]];
+  if (documents.isNotEmpty && documents.every((d) => d == null)) {
+    throw StateError('catalog_unavailable');
+  }
   final loaded = <String, Map<String, Map>>{
     for (final (index, server) in servers.indexed)
       if (documents[index] != null)

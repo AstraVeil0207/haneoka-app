@@ -73,6 +73,17 @@ class SlotSkill {
   ].join('|');
 }
 
+double effectPercent(SlotSkill skill, int type) => skill.effects
+    .where(
+      (effect) =>
+          effect.type == type &&
+          (type != 2004 || effect.judgements.contains(5)),
+    )
+    .fold<double>(
+      0,
+      (best, effect) => effect.delta / 1000 > best ? effect.delta / 1000 : best,
+    );
+
 int scoreDelta(int value) => f(f(f(value) / f(10000)) * f(100000)).floor();
 
 /// AddJudgementNoteScoreUpFactor rounds (ties to even) after the binary32 product.

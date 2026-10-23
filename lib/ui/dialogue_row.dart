@@ -14,6 +14,7 @@ class DialogueRow extends StatelessWidget {
     this.faces = const [],
     this.action,
     this.playing = false,
+    this.marks,
   });
 
   static const spacing = 16.0;
@@ -22,6 +23,7 @@ class DialogueRow extends StatelessWidget {
   final Widget content;
   final Widget? action;
   final bool playing;
+  final Widget? marks;
 
   @override
   Widget build(BuildContext context) {
@@ -65,6 +67,7 @@ class DialogueRow extends StatelessWidget {
                   child: AdvText(name, style: theme.textTheme.titleSmall),
                 ),
               ],
+              if (marks != null) ...[const SizedBox(width: 4), marks!],
             ],
           ),
           const SizedBox(height: 8),

@@ -9,6 +9,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../core/app_state.dart';
 import '../core/net.dart';
+import '../core/account_resource.dart';
+import 'account_image.dart';
 import '../core/storage.dart';
 
 const _localeImageTags = {
@@ -83,6 +85,50 @@ class _AppImageState extends State<AppImage> {
   Timer? _retry;
   String? _vectorUrl;
   Future<File>? _vectorFile;
+  AccountResourceLease? _vectorLease;
+  StreamSubscription<void>? _accountChanges;
+  int _vectorGeneration = 0;
+  String? _chosenUrl;
+  @override
+  void initState() {
+    super.initState();
+    _watchAccount();
+  }
+
+  void _watchAccount() {
+    final private = widget.candidates.any(
+      (v) => isAccountResource(Uri.parse(v)),
+    );
+    if (private && _accountChanges == null) {
+      _accountChanges = AccountResources.instance.changes.listen((_) {
+        _vectorGeneration++;
+        unawaited(_vectorLease?.release());
+        _vectorLease = null;
+        if (mounted) {
+          setState(() {
+            _index = 0;
+            _vectorUrl = null;
+            _chosenUrl = null;
+          });
+        }
+      });
+    } else if (!private && _accountChanges != null) {
+      unawaited(_accountChanges!.cancel());
+      _accountChanges = null;
+    }
+  }
+
+  Future<File> _privateVector(String url) async {
+    final generation = ++_vectorGeneration,
+        lease = await AccountResources.instance.acquire(Uri.parse(url));
+    if (!mounted || generation != _vectorGeneration) {
+      await lease.release();
+      throw StateError('image_changed');
+    }
+    await _vectorLease?.release();
+    _vectorLease = lease;
+    return lease.file;
+  }
 
   Widget _empty() => widget.naturalHeight
       ? const AspectRatio(aspectRatio: 1)
@@ -91,16 +137,37 @@ class _AppImageState extends State<AppImage> {
   @override
   void dispose() {
     _retry?.cancel();
+    _vectorGeneration++;
+    unawaited(_vectorLease?.release());
+    unawaited(_accountChanges?.cancel());
     super.dispose();
   }
 
   @override
   void didUpdateWidget(AppImage old) {
     super.didUpdateWidget(old);
-    if (!listEquals(old.candidates, widget.candidates)) _index = 0;
+    _watchAccount();
+    if (!listEquals(old.candidates, widget.candidates)) {
+      _index = 0;
+      _vectorGeneration++;
+      _vectorUrl = null;
+      unawaited(_vectorLease?.release());
+      _vectorLease = null;
+    }
   }
 
-  Widget _failed(String url, Object error) {
+  Widget _failed(String url, Object error, {int? epoch}) {
+    if (isAccountResource(Uri.parse(url))) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted &&
+            _chosenUrl == url &&
+            epoch == AccountResources.instance.epoch) {
+          _chosenUrl = null;
+          setState(() => _index++);
+        }
+      });
+      return widget.placeholder ?? _empty();
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (error is HttpExceptionWithStatus &&
           const {404, 410}.contains(error.statusCode)) {
@@ -139,16 +206,23 @@ class _AppImageState extends State<AppImage> {
       return widget.placeholder ?? _empty();
     }
     final url = candidates[_index];
+    _chosenUrl = url;
+    final private = isAccountResource(Uri.parse(url)),
+        epoch = private ? AccountResources.instance.epoch : 0;
     if (Uri.tryParse(url)?.path.toLowerCase().endsWith('.svg') == true) {
       if (_vectorUrl != url) {
         _vectorUrl = url;
-        _vectorFile = artworkCache.getSingleFile(url);
+        _vectorFile = private
+            ? _privateVector(url)
+            : artworkCache.getSingleFile(url);
       }
       return FutureBuilder<File>(
-        key: ValueKey(url),
+        key: ValueKey((url, epoch)),
         future: _vectorFile,
         builder: (context, snapshot) {
-          if (snapshot.hasError) return _failed(url, snapshot.error!);
+          if (snapshot.hasError) {
+            return _failed(url, snapshot.error!, epoch: epoch);
+          }
           final file = snapshot.data;
           if (file == null) return _empty();
           CacheStorage.instance.scheduleTrim();
@@ -160,7 +234,7 @@ class _AppImageState extends State<AppImage> {
             width: double.infinity,
             height: widget.naturalHeight ? null : double.infinity,
             placeholderBuilder: (_) => _empty(),
-            errorBuilder: (_, error, _) => _failed(url, error),
+            errorBuilder: (_, error, _) => _failed(url, error, epoch: epoch),
           );
         },
       );
@@ -176,6 +250,22 @@ class _AppImageState extends State<AppImage> {
         final width = constraints.hasBoundedWidth
             ? (constraints.maxWidth * ratio).round().clamp(1, 8192)
             : null;
+        if (private) {
+          return Image(
+            image: ResizeImage.resizeIfNeeded(
+              width,
+              null,
+              AccountImageProvider(Uri.parse(url), epoch),
+            ),
+            fit: widget.fit,
+            alignment: widget.alignment,
+            width: double.infinity,
+            height: widget.naturalHeight ? null : double.infinity,
+            frameBuilder: (context, child, frame, sync) =>
+                frame == null ? _empty() : child,
+            errorBuilder: (_, error, _) => _failed(url, error, epoch: epoch),
+          );
+        }
         return CachedNetworkImage(
           key: ValueKey(url),
           imageUrl: url,
@@ -198,7 +288,7 @@ class _AppImageState extends State<AppImage> {
           fadeInDuration: const Duration(milliseconds: 120),
           fadeOutDuration: Duration.zero,
           placeholder: (_, _) => _empty(),
-          errorWidget: (_, _, error) => _failed(url, error),
+          errorWidget: (_, _, error) => _failed(url, error, epoch: epoch),
         );
       },
     );

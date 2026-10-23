@@ -124,6 +124,7 @@ final navSections = <NavSection>[
       Symbols.calendar_month_rounded,
     ),
     NavItem('/join', 'legal.join.title', Symbols.handshake_rounded),
+    NavItem('/download', 'download.title', Symbols.download_rounded),
   ]),
   const NavSection('library', 'navigation.library', Symbols.category_rounded, [
     NavItem(
@@ -185,6 +186,26 @@ final navSections = <NavSection>[
       Symbols.credit_card_rounded,
     ),
     NavItem('/catalog/studio', 'catalog.studio.title', Symbols.piano_rounded),
+    NavItem(
+      '/catalog/player-ranks',
+      'catalog.progression.playerRank',
+      Symbols.trending_up_rounded,
+    ),
+    NavItem(
+      '/catalog/friendship-ranks',
+      'catalog.progression.friendshipRank',
+      Symbols.diversity_1_rounded,
+    ),
+    NavItem(
+      '/catalog/band-rating',
+      'catalog.progression.bandRating',
+      Symbols.monitoring_rounded,
+    ),
+    NavItem(
+      '/catalog/high-score-rating',
+      'catalog.progression.highScoreRating',
+      Symbols.leaderboard_rounded,
+    ),
     NavItem('/catalog/shop', 'navigation.shop', Symbols.storefront_rounded),
     NavItem(
       '/catalog/exchange',
@@ -323,6 +344,11 @@ final navSections = <NavSection>[
       '/community/playlists',
       'community.page.playlistPage.title',
       Symbols.queue_music_rounded,
+    ),
+    NavItem(
+      '/community/charts',
+      'community.charts.title',
+      Symbols.music_note_rounded,
     ),
     NavItem(
       '/community/forums',

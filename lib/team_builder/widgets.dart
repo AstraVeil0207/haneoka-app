@@ -11,7 +11,172 @@ import '../ui/card_artwork.dart';
 import '../ui/shapes.dart';
 import '../ui/theme.dart';
 import 'catalog.dart';
+import 'controller.dart';
 import 'engine/api.dart';
+
+class TeamToolLayout extends StatelessWidget {
+  const TeamToolLayout({
+    super.key,
+    required this.controller,
+    required this.summary,
+    required this.conditions,
+    required this.action,
+    required this.results,
+    this.storageKey = 'build',
+  });
+  final TeamBuilderController controller;
+  final String storageKey;
+  final String summary;
+  final WidgetBuilder conditions, action, results;
+
+  Future<void> _openConditions({
+    required BuildContext context,
+    required WidgetBuilder builder,
+  }) async {
+    BuildContext? dialog;
+    bool busy() =>
+        controller.running || controller.manualBusy || controller.pt.running;
+    var wasBusy = busy(), closing = false;
+    void changed() {
+      final running = busy();
+      if (!wasBusy && running && !closing && dialog?.mounted == true) {
+        closing = true;
+        Navigator.of(dialog!).pop();
+      }
+      wasBusy = running;
+    }
+
+    controller.addListener(changed);
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (context) {
+          dialog = context;
+          return builder(context);
+        },
+      );
+    } finally {
+      controller.removeListener(changed);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, box) {
+      Widget settings(BuildContext context) => Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              key: PageStorageKey('$storageKey:conditions'),
+              padding: const EdgeInsets.all(16),
+              child: conditions(context),
+            ),
+          ),
+          Padding(padding: const EdgeInsets.all(16), child: action(context)),
+        ],
+      );
+      if (box.maxWidth >= 960 && box.maxHeight >= 540) {
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(width: 400, child: settings(context)),
+            Expanded(
+              child: ListView(
+                key: PageStorageKey('$storageKey:results'),
+                padding: const EdgeInsets.all(16),
+                children: [results(context)],
+              ),
+            ),
+          ],
+        );
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: ToolSection(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        summary,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => _openConditions(
+                        context: context,
+                        builder: (context) => Dialog(
+                          insetPadding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 16,
+                          ),
+                          child: SizedBox(
+                            width: 560,
+                            height: MediaQuery.sizeOf(context).height * .88,
+                            child: ListenableBuilder(
+                              listenable: controller,
+                              builder: (context, _) => Column(
+                                children: [
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      16,
+                                      8,
+                                      8,
+                                      0,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            controller.tb(
+                                              'adjustConditions',
+                                              'Adjust conditions',
+                                            ),
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleMedium,
+                                          ),
+                                        ),
+                                        CloseButton(),
+                                      ],
+                                    ),
+                                  ),
+                                  Expanded(child: settings(context)),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        controller.tb('adjustConditions', 'Adjust conditions'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              key: PageStorageKey('$storageKey:results'),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              children: [results(context)],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: action(context),
+          ),
+        ],
+      );
+    },
+  );
+}
 
 /// A tool settings section (`.surface` with `detail-section-title`).
 class ToolSection extends StatelessWidget {

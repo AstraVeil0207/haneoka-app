@@ -160,13 +160,18 @@ class NativeTeamEngine {
     return result;
   }
 
-  Doc run(Doc request, List<Doc> charts, void Function(Doc) onCandidate) {
+  Doc run(
+    Doc request,
+    List<Doc> charts,
+    void Function(Doc) onCandidate, {
+    String operation = 'run',
+  }) {
     final callback = NativeCallable<Void Function(Pointer<Uint8>)>.isolateLocal(
       (Pointer<Uint8> value) => onCandidate(_read(value)),
     );
     try {
       final result = _invoke({
-        'op': 'run',
+        'op': operation,
         'handle': handle,
         'request': request,
         'charts': charts,

@@ -30,6 +30,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../core/api.dart';
 import '../core/app_state.dart';
+import '../core/catalog_source.dart';
 import '../core/render_preferences.dart';
 import '../core/resource_file_cache.dart';
 import '../core/voice.dart';
@@ -381,7 +382,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
         ) as Map,
       );
       if (!mounted || epoch != _epoch) return;
-      final api = widget.api ?? state.apiFor(widget.server ?? state.server);
+      final api = CatalogSourceScope.resolve(context, api: widget.api, server: widget.server);
       final document = await NativeStoryDocument.load(api, widget.storyId);
       final renderProfile = await bindStoryRenderProfile(
         document.chapter.sourceIdentity,
@@ -1846,10 +1847,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
     late final Future<NativeStoryTransitionSource> pending;
     pending =
         NativeStoryTransitionSource.load(
-          api:
-              widget.api ??
-              AppScope.of(context)
-                  .apiFor(widget.server ?? AppScope.of(context).server),
+          api: CatalogSourceScope.resolve(context, api: widget.api, server: widget.server),
           identity: _document!.chapter.sourceIdentity,
           definition: definition,
           current: current,
@@ -1959,10 +1957,7 @@ class _NativeStoryPlayerScreenState extends State<NativeStoryPlayerScreen>
     if (uri.queryParameters['release'] != identity.release) {
       throw const FormatException('story_ui_save_resource_release');
     }
-    final api =
-        widget.api ??
-        AppScope.of(context)
-            .apiFor(widget.server ?? AppScope.of(context).server);
+    final api = CatalogSourceScope.resolve(context, api: widget.api, server: widget.server);
     return api.asset(uri.path).replace(queryParameters: uri.queryParameters);
   }
 

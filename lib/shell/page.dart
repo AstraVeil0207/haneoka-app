@@ -14,6 +14,7 @@ class ShellScope extends InheritedWidget {
     required this.navigate,
     required this.back,
     required this.canGoBack,
+    this.navigationOpen = false,
     required super.child,
   });
   final VoidCallback openNavigation;
@@ -23,11 +24,14 @@ class ShellScope extends InheritedWidget {
   final ValueChanged<String> navigate;
   final VoidCallback back;
   final bool canGoBack;
+  final bool navigationOpen;
   static ShellScope? of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<ShellScope>();
   @override
   bool updateShouldNotify(ShellScope old) =>
-      old.compact != compact || old.canGoBack != canGoBack;
+      old.compact != compact ||
+      old.canGoBack != canGoBack ||
+      old.navigationOpen != navigationOpen;
 }
 
 /// One control in the title bar. It draws as an icon button while it fits and
@@ -107,6 +111,7 @@ class ShellPage extends StatefulWidget {
     this.actions = const [],
     this.search,
     this.showBack = false,
+    this.onBack,
   });
   final String title;
   final Locale? titleLanguage;
@@ -122,6 +127,7 @@ class ShellPage extends StatefulWidget {
   final List<BarAction> actions;
   final ShellSearch? search;
   final bool showBack;
+  final VoidCallback? onBack;
   final Widget body;
 
   @override
@@ -246,21 +252,15 @@ class _ShellPageState extends State<ShellPage> {
     return false;
   }
 
-  double _buttonExtent(BuildContext context) =>
-      const {
-        TargetPlatform.android,
-        TargetPlatform.iOS,
-      }.contains(Theme.of(context).platform)
-      ? 48
-      : 40;
+  double _buttonExtent(BuildContext context) => 48;
 
   Widget _bar(BuildContext context, bool compact) {
     final shell = ShellScope.of(context);
     final theme = Theme.of(context);
     final detail = _detail(context);
-    final canPop = detail || shell?.canGoBack == true;
+    final canPop = detail || widget.onBack != null || shell?.canGoBack == true;
     final leading = canPop
-        ? BackButton(onPressed: shell?.back)
+        ? BackButton(onPressed: widget.onBack ?? shell?.back)
         : compact && shell != null
         ? IconButton(
             tooltip: MaterialLocalizations.of(context).openAppDrawerTooltip,
@@ -378,7 +378,7 @@ class _ShellPageState extends State<ShellPage> {
     // Back keeps the navigation menu in the overflow.
     final actions = widget.actions;
     final shell = ShellScope.of(context);
-    final canPop = _detail(context);
+    final canPop = _detail(context) || widget.onBack != null;
     final menu = compact && canPop && shell != null
         ? BarAction(
             icon: Symbols.menu_rounded,
