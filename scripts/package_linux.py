@@ -95,11 +95,44 @@ def main():
         mime.write_text('<?xml version="1.0"?><mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">'
                         '<mime-type type="application/x-haneoka-save"><comment>Haneoka save archive</comment>'
                         '<glob pattern="*.haneoka-save"/></mime-type></mime-info>\n')
+        if not args.linuxdeploy:
+            raise SystemExit('--linuxdeploy is required to bundle the Linux runtime')
+        linked = subprocess.check_output(['ldd', bundle / 'haneoka'], text=True)
+        mpv = next(Path(row.split()[2]) for row in linked.splitlines()
+                   if row.strip().startswith('libmpv.so.'))
+        appdir = temp / 'Haneoka.AppDir'
+        shutil.copytree(stage, appdir, symlinks=True)
+        # linuxdeploy expects ELF executables in usr/bin. Keep the launcher
+        # script for native packages, and point AppImage's entry to its ELF.
+        entry = appdir / 'usr/bin/haneoka'
+        entry.unlink()
+        entry.symlink_to('../share/haneoka/haneoka')
+        (appdir / 'AppRun').write_text('#!/bin/sh\nbase=$(dirname "$(readlink -f "$0")")\n'
+            'export LD_LIBRARY_PATH="$base/usr/lib:$base/usr/share/haneoka/lib:${LD_LIBRARY_PATH:-}"\n'
+            f'export LIBMPV_LIBRARY_PATH="$base/usr/lib/{mpv.name}"\n'
+            'exec "$base/usr/share/haneoka/haneoka" "$@"\n')
+        (appdir / 'AppRun').chmod(0o755)
+        env = {**os.environ, 'APPIMAGE_EXTRACT_AND_RUN': '1', 'ARCH': architecture,
+               'OUTPUT': str(output / f'{name}.AppImage')}
+        motion_sync = appdir / 'usr/share/haneoka/lib/libcubism_motion_sync.so'
+        runtime_libraries = ['--library', motion_sync] if motion_sync.is_file() else []
+        run(args.linuxdeploy.resolve(), '--appdir', appdir,
+            '--executable', appdir / 'usr/share/haneoka/haneoka',
+            '--desktop-file', appdir / desktop.relative_to(stage),
+            '--icon-file', appdir / icon.relative_to(stage), '--library', mpv,
+            *runtime_libraries, '--plugin', 'gtk',
+            *(['--output', 'appimage'] if formats & {'appimage', 'snap'} else []), env=env)
+        shutil.copytree(appdir / 'usr/lib', app / 'lib', symlinks=True, dirs_exist_ok=True)
+        (app / 'haneoka').rename(app / 'haneoka-bin')
+        (app / 'haneoka').write_text('#!/bin/sh\nbase=$(dirname "$(readlink -f "$0")")\n'
+            'export LD_LIBRARY_PATH="$base/lib:${LD_LIBRARY_PATH:-}"\n'
+            f'export LIBMPV_LIBRARY_PATH="$base/lib/{mpv.name}"\n'
+            'exec "$base/haneoka-bin" "$@"\n')
+        (app / 'haneoka').chmod(0o755)
         if 'tar' in formats:
             with tarfile.open(output / f'{name}.tar.gz', 'w:gz') as archive:
-                for path in bundle.iterdir():
+                for path in app.iterdir():
                     archive.add(path, arcname=path.name)
-                archive.add(ROOT / 'LICENSE', arcname='LICENSE')
         if 'deb' in formats:
             control = temp / 'control'
             control.mkdir()
@@ -108,7 +141,7 @@ def main():
                 'Maintainer: Haneoka contributors <noreply@haneoka.org>\n'
                 'Section: games\nPriority: optional\n'
                 'Depends: libgtk-3-0, libsecret-1-0, libstdc++6, libgstreamer1.0-0, '
-                'libgstreamer-plugins-base1.0-0, libmpv2 | libmpv1, libjavascriptcoregtk-4.1-0\n'
+                'libgstreamer-plugins-base1.0-0\n'
                 'Homepage: https://haneoka.org\nDescription: Our Notes catalogue and save reader\n')
             hashes = []
             for path in sorted(stage.rglob('*')):
@@ -127,7 +160,7 @@ def main():
                             f'builddate = {int(time.time())}\npackager = Haneoka contributors\n'
                             'url = https://haneoka.org\nlicense = MPL-2.0\n'
                             'depend = gtk3\ndepend = libsecret\ndepend = gstreamer\n'
-                            'depend = gst-plugins-base-libs\ndepend = mpv\ndepend = webkit2gtk-4.1\n')
+                            'depend = gst-plugins-base-libs\n')
             run('tar', '--owner=0', '--group=0', '--zstd', '-cf', output / f'{name}.pkg.tar.zst', '-C', stage, '.PKGINFO', 'usr')
             info.unlink()
         if 'rpm' in formats:
@@ -139,7 +172,7 @@ def main():
                             'Summary: Our Notes catalogue and save reader\nLicense: MPL-2.0\n'
                             f'URL: https://haneoka.org\nBuildArch: {architecture}\n'
                             '%global debug_package %{nil}\n%global __strip /bin/true\n'
-                            'Requires: gtk3, libsecret, gstreamer1, gstreamer1-plugins-base, mpv-libs, javascriptcoregtk4.1\n'
+                            'Requires: gtk3, libsecret, gstreamer1, gstreamer1-plugins-base\n'
                             '%description\nOur Notes catalogue and local save reader.\n'
                             f'%install\nmkdir -p %{{buildroot}}\ncp -a "{stage}/usr" %{{buildroot}}/\n'
                             '%files\n/usr/bin/haneoka\n/usr/share/haneoka\n'
@@ -151,32 +184,6 @@ def main():
             if len(packages) != 1:
                 raise SystemExit('Expected one RPM artifact')
             shutil.copy2(packages[0], output / f'{name}.rpm')
-        if 'appimage' in formats:
-            if not args.linuxdeploy:
-                raise SystemExit('--linuxdeploy is required for AppImage')
-            appdir = temp / 'Haneoka.AppDir'
-            shutil.copytree(stage, appdir, symlinks=True)
-            # linuxdeploy expects ELF executables in usr/bin. Keep the launcher
-            # script for native packages, and point AppImage's entry to its ELF.
-            entry = appdir / 'usr/bin/haneoka'
-            entry.unlink()
-            entry.symlink_to('../share/haneoka/haneoka')
-            (appdir / 'AppRun').write_text('#!/bin/sh\nbase=$(dirname "$(readlink -f "$0")")\n'
-                'export LD_LIBRARY_PATH="$base/usr/lib:$base/usr/share/haneoka/lib:${LD_LIBRARY_PATH:-}"\n'
-                'exec "$base/usr/share/haneoka/haneoka" "$@"\n')
-            (appdir / 'AppRun').chmod(0o755)
-            candidates = list(Path('/usr/lib').glob('**/libmpv.so.2')) + list(Path('/usr/lib').glob('**/libmpv.so.1'))
-            if not candidates:
-                raise SystemExit('Install libmpv before creating AppImage')
-            env = {**os.environ, 'APPIMAGE_EXTRACT_AND_RUN': '1', 'ARCH': architecture,
-                   'OUTPUT': str(output / f'{name}.AppImage')}
-            motion_sync = appdir / 'usr/share/haneoka/lib/libcubism_motion_sync.so'
-            runtime_libraries = ['--library', motion_sync] if motion_sync.is_file() else []
-            run(args.linuxdeploy.resolve(), '--appdir', appdir,
-                '--executable', appdir / 'usr/share/haneoka/haneoka',
-                '--desktop-file', appdir / desktop.relative_to(stage),
-                '--icon-file', appdir / icon.relative_to(stage), '--library', candidates[0],
-                *runtime_libraries, '--plugin', 'gtk', '--output', 'appimage', env=env)
         if 'snap' in formats:
             image = output / f'{name}.AppImage'
             if not image.exists():
@@ -190,6 +197,7 @@ def main():
             (snap / 'bin').mkdir()
             (snap / 'bin/haneoka').write_text('#!/bin/sh\n'
                 'export LD_LIBRARY_PATH="$SNAP/usr/lib:$SNAP/usr/share/haneoka/lib:${LD_LIBRARY_PATH:-}"\n'
+                f'export LIBMPV_LIBRARY_PATH="$SNAP/usr/lib/{mpv.name}"\n'
                 'exec "$SNAP/usr/share/haneoka/haneoka" "$@"\n')
             (snap / 'bin/haneoka').chmod(0o755)
             (snap / 'meta').mkdir()
