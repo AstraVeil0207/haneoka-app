@@ -69,7 +69,17 @@ class _AdminPostReviewState extends State<AdminPostReview> {
         }
       }
       if (!mounted) return;
-      setState(() => _document = {...?history, ...?current});
+      setState(
+        () => _document = {
+          ...?history,
+          ...?current,
+          if (current != null)
+            'post': {
+              ...chartMap(history?['post'] ?? const {}),
+              ...chartMap(current['post']),
+            },
+        },
+      );
     } catch (error) {
       if (mounted) setState(() => _error = error);
     } finally {
@@ -174,6 +184,21 @@ class _AdminPostReviewState extends State<AdminPostReview> {
                           label: Text(t('retry')),
                         ),
                       widget.facts(record),
+                      if ((record['authorId'] ??
+                              chartMap(record['author'] ?? const {})['id'])
+                          case final String authorId)
+                        ListTile(
+                          leading: const Icon(Symbols.person_rounded),
+                          title: Text(t('columns.author')),
+                          subtitle: Text(
+                            '${record['authorName'] ?? chartMap(record['author'] ?? const {})['displayName'] ?? record['authorAccountName'] ?? chartMap(record['author'] ?? const {})['accountName'] ?? authorId}',
+                          ),
+                          trailing: const Icon(Symbols.chevron_right_rounded),
+                          onTap: () {
+                            Navigator.pop(context);
+                            c.select('users', filters: {'q': authorId});
+                          },
+                        ),
                       if (record['body'] case final String body)
                         CommunityBody(source: body),
                       if (!widget.comment) ...[
