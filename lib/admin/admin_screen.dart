@@ -274,18 +274,23 @@ class _AdminScreenState extends State<AdminScreen> {
           for (final entry in filters)
             Padding(
               padding: const EdgeInsets.only(right: 4),
-              child: InputChip(
-                label: Text(
-                  '${_filterLabel(entry.key)} · ${entry.key.startsWith('visited') ? _date(entry.value) : _value(entry.value)}',
+              child: Tooltip(
+                message: _filterLabel(entry.key),
+                child: InputChip(
+                  label: Text(
+                    entry.key.startsWith('visited')
+                        ? _date(entry.value)
+                        : _value(entry.value),
+                  ),
+                  onDeleted: () {
+                    final next = {...c.query}..remove(entry.key);
+                    if (entry.key == 'geoLat' || entry.key == 'geoLng') {
+                      next.remove('geoLat');
+                      next.remove('geoLng');
+                    }
+                    unawaited(c.select(c.section, filters: next));
+                  },
                 ),
-                onDeleted: () {
-                  final next = {...c.query}..remove(entry.key);
-                  if (entry.key == 'geoLat' || entry.key == 'geoLng') {
-                    next.remove('geoLat');
-                    next.remove('geoLng');
-                  }
-                  unawaited(c.select(c.section, filters: next));
-                },
               ),
             ),
         ],

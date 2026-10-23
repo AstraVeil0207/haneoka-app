@@ -8,6 +8,8 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import time
+import urllib.error
 import urllib.request
 import zipfile
 
@@ -60,8 +62,16 @@ def main():
         archive = args.cache / f"platform-tools-{args.platform}-{lock['version']}.zip"
         if not archive.exists() or hashlib.sha256(archive.read_bytes()).hexdigest() != spec['sha256']:
             temporary = archive.with_suffix('.download')
-            with urllib.request.urlopen(spec['url'], timeout=60) as response, temporary.open('wb') as output:
-                shutil.copyfileobj(response, output)
+            for attempt in range(3):
+                try:
+                    with urllib.request.urlopen(spec['url'], timeout=60) as response, temporary.open('wb') as output:
+                        shutil.copyfileobj(response, output)
+                    break
+                except (urllib.error.URLError, TimeoutError, ConnectionError):
+                    temporary.unlink(missing_ok=True)
+                    if attempt == 2:
+                        raise
+                    time.sleep(2 ** attempt)
             if hashlib.sha256(temporary.read_bytes()).hexdigest() != spec['sha256']:
                 temporary.unlink()
                 raise SystemExit('ADB archive checksum differs from packaging/adb-tools.json.')
